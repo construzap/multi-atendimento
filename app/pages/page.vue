@@ -1,4 +1,8 @@
 <script setup lang="ts">
+definePageMeta({
+  layout: false
+})
+
 import { NuxtLink } from '#components'
 </script>
 

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+definePageMeta({
+  layout: false
+})
+
 import { ref } from 'vue'
 import { NuxtLink } from '#components'
 import BaseButton from '~/components/BaseButton.vue'

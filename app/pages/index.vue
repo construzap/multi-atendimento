@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+
+definePageMeta({
+  layout: 'default'
+})
 import { NuxtLink } from '#components'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
@@ -92,7 +96,7 @@ async function handleLogout() {
           <h2 class="font-headline text-lg font-semibold text-on-surface dark:text-dark-on-surface">
             Usuário
           </h2>
-          <p class="font-bod y text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+          <p class="font-body text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
             <span class="font-semibold">Nome:</span> {{ userName || 'sem nome' }}
           </p>
           <p class="font-body text-sm text-on-surface-variant dark:text-dark-on-surface-variant">

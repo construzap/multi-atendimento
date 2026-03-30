@@ -4,6 +4,7 @@ import LoginLeftSection from '~/components/login/LoginLeftSection.vue'
 import LoginRightSection from '~/components/login/LoginRightSection.vue'
 
 definePageMeta({
+  layout: false,
   middleware: ['guest']
 })
 </script>
