@@ -1,11 +1,27 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed } from 'vue'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 
-const nome = ref('João Silva')
-const email = ref('joao.silva@email.com')
-const telefone = ref('+55 (11) 98765-4321')
+const profile = useProfileStore()
+
+const nome = computed({
+  get: () => profile.me?.full_name ?? '',
+  set: (value: string) => {
+    if (!profile.me) return
+    profile.me.full_name = value
+  }
+})
+
+const email = computed(() => profile.me?.email ?? '')
+
+const telefone = computed({
+  get: () => profile.me?.whatsapp ?? '',
+  set: (value: string) => {
+    if (!profile.me) return
+    profile.me.whatsapp = value
+  }
+})
 
 function onSalvar() {
   /* UI — integrar depois */
