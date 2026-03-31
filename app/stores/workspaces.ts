@@ -5,15 +5,20 @@ type WorkspacesState = {
   items: Workspace[]
   pending: boolean
   error: string | null
+  currentWorkspaceId: string | null
 }
 
 export const useWorkspacesStore = defineStore('workspaces', {
   state: (): WorkspacesState => ({
     items: [],
     pending: false,
-    error: null
+    error: null,
+    currentWorkspaceId: null
   }),
   actions: {
+    setCurrentWorkspaceId(id: string | null) {
+      this.currentWorkspaceId = id
+    },
     async fetchAll() {
       this.pending = true
       this.error = null

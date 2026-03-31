@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 
 type NavItem = {
   label: string
@@ -8,7 +8,22 @@ type NavItem = {
 }
 
 const route = useRoute()
-const base = computed(() => `/workspaces/${String(route.params.id ?? '')}`)
+const workspaces = useWorkspacesStore()
+
+// Mantém o Pinia em sync quando usuário entra via URL direta.
+watch(
+  () => route.params.id,
+  (id) => {
+    const next = id === undefined ? null : String(id)
+    if (next && workspaces.currentWorkspaceId !== next) {
+      workspaces.setCurrentWorkspaceId(next)
+    }
+  },
+  { immediate: true }
+)
+
+const workspaceId = computed(() => workspaces.currentWorkspaceId ?? String(route.params.id ?? ''))
+const base = computed(() => `/workspaces/${workspaceId.value}`)
 
 const items = computed<NavItem[]>(() => [
   { label: 'Dashboard', to: `${base.value}/dashboard`, icon: 'dashboard' },
@@ -24,8 +39,8 @@ function isActive(to: string) {
 </script>
 
 <template>
-  <div class="flex h-screen w-full overflow-hidden bg-gray-50">
-    <aside class="flex w-64 shrink-0 flex-col bg-gray-900">
+  <div class="flex h-screen w-full overflow-hidden bg-background text-on-surface transition-colors dark:bg-dark-background dark:text-dark-on-surface">
+    <aside class="flex w-64 shrink-0 flex-col bg-gray-900 text-gray-100">
       <!-- Header -->
       <div class="border-b border-gray-800 p-6">
         <div class="flex items-center space-x-3">
@@ -57,7 +72,7 @@ function isActive(to: string) {
           :class="
             isActive(it.to)
               ? 'bg-gray-800 text-primary-500 shadow-md shadow-gray-900/50'
-              : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+              : 'text-gray-300 hover:bg-gray-800 hover:text-white'
           "
         >
           <span
@@ -112,7 +127,7 @@ function isActive(to: string) {
       </div>
     </aside>
 
-    <main class="min-w-0 flex-1 overflow-y-auto bg-gray-50">
+    <main class="min-w-0 flex-1 overflow-y-auto bg-background transition-colors dark:bg-dark-background">
       <slot />
     </main>
   </div>

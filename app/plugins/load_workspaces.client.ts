@@ -25,6 +25,7 @@ export default defineNuxtPlugin(() => {
         workspaces.items = []
         workspaces.error = null
         workspaces.pending = false
+        workspaces.setCurrentWorkspaceId(null)
         return
       }
       await refreshIfLoggedIn()

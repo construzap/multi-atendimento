@@ -29,7 +29,7 @@ const variantClass = computed(() => {
   if (props.variant === 'secondary') {
     return [
       'border border-outline/50 bg-transparent text-on-surface-variant shadow-sm',
-      'hover:bg-surface-container-high hover:text-on-surface',
+      'hover:bg-surface-container-high hover:text-on-surface hover:shadow-md',
       'dark:border-dark-outline/50 dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface',
       'disabled:hover:bg-transparent dark:disabled:hover:bg-transparent'
     ].join(' ')
@@ -50,10 +50,11 @@ const variantClass = computed(() => {
     :type="type"
     :disabled="disabled"
     :class="[
-      'w-full rounded-xl font-semibold transition-all',
+      'w-full rounded-xl font-semibold transition-all duration-200 ease-out',
+      'transform-gpu hover:-translate-y-0.5 active:translate-y-0',
       sizeClass,
       variantClass,
-      'disabled:cursor-not-allowed disabled:opacity-60'
+      'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm'
     ]"
   >
     <slot />

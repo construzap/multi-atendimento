@@ -11,6 +11,8 @@ const addOpen = ref(false)
 const store = useWorkspacesStore()
 
 onMounted(() => {
+  // Fora de /workspaces/:id, então não há workspace “atual”
+  store.setCurrentWorkspaceId(null)
   if (!store.items.length && !store.pending) {
     store.fetchAll().catch(() => {})
   }
@@ -42,6 +44,11 @@ const filtered = computed(() => {
   if (!q) return items
   return items.filter((w) => `${w.nome} ${w.descricao ?? ''} ${w.id}`.toLowerCase().includes(q))
 })
+
+async function onSelectWorkspace(workspaceId: string) {
+  store.setCurrentWorkspaceId(workspaceId)
+  await navigateTo(`/workspaces/${workspaceId}/chat`)
+}
 </script>
 
 <template>
@@ -109,6 +116,7 @@ const filtered = computed(() => {
         :avatar-text="initials(w.nome)"
         :avatar-gradient-class="gradientById(w.id)"
         status="ativo"
+        @select="onSelectWorkspace"
       />
     </section>
 

@@ -15,6 +15,10 @@ const props = defineProps<{
   status: WorkspaceStatus
 }>()
 
+const emit = defineEmits<{
+  select: [workspaceId: string]
+}>()
+
 const statusStyles: Record<WorkspaceStatus, { label: string; cls: string }> = {
   ativo: {
     label: 'Ativo',
@@ -76,7 +80,12 @@ const createdAtLabel = computed(() => formatCreatedAtPtBr(props.createdAt))
 
 <template>
   <article
-    class="group relative flex h-64 flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+    class="group relative flex h-64 cursor-pointer flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-md dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+    role="button"
+    tabindex="0"
+    @click="emit('select', id)"
+    @keydown.enter.prevent="emit('select', id)"
+    @keydown.space.prevent="emit('select', id)"
   >
     <div class="mb-4 flex items-start justify-between gap-4">
       <BaseAvatar
