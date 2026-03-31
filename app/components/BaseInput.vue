@@ -8,6 +8,12 @@ withDefaults(
     placeholder?: string
     id?: string
     name?: string
+    autocomplete?: string
+    inputmode?: string
+    pattern?: string
+    maxlength?: number
+    title?: string
+    invalidMessage?: string
     disabled?: boolean
     readonly?: boolean
     wrapperId?: string
@@ -18,6 +24,12 @@ withDefaults(
     placeholder: '',
     id: undefined,
     name: undefined,
+    autocomplete: undefined,
+    inputmode: undefined,
+    pattern: undefined,
+    maxlength: undefined,
+    title: undefined,
+    invalidMessage: undefined,
     disabled: false,
     readonly: false,
     wrapperId: undefined,
@@ -34,7 +46,17 @@ const hasTrailing = computed(() => Boolean(slots.trailing))
 
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement
+  // Se já tinha uma mensagem customizada, remove ao digitar.
+  if (el.validationMessage) el.setCustomValidity('')
   emit('update:modelValue', el.value)
+}
+
+function onInvalid(e: Event) {
+  const el = e.target as HTMLInputElement
+  if (!el) return
+  if (typeof el.setCustomValidity === 'function' && typeof invalidMessage === 'string' && invalidMessage.length > 0) {
+    el.setCustomValidity(invalidMessage)
+  }
 }
 </script>
 
@@ -51,6 +73,11 @@ function onInput(e: Event) {
       :name="name"
       :type="type"
       :value="modelValue"
+      :autocomplete="autocomplete"
+      :inputmode="inputmode"
+      :pattern="pattern"
+      :maxlength="maxlength"
+      :title="title"
       :disabled="disabled"
       :readonly="readonly"
       :placeholder="placeholder"
@@ -59,6 +86,7 @@ function onInput(e: Event) {
         hasTrailing ? 'pr-12' : 'pr-4',
       ]"
       @input="onInput"
+      @invalid="onInvalid"
     />
     <div
       v-if="$slots.trailing"

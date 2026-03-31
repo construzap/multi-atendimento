@@ -12,3 +12,4 @@ export interface UserProfile {
   /** `profiles.whatsapp` (telefone) */
   whatsapp: string | null
 }
+

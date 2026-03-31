@@ -1,6 +1,6 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError } from 'h3'
-import type { UserProfile } from '~/types/profile'
+import type { UserProfile } from '#shared/types/profile'
 
 /**
  * GET /api/perfil/me

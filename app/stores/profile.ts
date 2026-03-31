@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { UserProfile } from '~/types/profile'
+import type { UserProfile } from '#shared/types/profile'
 
 type ProfileState = {
   me: UserProfile | null
@@ -27,6 +27,24 @@ export const useProfileStore = defineStore('profile', {
       } catch (err) {
         this.me = null
         this.error = err instanceof Error ? err.message : 'Falha ao carregar perfil.'
+        throw err
+      } finally {
+        this.pending = false
+      }
+    },
+    async updateMe(input: { full_name?: string | null; whatsapp?: string | null }) {
+      this.pending = true
+      this.error = null
+
+      try {
+        const data = await $fetch<UserProfile>('/api/perfil/me', {
+          method: 'PATCH',
+          body: input
+        })
+        this.me = data
+        return data
+      } catch (err) {
+        this.error = err instanceof Error ? err.message : 'Falha ao atualizar perfil.'
         throw err
       } finally {
         this.pending = false

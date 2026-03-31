@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import ColorModeToggle from '~/components/ColorModeToggle.vue'
 import { NuxtPage, NuxtRouteAnnouncer } from '#components'
+import { Toaster } from 'vue-sonner'
+
+const { isDark } = useColorMode()
 </script>
 
 <template>
@@ -11,6 +14,7 @@ import { NuxtPage, NuxtRouteAnnouncer } from '#components'
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
+    <Toaster rich-colors position="top-right" :theme="isDark ? 'dark' : 'light'" />
     <ColorModeToggle />
   </div>
 </template>

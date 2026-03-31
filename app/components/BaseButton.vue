@@ -1,16 +1,47 @@
 <script setup lang="ts">
-withDefaults(
+import { computed } from 'vue'
+
+type ButtonVariant = 'primary' | 'secondary'
+type ButtonSize = 'md' | 'sm'
+
+const props = withDefaults(
   defineProps<{
     type?: 'button' | 'submit' | 'reset'
     disabled?: boolean
     id?: string
+    variant?: ButtonVariant
+    size?: ButtonSize
   }>(),
   {
     type: 'button',
     disabled: false,
     id: undefined,
-  },
+    variant: 'primary',
+    size: 'md'
+  }
 )
+
+const sizeClass = computed(() =>
+  props.size === 'sm' ? 'px-4 py-2.5 text-sm' : 'px-5 py-3.5 text-sm'
+)
+
+const variantClass = computed(() => {
+  if (props.variant === 'secondary') {
+    return [
+      'border border-outline/50 bg-transparent text-on-surface-variant shadow-sm',
+      'hover:bg-surface-container-high hover:text-on-surface',
+      'dark:border-dark-outline/50 dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface',
+      'disabled:hover:bg-transparent dark:disabled:hover:bg-transparent'
+    ].join(' ')
+  }
+
+  // primary (mais sóbrio que o gradiente anterior)
+  return [
+    'bg-primary-600 text-white shadow-sm',
+    'hover:bg-primary-700 hover:shadow-md',
+    'dark:bg-primary-600 dark:hover:bg-primary-700'
+  ].join(' ')
+})
 </script>
 
 <template>
@@ -18,7 +49,12 @@ withDefaults(
     :id="id"
     :type="type"
     :disabled="disabled"
-    class="w-full rounded-xl bg-gradient-to-r from-primary-500 to-primary-600 py-3.5 font-semibold text-white shadow-lg transition-all hover:from-primary-600 hover:to-primary-700 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:from-primary-500 disabled:hover:to-primary-600 disabled:hover:shadow-lg"
+    :class="[
+      'w-full rounded-xl font-semibold transition-all',
+      sizeClass,
+      variantClass,
+      'disabled:cursor-not-allowed disabled:opacity-60'
+    ]"
   >
     <slot />
   </button>
