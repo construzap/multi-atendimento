@@ -64,25 +64,27 @@ const shapeClass = computed(() => (props.variant === 'circle' ? 'rounded-full' :
       class="flex h-full w-full items-center justify-center"
       :class="fallbackClass"
     >
-      <span v-if="text" class="font-headline text-lg font-bold leading-none">
-        {{ text }}
-      </span>
-      <svg
-        v-else
-        class="h-7 w-7"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="1.8"
-        aria-hidden="true"
-      >
-        <rect x="3" y="3.5" width="18" height="17" rx="2.5" />
-        <path
-          d="M7 16.5V14.7c0-1 1-1.9 2.1-2.2 1.9-.6 3.9-.6 5.8 0 1.1.3 2.1 1.2 2.1 2.2v1.8"
-          stroke-linecap="round"
-        />
-        <circle cx="12" cy="9.5" r="2.3" />
-      </svg>
+      <slot name="fallback">
+        <span v-if="text" class="font-headline text-lg font-bold leading-none">
+          {{ text }}
+        </span>
+        <svg
+          v-else
+          class="h-7 w-7"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          aria-hidden="true"
+        >
+          <rect x="3" y="3.5" width="18" height="17" rx="2.5" />
+          <path
+            d="M7 16.5V14.7c0-1 1-1.9 2.1-2.2 1.9-.6 3.9-.6 5.8 0 1.1.3 2.1 1.2 2.1 2.2v1.8"
+            stroke-linecap="round"
+          />
+          <circle cx="12" cy="9.5" r="2.3" />
+        </svg>
+      </slot>
     </div>
   </div>
 </template>

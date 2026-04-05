@@ -53,6 +53,46 @@ export const useWorkspacesStore = defineStore('workspaces', {
       } finally {
         this.pending = false
       }
+    },
+    async updateWorkspace(id: number, input: { nome: string; descricao: string | null }) {
+      this.pending = true
+      this.error = null
+
+      try {
+        const updated = await $fetch<Workspace>(`/api/workspace/${id}`, {
+          method: 'PATCH',
+          body: input
+        })
+        const idx = this.items.findIndex((w) => w.id === id)
+        if (idx !== -1) {
+          this.items[idx] = updated
+        }
+        return updated
+      } catch (err) {
+        this.error = err instanceof Error ? err.message : 'Falha ao atualizar workspace.'
+        throw err
+      } finally {
+        this.pending = false
+      }
+    },
+    async deleteWorkspace(id: number) {
+      this.pending = true
+      this.error = null
+
+      try {
+        await $fetch<{ ok: true; id: number }>(`/api/workspace/${id}`, {
+          method: 'DELETE'
+        })
+        this.items = this.items.filter((w) => w.id !== id)
+        if (this.currentWorkspaceId === String(id)) {
+          this.setCurrentWorkspaceId(null)
+        }
+      } catch (err) {
+        this.error = err instanceof Error ? err.message : 'Falha ao remover workspace.'
+        throw err
+      } finally {
+        this.pending = false
+      }
     }
   }
 })

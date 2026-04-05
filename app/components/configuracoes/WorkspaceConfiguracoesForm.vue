@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
+import ModalAlerta from '~/components/ModalAlerta.vue'
+import WorkspaceDescricaoRichText from '~/components/configuracoes/WorkspaceDescricaoRichText.vue'
 
 const route = useRoute()
 const workspaces = useWorkspacesStore()
@@ -16,11 +19,16 @@ const workspace = computed(() => {
 
 const nome = ref('')
 const descricao = ref('')
+const modalExcluirAberto = ref(false)
 
-watchEffect(() => {
-  nome.value = workspace.value?.nome ?? ''
-  descricao.value = workspace.value?.descricao ?? ''
-})
+watch(
+  () => workspace.value,
+  (w) => {
+    nome.value = w?.nome ?? ''
+    descricao.value = w?.descricao ?? ''
+  },
+  { immediate: true }
+)
 
 const createdAtLabel = computed(() => {
   const raw = workspace.value?.created_at
@@ -29,6 +37,65 @@ const createdAtLabel = computed(() => {
   if (Number.isNaN(d.getTime())) return raw
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(d)
 })
+
+/** HTML vazio do editor → null para a API */
+function descricaoParaApi(html: string): string | null {
+  const texto = html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return texto.length ? html.trim() : null
+}
+
+async function onSalvar() {
+  const w = workspace.value
+  if (!w) {
+    toast.error('Workspace não encontrado.')
+    return
+  }
+
+  const nomeTrim = nome.value.trim()
+  if (!nomeTrim) {
+    toast.warning('Informe o nome.')
+    return
+  }
+
+  try {
+    await workspaces.updateWorkspace(w.id, {
+      nome: nomeTrim,
+      descricao: descricaoParaApi(descricao.value)
+    })
+    toast.success('Workspace atualizado com sucesso.')
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Falha ao salvar.')
+  }
+}
+
+function abrirModalExcluir() {
+  if (!workspace.value) {
+    toast.error('Workspace não encontrado.')
+    return
+  }
+  modalExcluirAberto.value = true
+}
+
+async function confirmarExclusaoWorkspace() {
+  const w = workspace.value
+  if (!w) {
+    modalExcluirAberto.value = false
+    return
+  }
+
+  try {
+    await workspaces.deleteWorkspace(w.id)
+    modalExcluirAberto.value = false
+    toast.success('Workspace removido.')
+    await navigateTo('/')
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Falha ao remover workspace.')
+  }
+}
 </script>
 
 <template>
@@ -42,16 +109,21 @@ const createdAtLabel = computed(() => {
             Workspace
           </h3>
           <p class="mt-1 font-body text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
-            Visualize as informações do seu workspace
+            Edite as informações do seu workspace
           </p>
         </div>
 
         <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
           <div class="w-full sm:w-40">
-            <BaseButton type="button" variant="secondary" disabled>Editar</BaseButton>
-          </div>
-          <div class="w-full sm:w-40">
-            <BaseButton type="button" disabled>Deletar</BaseButton>
+            <BaseButton
+              id="btn-ws-config-deletar"
+              type="button"
+              variant="secondary"
+              :disabled="workspaces.pending || !workspace"
+              @click="abrirModalExcluir"
+            >
+              Deletar
+            </BaseButton>
           </div>
         </div>
       </div>
@@ -65,7 +137,7 @@ const createdAtLabel = computed(() => {
         Workspace não encontrado no estado atual.
       </div>
 
-      <form v-else class="space-y-5">
+      <form v-else class="space-y-5" @submit.prevent="onSalvar">
         <div>
           <label class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface" for="ws-config-nome">
             Nome
@@ -83,21 +155,15 @@ const createdAtLabel = computed(() => {
           <label class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface" for="ws-config-descricao">
             Descrição
           </label>
-          <BaseInput
-            id="ws-config-descricao"
-            v-model="descricao"
-            type="text"
-            name="descricao"
-            placeholder="—"
-            autocomplete="off"
-          >
-            <template #leading>
-              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                <path d="M7 7h10M7 12h10M7 17h6" stroke-linecap="round" />
-                <path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" stroke-linejoin="round" />
-              </svg>
+          <ClientOnly>
+            <WorkspaceDescricaoRichText id="ws-config-descricao" v-model="descricao" />
+            <template #fallback>
+              <div
+                class="min-h-[180px] rounded-xl border border-gray-200 bg-gray-50 dark:border-dark-outline/50 dark:bg-dark-surface-container-low"
+                aria-hidden="true"
+              />
             </template>
-          </BaseInput>
+          </ClientOnly>
         </div>
 
         <div>
@@ -119,8 +185,26 @@ const createdAtLabel = computed(() => {
             </template>
           </BaseInput>
         </div>
+
+        <div class="pt-2">
+          <BaseButton id="btn-ws-config-salvar" type="submit" :disabled="workspaces.pending">
+            {{ workspaces.pending ? 'Salvando...' : 'Salvar alterações' }}
+          </BaseButton>
+        </div>
       </form>
     </div>
+
+    <ModalAlerta
+      v-model:open="modalExcluirAberto"
+      title="Excluir workspace"
+      texto="Tem certeza que deseja excluir este workspace? Ele será ocultado da sua lista."
+      variante="perigo"
+      texto-confirmar="Excluir"
+      texto-cancelar="Cancelar"
+      :confirmar-desabilitado="workspaces.pending"
+      :cancelar-desabilitado="workspaces.pending"
+      :mostrar-fechar="!workspaces.pending"
+      @confirmar="confirmarExclusaoWorkspace"
+    />
   </section>
 </template>
-
