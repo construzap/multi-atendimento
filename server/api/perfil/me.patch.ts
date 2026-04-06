@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, readBody } from 'h3'
 import type { UserProfile } from '#shared/types/profile'
+import { getAuthUserId } from '../../utils/getAuthUserId'
 
 type UpdateMeBody = {
   full_name?: string | null
@@ -24,7 +25,13 @@ export default defineEventHandler(async (event): Promise<UserProfile> => {
   }
 
   const user = authData.user
-  const userId = user.id
+  const userId = getAuthUserId(user)
+  if (!userId) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Não autenticado'
+    })
+  }
 
   const body = (await readBody<UpdateMeBody>(event)) ?? {}
 

@@ -113,9 +113,8 @@ function labelData(iso: string) {
         <CanalCard
           v-for="c in itensFiltrados"
           :key="c.id"
-          :id="String(c.id)"
-          :nome="c.nome ?? ''"
-          :descricao="c.descricao ?? ''"
+          :workspace-id="workspaceId"
+          :canal="c"
           :data-criacao-label="labelData(c.created_at)"
           status="ativo"
         />

@@ -25,6 +25,8 @@ type CanaisState = {
   items: Canal[]
   listPending: boolean
   listError: string | null
+  /** Canal em foco na UI (ex.: rota `/chat/:canalId`). `null` = nenhum. */
+  currentCanal: Canal | null
   subscription: CanaisSubscription | null
   subscriptionPending: boolean
   subscriptionError: string | null
@@ -95,6 +97,7 @@ export const useCanaisStore = defineStore('canais', {
     items: [],
     listPending: false,
     listError: null,
+    currentCanal: null,
     subscription: null,
     subscriptionPending: false,
     subscriptionError: null
@@ -105,9 +108,29 @@ export const useCanaisStore = defineStore('canais', {
     },
     createBlockedReason(state): string | null {
       return motivoBloqueioCriarCanal(state.subscription)
+    },
+    /** Id do canal atual (atalho para `currentCanal?.id`). */
+    currentCanalId(state): number | null {
+      return state.currentCanal?.id ?? null
     }
   },
   actions: {
+    /** Define o canal em foco com o objeto completo (ex.: clique na lista ou após fetch). */
+    setCurrentCanal(canal: Canal | null) {
+      this.currentCanal = canal
+    },
+    /**
+     * Define o canal apenas pelo id: usa `items` quando o canal já está na lista.
+     * Se não houver correspondência, zera o atual (evita objeto incompleto).
+     */
+    setCurrentCanalId(id: number | null) {
+      if (id == null) {
+        this.currentCanal = null
+        return
+      }
+      const found = this.items.find((c) => c.id === id)
+      this.currentCanal = found ?? null
+    },
     async fetchCanais(workspaceId: number) {
       this.listPending = true
       this.listError = null
@@ -117,6 +140,10 @@ export const useCanaisStore = defineStore('canais', {
           query: { workspace_id: workspaceId }
         })
         this.items = data
+        if (this.currentCanal) {
+          const match = data.find((c) => c.id === this.currentCanal!.id)
+          this.currentCanal = match ?? null
+        }
         return data
       } catch (err) {
         this.items = []

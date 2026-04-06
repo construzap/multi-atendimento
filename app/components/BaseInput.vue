@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, useSlots } from 'vue'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     modelValue?: string
     type?: string
@@ -17,6 +17,8 @@ withDefaults(
     disabled?: boolean
     readonly?: boolean
     wrapperId?: string
+    /** Classes extras no `<input>` (ex.: variante chat). */
+    inputClass?: string
   }>(),
   {
     modelValue: '',
@@ -33,6 +35,7 @@ withDefaults(
     disabled: false,
     readonly: false,
     wrapperId: undefined,
+    inputClass: undefined,
   },
 )
 
@@ -42,7 +45,14 @@ const emit = defineEmits<{
 
 const slots = useSlots()
 
+const hasLeading = computed(() => Boolean(slots.leading))
 const hasTrailing = computed(() => Boolean(slots.trailing))
+
+const paddingClass = computed(() => {
+  const pl = hasLeading.value ? 'pl-12' : 'pl-6'
+  const pr = hasTrailing.value ? 'pr-28' : 'pr-4'
+  return `${pl} ${pr}`
+})
 
 function onInput(e: Event) {
   const el = e.target as HTMLInputElement
@@ -54,8 +64,9 @@ function onInput(e: Event) {
 function onInvalid(e: Event) {
   const el = e.target as HTMLInputElement
   if (!el) return
-  if (typeof el.setCustomValidity === 'function' && typeof invalidMessage === 'string' && invalidMessage.length > 0) {
-    el.setCustomValidity(invalidMessage)
+  const msg = props.invalidMessage
+  if (typeof el.setCustomValidity === 'function' && typeof msg === 'string' && msg.length > 0) {
+    el.setCustomValidity(msg)
   }
 }
 </script>
@@ -82,8 +93,9 @@ function onInvalid(e: Event) {
       :readonly="readonly"
       :placeholder="placeholder"
       :class="[
-        'w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 pl-12 text-sm text-gray-900 placeholder:text-gray-400 transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:border-gray-200 read-only:bg-gray-100 read-only:text-gray-700 dark:border-dark-outline/50 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant/70 dark:read-only:bg-dark-surface-container-high dark:read-only:text-dark-on-surface',
-        hasTrailing ? 'pr-12' : 'pr-4',
+        'w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 text-sm text-gray-900 placeholder:text-gray-400 transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:border-gray-200 read-only:bg-gray-100 read-only:text-gray-700 dark:border-dark-outline/50 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant/70 dark:read-only:bg-dark-surface-container-high dark:read-only:text-dark-on-surface',
+        paddingClass,
+        inputClass,
       ]"
       @input="onInput"
       @invalid="onInvalid"

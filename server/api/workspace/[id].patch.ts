@@ -1,5 +1,6 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, readBody } from 'h3'
+import { getAuthUserId } from '../../utils/getAuthUserId'
 
 type UpdateWorkspaceBody = {
   nome?: string
@@ -23,7 +24,14 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const userId = authData.user.id
+  const userId = getAuthUserId(authData.user)
+  if (!userId) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Não autenticado'
+    })
+  }
+
   const idParam = event.context.params?.id
   const workspaceId = Number(idParam)
 

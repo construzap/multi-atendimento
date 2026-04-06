@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError } from 'h3'
 import type { Workspace } from '#shared/types/workspace'
+import { getAuthUserId } from '../../utils/getAuthUserId'
 
 /**
  * GET /api/workspaces
@@ -21,7 +22,13 @@ export default defineEventHandler(async (event): Promise<Workspace[]> => {
     })
   }
 
-  const userId = authData.user.id
+  const userId = getAuthUserId(authData.user)
+  if (!userId) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Não autenticado'
+    })
+  }
 
   // Tipos do DB ainda não configurados (Database = unknown), então usamos any aqui.
   const admin = serverSupabaseServiceRole<any>(event)

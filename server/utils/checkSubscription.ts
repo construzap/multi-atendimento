@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
+import { getAuthUserId } from './getAuthUserId'
 
 /** Retorno enxuto da view `vw_perfil_consolidado` (apenas campos de assinatura / limites de canal). */
 export type CheckSubscriptionResult = {
@@ -26,7 +27,13 @@ export async function checkSubscription(event: H3Event): Promise<CheckSubscripti
     })
   }
 
-  const userId = authData.user.id
+  const userId = getAuthUserId(authData.user)
+  if (!userId) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Não autenticado'
+    })
+  }
 
   // Tipos do DB ainda não configurados (Database = unknown), então usamos any aqui.
   const admin = serverSupabaseServiceRole<any>(event)

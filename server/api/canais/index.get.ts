@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, getQuery } from 'h3'
 import type { Canal } from '#shared/types/canal'
+import { getAuthUserId } from '../../utils/getAuthUserId'
 
 /**
  * GET /api/canais?workspace_id=
@@ -17,7 +18,14 @@ export default defineEventHandler(async (event): Promise<Canal[]> => {
     })
   }
 
-  const userId = authData.user.id
+  const userId = getAuthUserId(authData.user)
+  if (!userId) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Não autenticado'
+    })
+  }
+
   const q = getQuery(event)
   const raw = q.workspace_id
   if (raw === undefined || raw === null || raw === '') {

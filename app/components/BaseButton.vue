@@ -11,18 +11,30 @@ const props = withDefaults(
     id?: string
     variant?: ButtonVariant
     size?: ButtonSize
+    /**
+     * `true` (padrão): largura total — formulários e CTAs em coluna.
+     * `false`: largura ao conteúdo — barras de ferramentas, botões ao lado de inputs.
+     */
+    block?: boolean
   }>(),
   {
     type: 'button',
     disabled: false,
     id: undefined,
     variant: 'primary',
-    size: 'md'
+    size: 'md',
+    block: true
   }
 )
 
 const sizeClass = computed(() =>
   props.size === 'sm' ? 'px-4 py-2.5 text-sm' : 'px-5 py-3.5 text-sm'
+)
+
+const layoutClass = computed(() =>
+  props.block
+    ? 'w-full transform-gpu hover:-translate-y-0.5 active:translate-y-0'
+    : 'inline-flex w-auto max-w-full shrink-0 items-center justify-center self-center transform-gpu hover:translate-y-0 active:translate-y-0'
 )
 
 const variantClass = computed(() => {
@@ -50,8 +62,8 @@ const variantClass = computed(() => {
     :type="type"
     :disabled="disabled"
     :class="[
-      'w-full rounded-xl font-semibold transition-all duration-200 ease-out',
-      'transform-gpu hover:-translate-y-0.5 active:translate-y-0',
+      'rounded-xl font-semibold transition-all duration-200 ease-out',
+      layoutClass,
       sizeClass,
       variantClass,
       'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-sm'

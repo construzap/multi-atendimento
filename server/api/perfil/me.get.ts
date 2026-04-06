@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError } from 'h3'
 import type { UserProfile } from '#shared/types/profile'
+import { getAuthUserId } from '../../utils/getAuthUserId'
 
 /**
  * GET /api/perfil/me
@@ -19,7 +20,13 @@ export default defineEventHandler(async (event): Promise<UserProfile> => {
   }
 
   const user = authData.user
-  const userId = user.id
+  const userId = getAuthUserId(user)
+  if (!userId) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Não autenticado'
+    })
+  }
 
   // Tipos do DB ainda não configurados (Database = unknown), então usamos any aqui.
   const admin = serverSupabaseServiceRole<any>(event)

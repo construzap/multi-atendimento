@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, readBody } from 'h3'
 import type { Workspace } from '#shared/types/workspace'
+import { getAuthUserId } from '../../utils/getAuthUserId'
 
 type CreateWorkspaceBody = {
   nome?: string
@@ -26,7 +27,14 @@ export default defineEventHandler(async (event): Promise<Workspace> => {
     })
   }
 
-  const userId = authData.user.id
+  const userId = getAuthUserId(authData.user)
+  if (!userId) {
+    throw createError({
+      statusCode: 401,
+      statusMessage: 'Não autenticado'
+    })
+  }
+
   const body = (await readBody<CreateWorkspaceBody>(event)) ?? {}
 
   const nome = typeof body.nome === 'string' ? body.nome.trim() : ''
