@@ -8,23 +8,40 @@ definePageMeta({
 })
 
 const route = useRoute()
-const raw = route.params.canalId
-const canalId = Number.parseInt(String(raw ?? ''), 10)
-if (!Number.isFinite(canalId) || canalId < 1 || String(canalId) !== String(raw).trim()) {
-  throw createError({
-    statusCode: 404,
-    statusMessage: 'Canal inválido.'
-  })
-}
-
-const workspaceId = Number.parseInt(String(route.params.id ?? ''), 10)
 const canaisStore = useCanaisStore()
 
+function parsePositiveInt(raw: unknown): number | null {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const n = Number.parseInt(s, 10)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return null
+  // Garante que não veio algo como "2abc"
+  if (String(n) !== s) return null
+  return n
+}
+
+const canalId = computed(() => parsePositiveInt(route.params.canalId))
+const workspaceId = computed(() => parsePositiveInt(route.params.id))
+
+watch(
+  canalId,
+  (id) => {
+    if (id == null) {
+      throw createError({ statusCode: 404, statusMessage: 'Canal inválido.' })
+    }
+    // Essa linha é o gatilho que o plugin observa para refazer a busca.
+    canaisStore.setCurrentCanalId(id)
+  },
+  { immediate: true }
+)
+
 onMounted(async () => {
-  if (Number.isFinite(workspaceId)) {
-    await canaisStore.fetchCanais(workspaceId).catch(() => {})
+  const wid = workspaceId.value
+  if (wid != null) {
+    await canaisStore.fetchCanais(wid).catch(() => {})
+    // Depois do fetch, garante que o objeto completo seja preenchido (se existir na lista).
+    if (canalId.value != null) canaisStore.setCurrentCanalId(canalId.value)
   }
-  canaisStore.setCurrentCanalId(canalId)
 })
 </script>
 

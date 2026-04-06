@@ -14,10 +14,11 @@ export default defineNuxtPlugin(() => {
     () => canais.currentCanalId,
     async (id) => {
       if (id == null) {
-        conversas.reset()
+        conversas.setActiveCanalId(null)
         return
       }
-      await conversas.fetchPage(1).catch(() => {
+      // Cache-first: se já tiver no Pinia, não refaz chamada.
+      await conversas.ensureLoaded(id, 1).catch(() => {
         /* erro permanece em conversas.error */
       })
     },
