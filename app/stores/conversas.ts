@@ -49,6 +49,11 @@ function emptyCanalState(): CanalConversasState {
   }
 }
 
+type FetchOptions = {
+  /** Se true, adiciona ao final (paginação / carregar mais). */
+  append?: boolean
+}
+
 export const useConversasStore = defineStore('conversas', {
   state: (): ConversasState => ({
     activeCanalId: null,
@@ -121,7 +126,7 @@ export const useConversasStore = defineStore('conversas', {
      * Busca conversas para um canal/página.
      * Se `canalId` não for informado, usa o canal atual do `useCanaisStore()`.
      */
-    async fetchPage(page: number = 1, canalId?: number) {
+    async fetchPage(page: number = 1, canalId?: number, options: FetchOptions = {}) {
       const canais = useCanaisStore()
       const idCanal = canalId ?? canais.currentCanalId
       if (idCanal == null) {
@@ -142,7 +147,19 @@ export const useConversasStore = defineStore('conversas', {
             page
           }
         })
-        bucket.items = res.data
+        if (options.append) {
+          // Dedup por `key` para evitar repetições em caso de re-fetch.
+          const seen = new Set(bucket.items.map((i) => i.key))
+          const next = [...bucket.items]
+          for (const it of res.data) {
+            if (seen.has(it.key)) continue
+            seen.add(it.key)
+            next.push(it)
+          }
+          bucket.items = next
+        } else {
+          bucket.items = res.data
+        }
         bucket.page = res.page
         bucket.perPage = res.perPage
         bucket.total = res.total
@@ -166,6 +183,24 @@ export const useConversasStore = defineStore('conversas', {
       const bucket = this.byCanal[canalId] ?? (this.byCanal[canalId] = emptyCanalState())
       if (bucket.loadedAt != null) return
       await this.fetchPage(page, canalId)
+    },
+
+    /**
+     * Carrega a próxima página do canal ativo (append).
+     * Não faz nada se não houver `hasMore` ou se já estiver pendente.
+     */
+    async fetchNextPage(canalId?: number) {
+      const canais = useCanaisStore()
+      const idCanal = canalId ?? this.activeCanalId ?? canais.currentCanalId
+      if (idCanal == null) return
+
+      this.setActiveCanalId(idCanal)
+      const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
+      if (bucket.pending) return
+      if (!(bucket.page * bucket.perPage < bucket.total)) return
+
+      const nextPage = bucket.page + 1
+      await this.fetchPage(nextPage, idCanal, { append: true })
     }
   }
 })

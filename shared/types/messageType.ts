@@ -1,0 +1,36 @@
+/**
+ * Tipos possíveis de mensagem (campo `messatype`).
+ * Mantém os valores exatamente como chegam/são persistidos.
+ */
+export type MessageType =
+  | 'associatedChildMessage'
+  | 'audioMessage'
+  | 'buttonsMessage'
+  | 'contactMessage'
+  | 'contactsArrayMessage'
+  | 'conversation'
+  | 'desconhecido'
+  | 'documentMessage'
+  | 'documentWithCaptionMessage'
+  | 'editedMessage'
+  | 'ephemeralMessage'
+  | 'extendedTextMessage'
+  | 'groupInviteMessage'
+  | 'imageMessage'
+  | 'interactiveMessage'
+  | 'listMessage'
+  | 'locationMessage'
+  | 'lottieStickerMessage'
+  | 'orderMessage'
+  | 'pinInChatMessage'
+  | 'placeholderMessage'
+  | 'productMessage'
+  | 'ptvMessage'
+  | 'reactionMessage'
+  | 'stickerMessage'
+  | 'templateButtonReplyMessage'
+  | 'templateMessage'
+  | 'unknown'
+  | 'videoMessage'
+  | 'viewOnceMessage'
+

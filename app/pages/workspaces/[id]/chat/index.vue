@@ -28,7 +28,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex min-h-[100dvh] items-center justify-center p-6">
+  <div class="flex h-[100dvh] min-h-0 items-center justify-center p-6">
     <div v-if="pending" class="text-sm text-on-surface-variant dark:text-slate-400">Carregando…</div>
     <div v-else class="max-w-md text-center text-sm text-on-surface-variant dark:text-slate-400">
       <p class="mb-4">Nenhum canal neste workspace.</p>

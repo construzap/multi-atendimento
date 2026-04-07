@@ -13,18 +13,6 @@ type NavItem = {
 const route = useRoute()
 const workspaces = useWorkspacesStore()
 
-// Mantém o Pinia em sync quando usuário entra via URL direta.
-watch(
-  () => route.params.id,
-  (id) => {
-    const next = id === undefined ? null : String(id)
-    if (next && workspaces.currentWorkspaceId !== next) {
-      workspaces.setCurrentWorkspaceId(next)
-    }
-  },
-  { immediate: true }
-)
-
 const workspaceId = computed(() => workspaces.currentWorkspaceId ?? String(route.params.id ?? ''))
 const base = computed(() => `/workspaces/${workspaceId.value}`)
 

@@ -1,11 +1,13 @@
 /**
  * Tabela `public.conversas` (Supabase) — campos expostos na API (sem `deleted_at` / `deleted_by`).
  */
+import type { MessageType } from '#shared/types/messageType'
+
 export interface Conversa {
   key: string
   message: string | null
   /** Nome do campo na tabela (grafia do banco). */
-  messatype: string | null
+  messatype: MessageType | null
   name: string | null
   created_at: string | null
   updated_at: string | null

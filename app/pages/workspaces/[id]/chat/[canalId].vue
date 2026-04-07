@@ -31,6 +31,17 @@ watch(
     }
     // Essa linha é o gatilho que o plugin observa para refazer a busca.
     canaisStore.setCurrentCanalId(id)
+
+    // Se já temos a lista de canais do workspace e esse id não existe/pertence ao user,
+    // redireciona para `/canais`.
+    if (canaisStore.items.length > 0 && canaisStore.currentCanalId == null) {
+      const wid = workspaceId.value
+      if (wid != null) {
+        navigateTo(`/workspaces/${wid}/canais`, { replace: true })
+      } else {
+        navigateTo('/', { replace: true })
+      }
+    }
   },
   { immediate: true }
 )
@@ -41,13 +52,18 @@ onMounted(async () => {
     await canaisStore.fetchCanais(wid).catch(() => {})
     // Depois do fetch, garante que o objeto completo seja preenchido (se existir na lista).
     if (canalId.value != null) canaisStore.setCurrentCanalId(canalId.value)
+
+    // Se o canal da URL não pertence ao usuário (não está em items), manda para `/canais`.
+    if (canalId.value != null && canaisStore.currentCanalId == null) {
+      await navigateTo(`/workspaces/${wid}/canais`, { replace: true })
+    }
   }
 })
 </script>
 
 <template>
   <!-- Altura própria: não depende de flex no layout global (evita alterar outras páginas). -->
-  <div class="flex min-h-[100dvh] w-full flex-row overflow-hidden">
+  <div class="flex h-[100dvh] min-h-0 w-full flex-row overflow-hidden">
     <AreaConversa />
     <AreaChat />
     <AreaInfoConversa />
