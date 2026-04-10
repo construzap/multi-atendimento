@@ -1,10 +1,82 @@
 <script setup lang="ts">
-const imgAnexo =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuBTAuFXMjD4WB2qiEmLYSS8ujKZe5YjfOHR9XB0RRkkJCtuuv8HR2wYfOdwrbMtQmPqVGOe4JOszAk07rXQeCWUzgwoSYdqA8BpnVZ56_qE0_6Jjz6wWIEWSdQpr_QV7ozn4Lkb2rcOgUCe1Dan3W2Ua_rHIaBoVxNj_DYoFYLkqqUdMSekrBjVlc0JiU01EzZHpgue2tOphqzlc92DlLtpTVpo1YUxd8sjxhKiyk0DzsivDtn6qoDxud9EI2RgqQbQwT3A5d7iSMI'
+import { computed, nextTick, ref, watch } from 'vue'
+import BalaoMensagem from '~/components/chat/area-chat/BalaoMensagens/BalaoMensagem.vue'
+import { mensagensKey } from '~/stores/mensagens'
+
+const canais = useCanaisStore()
+const conversas = useConversasStore()
+const mensagens = useMensagensStore()
+
+const canalId = computed(() => canais.currentCanalId)
+const lid = computed(() => conversas.conversaAtual)
+
+const activeKey = computed(() => {
+  if (!canalId.value || !lid.value) return null
+  return mensagensKey(canalId.value, lid.value)
+})
+
+watch(
+  activeKey,
+  (k) => {
+    mensagens.setActiveKey(k)
+  },
+  { immediate: true }
+)
+
+// API vem mais recente primeiro; para UI tipo WhatsApp (de cima para baixo),
+// exibimos do mais antigo para o mais novo e ancoramos o bloco no rodapé.
+const mensagensOrdenadas = computed(() => [...mensagens.items].reverse())
+
+const scroller = ref<HTMLElement | null>(null)
+const isAtBottom = ref(true)
+const shouldScrollOnOpen = ref(false)
+
+function updateIsAtBottom() {
+  const el = scroller.value
+  if (!el) return
+  const thresholdPx = 24
+  isAtBottom.value = el.scrollTop + el.clientHeight >= el.scrollHeight - thresholdPx
+}
+
+async function scrollToBottom() {
+  await nextTick()
+  const el = scroller.value
+  if (!el) return
+  el.scrollTop = el.scrollHeight
+}
+
+// Ao abrir/trocar de conversa, sempre rola até o fim (mensagens mais recentes).
+watch(
+  activeKey,
+  async (k) => {
+    if (!k) return
+    shouldScrollOnOpen.value = true
+    await scrollToBottom()
+    shouldScrollOnOpen.value = false
+    updateIsAtBottom()
+  },
+  { flush: 'post' }
+)
+
+// Quando novas mensagens chegarem: se o usuário já estava no fim, mantém no fim.
+watch(
+  () => mensagensOrdenadas.value.length,
+  async () => {
+    if (shouldScrollOnOpen.value) return
+    if (!isAtBottom.value) return
+    await scrollToBottom()
+    updateIsAtBottom()
+  },
+  { flush: 'post' }
+)
 </script>
 
 <template>
-  <div class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-2">
+  <div
+    ref="scroller"
+    class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-2"
+    @scroll="updateIsAtBottom"
+  >
     <div class="my-6 flex justify-center">
       <span
         class="rounded-full bg-surface-container px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:bg-slate-800 dark:text-slate-400"
@@ -13,32 +85,17 @@ const imgAnexo =
       </span>
     </div>
 
-    <div class="mb-4 flex max-w-[70%] flex-col items-start">
-      <div class="rounded-xl rounded-tl-none bg-surface-container-highest p-4 shadow-sm dark:bg-slate-800">
-        <p class="font-body text-sm text-on-surface dark:text-slate-200">
-          Olá! Vi o catálogo que me enviou ontem, mas fiquei com dúvida sobre os prazos.
-        </p>
-        <span class="mt-1 block text-right text-[10px] text-on-surface-variant dark:text-slate-400">
-          14:15
-        </span>
-      </div>
+    <div
+      v-if="!canalId || !lid"
+      class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+    >
+      Selecione uma conversa para ver as mensagens.
     </div>
 
-    <div class="mb-4 ml-auto flex max-w-[70%] flex-col items-end self-end">
-      <div class="rounded-xl rounded-tr-none bg-primary-container p-2 shadow-sm">
-        <img :src="imgAnexo" class="mb-2 max-h-64 w-full rounded-lg object-cover" alt="Anexo" />
-        <p class="px-2 font-body text-sm text-on-primary-container">
-          Este é o nosso hub de logística. Entregamos em 48h!
-        </p>
-        <div class="mt-1 flex items-center justify-end gap-1 px-2">
-          <span class="text-[10px] text-on-primary-container/80">14:18</span>
-          <span
-            class="material-symbols-outlined text-[12px] text-on-primary-container"
-            aria-hidden="true"
-          >
-            done_all
-          </span>
-        </div>
+    <!-- Ancora mensagens no rodapé quando houver poucas (como WhatsApp Web). -->
+    <div v-else class="flex min-h-full flex-col justify-end">
+      <div class="flex flex-col">
+        <BalaoMensagem v-for="m in mensagensOrdenadas" :key="m.message_id" :mensagem="m" />
       </div>
     </div>
   </div>

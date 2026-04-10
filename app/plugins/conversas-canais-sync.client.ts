@@ -15,8 +15,14 @@ export default defineNuxtPlugin(() => {
     async (id) => {
       if (id == null) {
         conversas.setActiveCanalId(null)
+        canais.instanciaStatus = null
+        canais.instanciaStatusPending = false
+        canais.instanciaStatusError = null
         return
       }
+      await canais.fetchInstanciaStatus(id).catch(() => {
+        /* erro permanece em canais.instanciaStatusError */
+      })
       // Cache-first: se já tiver no Pinia, não refaz chamada.
       await conversas.ensureLoaded(id, 1).catch(() => {
         /* erro permanece em conversas.error */

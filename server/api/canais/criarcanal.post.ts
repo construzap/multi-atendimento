@@ -2,6 +2,7 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { createError, readBody } from 'h3'
 import { checkSubscription } from '../../utils/checkSubscription'
 import { getAuthUserId } from '../../utils/getAuthUserId'
+import { initUazapiInstance } from '../../utils/uazapi'
 
 type CreateCanalBody = {
   nome?: string
@@ -159,5 +160,29 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return data
+  // Cria instância na Uazapi e salva `token`/`servidor`.
+  try {
+    const instanceName = `${nome}-${workspaceId}-${data.id}`
+    const { token, servidor } = await initUazapiInstance(instanceName)
+
+    const { data: updated, error: upErr } = await admin
+      .from('canais')
+      .update({ token, servidor })
+      .eq('id', data.id)
+      .select('id, workspace_id, user_id, nome, descricao, created_at, token, servidor')
+      .single()
+
+    if (upErr) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: upErr.message
+      })
+    }
+
+    return updated
+  } catch (err) {
+    // Rollback best-effort: não deixar canal criado sem instância.
+    await admin.from('canais').delete().eq('id', data.id)
+    throw err
+  }
 })

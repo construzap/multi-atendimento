@@ -1,11 +1,17 @@
 import { defineStore } from 'pinia'
 import type { Canal } from '#shared/types/canal'
+import type { InstanciaStatus } from '#shared/types/instanciaStatus'
+
+/** Resposta de POST /api/canais/editarcanal (mesma forma da listagem GET). */
+export type CanalAtualizado = Canal
 
 /** Resposta de POST /api/canais/criarcanal */
 export type CanalCriado = {
   id: number
   workspace_id: number
   user_id: string
+  token: string | null
+  servidor: string | null
   nome: string | null
   descricao: string | null
   created_at: string
@@ -27,6 +33,10 @@ type CanaisState = {
   listError: string | null
   /** Canal em foco na UI (ex.: rota `/chat/:canalId`). `null` = nenhum. */
   currentCanal: Canal | null
+  /** Status da conexão (Uazapi) do canal atual. */
+  instanciaStatus: InstanciaStatus | null
+  instanciaStatusPending: boolean
+  instanciaStatusError: string | null
   subscription: CanaisSubscription | null
   subscriptionPending: boolean
   subscriptionError: string | null
@@ -42,9 +52,10 @@ function normalizeStatus(s: string) {
  * `sanitizeStatusMessage` (apenas tab + ASCII imprimível), removendo acentos.
  * @see https://github.com/unjs/h3 — `sanitizeStatusMessage`, `sendError`
  */
-function mensagemErroFetch(err: unknown, fallback: string): string {
+export function mensagemErroFetch(err: unknown, fallback: string): string {
   if (err && typeof err === 'object') {
-    const payload = (err as { data?: unknown }).data
+    const root = err as Record<string, unknown>
+    const payload = root.data
     if (payload && typeof payload === 'object') {
       const p = payload as Record<string, unknown>
       if (typeof p.statusMessage === 'string' && p.statusMessage.trim()) {
@@ -54,8 +65,20 @@ function mensagemErroFetch(err: unknown, fallback: string): string {
         return p.message
       }
     }
+    if (typeof root.statusMessage === 'string' && root.statusMessage.trim()) {
+      return root.statusMessage
+    }
+    if (
+      typeof root.message === 'string' &&
+      root.message.trim() &&
+      !root.message.startsWith('[')
+    ) {
+      return root.message
+    }
   }
-  if (err instanceof Error && err.message) return err.message
+  if (err instanceof Error && err.message && !err.message.startsWith('[')) {
+    return err.message
+  }
   return fallback
 }
 
@@ -98,6 +121,9 @@ export const useCanaisStore = defineStore('canais', {
     listPending: false,
     listError: null,
     currentCanal: null,
+    instanciaStatus: null,
+    instanciaStatusPending: false,
+    instanciaStatusError: null,
     subscription: null,
     subscriptionPending: false,
     subscriptionError: null
@@ -115,6 +141,45 @@ export const useCanaisStore = defineStore('canais', {
     }
   },
   actions: {
+    async fetchInstanciaStatus(canalId?: number) {
+      const id = canalId ?? this.currentCanalId
+      if (!id) return null
+
+      this.instanciaStatusPending = true
+      this.instanciaStatusError = null
+      try {
+        const data = await $fetch<InstanciaStatus>('/api/canais/statusInstancia', {
+          method: 'GET',
+          query: { id_canal: id }
+        })
+        this.instanciaStatus = data
+        return data
+      } catch (err) {
+        this.instanciaStatus = null
+        this.instanciaStatusError = mensagemErroFetch(err, 'Não foi possível verificar o status da instância.')
+        throw err
+      } finally {
+        this.instanciaStatusPending = false
+      }
+    },
+
+    async desconectarInstancia(canalId?: number) {
+      const id = canalId ?? this.currentCanalId
+      if (!id) return
+
+      // Mantém a UX responsiva: limpa imediatamente para refletir na UI.
+      this.instanciaStatus = null
+      this.instanciaStatusError = null
+
+      await $fetch<{ response: string }>('/api/canais/desconectar', {
+        method: 'POST',
+        body: { id_canal: id }
+      }).catch((err) => {
+        this.instanciaStatusError = mensagemErroFetch(err, 'Não foi possível desconectar a instância.')
+        throw err
+      })
+    },
+
     /** Define o canal em foco com o objeto completo (ex.: clique na lista ou após fetch). */
     setCurrentCanal(canal: Canal | null) {
       this.currentCanal = canal
@@ -204,6 +269,72 @@ export const useCanaisStore = defineStore('canais', {
         return created
       } catch (err) {
         this.error = mensagemErroFetch(err, 'Falha ao criar canal.')
+        throw err
+      } finally {
+        this.pending = false
+      }
+    },
+
+    async updateCanal(input: {
+      id_canal: number
+      workspace_id: number
+      nome: string
+      descricao?: string | null
+    }): Promise<CanalAtualizado> {
+      this.pending = true
+      this.error = null
+
+      try {
+        const updated = await $fetch<CanalAtualizado>('/api/canais/editarcanal', {
+          method: 'POST',
+          body: {
+            id_canal: input.id_canal,
+            workspace_id: input.workspace_id,
+            nome: input.nome,
+            descricao: input.descricao ?? null
+          }
+        })
+
+        const idx = this.items.findIndex((c) => c.id === updated.id)
+        if (idx !== -1) {
+          this.items[idx] = { ...this.items[idx], ...updated }
+        }
+        if (this.currentCanal?.id === updated.id) {
+          this.currentCanal = { ...this.currentCanal, ...updated }
+        }
+        return updated
+      } catch (err) {
+        this.error = mensagemErroFetch(err, 'Falha ao atualizar canal.')
+        throw err
+      } finally {
+        this.pending = false
+      }
+    },
+
+    /**
+     * Remove o canal (Uazapi + soft delete). Atualiza lista, canal atual e assinatura.
+     */
+    async deleteCanal(id_canal: number): Promise<void> {
+      this.pending = true
+      this.error = null
+
+      try {
+        await $fetch<{ ok: true; id: number }>('/api/canais/deletarcanal', {
+          method: 'POST',
+          body: { id_canal }
+        })
+
+        this.items = this.items.filter((c) => c.id !== id_canal)
+        if (this.currentCanal?.id === id_canal) {
+          this.currentCanal = null
+          this.instanciaStatus = null
+          this.instanciaStatusError = null
+        }
+        await this.fetchSubscription().catch(() => {
+          /* contagem opcional */
+        })
+      } catch (err) {
+        this.error = mensagemErroFetch(err, 'Falha ao remover canal.')
         throw err
       } finally {
         this.pending = false

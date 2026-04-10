@@ -23,6 +23,16 @@ function parsePositiveInt(raw: unknown): number | null {
 const canalId = computed(() => parsePositiveInt(route.params.canalId))
 const workspaceId = computed(() => parsePositiveInt(route.params.id))
 
+/** Canal da rota no momento (para limpar seleção ao sair da página; a rota pode já ter mudado no `onUnmounted`). */
+const canalIdSnapshot = ref<number | null>(null)
+watch(
+  canalId,
+  (id) => {
+    if (id != null) canalIdSnapshot.value = id
+  },
+  { immediate: true }
+)
+
 watch(
   canalId,
   (id) => {
@@ -58,6 +68,12 @@ onMounted(async () => {
       await navigateTo(`/workspaces/${wid}/canais`, { replace: true })
     }
   }
+})
+
+const conversasStore = useConversasStore()
+onUnmounted(() => {
+  const id = canalIdSnapshot.value
+  if (id != null) conversasStore.setConversaAtual(null, id)
 })
 </script>
 

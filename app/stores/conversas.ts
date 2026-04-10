@@ -28,6 +28,8 @@ type CanalConversasState = {
   error: string | null
   /** Timestamp (ms) do último carregamento bem sucedido. */
   loadedAt: number | null
+  /** Conversa/contato selecionado dentro do canal (ex.: phone ou lid). */
+  conversaAtual: string | null
 }
 
 type ConversasState = {
@@ -45,7 +47,8 @@ function emptyCanalState(): CanalConversasState {
     total: 0,
     pending: false,
     error: null,
-    loadedAt: null
+    loadedAt: null,
+    conversaAtual: null
   }
 }
 
@@ -99,6 +102,12 @@ export const useConversasStore = defineStore('conversas', {
       if (state.activeCanalId == null) return false
       const a = state.byCanal[state.activeCanalId]
       return Boolean(a && a.loadedAt != null)
+    }
+    ,
+    /** Conversa/contato atualmente selecionado no canal ativo. */
+    conversaAtual(state): string | null {
+      if (state.activeCanalId == null) return null
+      return state.byCanal[state.activeCanalId]?.conversaAtual ?? null
     }
   },
   actions: {
@@ -201,6 +210,18 @@ export const useConversasStore = defineStore('conversas', {
 
       const nextPage = bucket.page + 1
       await this.fetchPage(nextPage, idCanal, { append: true })
+    }
+
+    ,
+    /**
+     * Define a conversa/contato selecionado dentro do canal.
+     * `key` é a mesma chave usada na lista (ex.: phone ou lid).
+     */
+    setConversaAtual(key: string | null, canalId?: number) {
+      const idCanal = canalId ?? this.activeCanalId
+      if (idCanal == null) return
+      const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
+      bucket.conversaAtual = key && key.trim() ? key.trim() : null
     }
   }
 })

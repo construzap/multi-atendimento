@@ -56,10 +56,10 @@ const itens = computed<ConversaListaItem[]>(() => {
   const msgs = conversas.items
   if (!msgs.length) return []
 
-  // Agrupa por contato (prioriza phone; fallback lid; fallback key).
+  // Agrupa por contato (prioriza `lid` — necessário para buscar mensagens; fallback phone; fallback key).
   const byContato = new Map<string, Conversa[]>()
   for (const m of msgs) {
-    const contatoKey = firstNonEmpty(m.phone, m.lid, m.key)
+    const contatoKey = firstNonEmpty(m.lid, m.phone, m.key)
     if (!contatoKey) continue
     const arr = byContato.get(contatoKey)
     if (arr) arr.push(m)
@@ -102,19 +102,17 @@ const itens = computed<ConversaListaItem[]>(() => {
   return cards
 })
 
-const selectedId = ref<string | null>(null)
-
-// Se a lista trocar (ex.: canal mudou), define o primeiro como selecionado.
+// Se a lista trocar (ex.: canal mudou), não auto-seleciona nada.
 watch(
   itens,
   (list) => {
     if (!list.length) {
-      selectedId.value = null
+      conversas.setConversaAtual(null)
       return
     }
-    if (!selectedId.value || !list.some((x) => x.id === selectedId.value)) {
-      selectedId.value = list[0]!.id
-    }
+    const cur = conversas.conversaAtual
+    // Se a conversa atual não existir mais no novo conjunto, apenas limpa a seleção.
+    if (cur && !list.some((x) => x.id === cur)) conversas.setConversaAtual(null)
   },
   { immediate: true }
 )
@@ -174,13 +172,14 @@ function maybeLoadMore() {
       <ItemConversa
         v-for="c in itens"
         :key="c.id"
+        :conversa-id="c.id"
         :nome="c.nome"
         :ultima-mensagem="c.ultimaMensagem"
         :horario="c.horario"
         :avatar-src="c.avatarSrc"
         :messatype="c.messatype"
-        :selected="c.id === selectedId"
-        @select="selectedId = c.id"
+        :selected="c.id === conversas.conversaAtual"
+        @select="conversas.setConversaAtual(c.id)"
       />
 
       <p

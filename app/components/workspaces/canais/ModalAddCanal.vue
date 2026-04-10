@@ -8,11 +8,21 @@ import BaseInput from '~/components/BaseInput.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import type { CanalCriado } from '~/stores/canais'
 
-const props = defineProps<{
-  open: boolean
-  /** Workspace atual (rota /workspaces/[id]/canais) */
-  workspaceId: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    /** Workspace atual (rota /workspaces/[id]/canais ou contexto do chat). */
+    workspaceId: number
+    /** `create`: fluxo atual. `edit`: atualiza nome/descrição via API. */
+    mode?: 'create' | 'edit'
+    /** Obrigatório em `edit` para preencher o formulário. */
+    canalEdicao?: { id: number; nome: string | null; descricao: string | null } | null
+  }>(),
+  {
+    mode: 'create',
+    canalEdicao: null
+  }
+)
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -26,15 +36,37 @@ const isOpen = computed({
   set: (v: boolean) => emit('update:open', v)
 })
 
+const isEdit = computed(() => props.mode === 'edit')
+
 const nome = ref('')
 const descricao = ref('')
 
+function preencherDoProps() {
+  if (isEdit.value && props.canalEdicao) {
+    nome.value = props.canalEdicao.nome?.trim() ?? ''
+    descricao.value = props.canalEdicao.descricao?.trim() ?? ''
+  } else {
+    nome.value = ''
+    descricao.value = ''
+  }
+}
+
 watch(isOpen, (aberto) => {
-  if (!aberto) {
+  if (aberto) {
+    preencherDoProps()
+  } else {
     nome.value = ''
     descricao.value = ''
   }
 })
+
+watch(
+  () => [props.mode, props.canalEdicao] as const,
+  () => {
+    if (isOpen.value) preencherDoProps()
+  },
+  { deep: true }
+)
 
 /** Mensagem do Nitro/ofetch em erros HTTP (403 assinatura, workspace, etc.). */
 function mensagemErroApi(err: unknown): string {
@@ -49,7 +81,7 @@ function mensagemErroApi(err: unknown): string {
     if (typeof o.message === 'string' && o.message && !o.message.startsWith('[')) return o.message
   }
   if (err instanceof Error && err.message) return err.message
-  return 'Não foi possível criar o canal.'
+  return isEdit.value ? 'Não foi possível salvar o canal.' : 'Não foi possível criar o canal.'
 }
 
 function close() {
@@ -67,6 +99,30 @@ async function onCreate() {
 
   if (!Number.isFinite(props.workspaceId)) {
     toast.error('Workspace inválido.')
+    return
+  }
+
+  if (isEdit.value) {
+    const canal = props.canalEdicao
+    if (!canal?.id) {
+      toast.error('Canal inválido para edição.')
+      return
+    }
+    try {
+      await canaisStore.updateCanal({
+        id_canal: canal.id,
+        workspace_id: props.workspaceId,
+        nome: n,
+        descricao: d || null
+      })
+      toast.success('Canal atualizado com sucesso.')
+      close()
+    } catch (err: unknown) {
+      const msg = mensagemErroApi(err)
+      toast.error(msg, {
+        duration: 8000
+      })
+    }
     return
   }
 
@@ -89,11 +145,17 @@ async function onCreate() {
 </script>
 
 <template>
-  <BaseModal v-model:open="isOpen" title="Criar canal">
+  <BaseModal v-model:open="isOpen" :title="isEdit ? 'Editar canal' : 'Criar canal'">
     <template #icon>
       <FontAwesomeIcon :icon="faWhatsapp" class="h-6 w-6 text-[#25D366]" aria-hidden="true" />
     </template>
-    <template #subtitle> Preencha os dados do canal de atendimento. </template>
+    <template #subtitle>
+      {{
+        isEdit
+          ? 'Altere o nome e a descrição do canal de atendimento.'
+          : 'Preencha os dados do canal de atendimento.'
+      }}
+    </template>
 
     <div class="space-y-4">
       <div>
@@ -135,7 +197,7 @@ async function onCreate() {
           :disabled="!nome.trim() || canaisStore.pending"
           @click="onCreate"
         >
-          Criar canal
+          {{ isEdit ? 'Salvar' : 'Criar canal' }}
         </BaseButton>
       </div>
     </template>

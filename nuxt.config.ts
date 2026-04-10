@@ -2,6 +2,11 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
+  vite: {
+    server: {
+      allowedHosts: ['fondness-auction-peroxide.ngrok-free.dev']
+    }
+  },
   app: {
     head: {
       link: [

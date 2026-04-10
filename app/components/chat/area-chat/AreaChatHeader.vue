@@ -1,11 +1,79 @@
 <script setup lang="ts">
 import BaseAvatar from '~/components/BaseAvatar.vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { storeToRefs } from 'pinia'
+import type { Conversa } from '#shared/types/conversa'
 
-const avatarUrl =
-  'https://lh3.googleusercontent.com/aida-public/AB6AXuAOZo6VPkN2K253A0sC7xOcVLdGix9JGkrsXMF2VRVYWujxiz6UWB1l4aprwYSrksG7L9I8kBK4QXxPmJi9MEBO3qjdRqXRq6lMkNVPg7f-EMQXQy55saLXaqNXxp3mEZ_jYLszBAgQi-5aPTBDCi8tPDGSikbDcBn3if8Ea4mXBvbGxdOlPuCdgy6CxTzoWvs2FxaoiOv_dC2pE6Vk2zThWxkbYyWr7irP8e5JAhEz2I4hxHBJQalsKp-yGmCTSCZtcTHY2Ja9nNE'
+const conversasStore = useConversasStore()
+const { conversaAtual, items } = storeToRefs(conversasStore)
 
-const nome = 'Mariana Souza'
-const telefone = '+55 11 98877-6655'
+function firstNonEmpty(...vals: Array<string | null | undefined>): string {
+  for (const v of vals) {
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  return ''
+}
+
+function sortIsoAsc(a: string | null, b: string | null): number {
+  const da = a ? new Date(a).getTime() : 0
+  const db = b ? new Date(b).getTime() : 0
+  return da - db
+}
+
+const conversaSelecionada = computed<Conversa | null>(() => {
+  const key = conversaAtual.value
+  if (!key) return null
+  const list = items.value
+  if (!list?.length) return null
+
+  const filtrada = list.filter((m) => firstNonEmpty(m.lid, m.phone, m.key) === key)
+  if (!filtrada.length) return null
+
+  // Pega o registro mais recente dessa conversa para extrair nome/foto/phone.
+  const sorted = [...filtrada].sort((a, b) => {
+    const ta = a.updated_at ?? a.created_at
+    const tb = b.updated_at ?? b.created_at
+    return sortIsoAsc(ta ?? null, tb ?? null)
+  })
+  return sorted[sorted.length - 1] ?? null
+})
+
+const avatarUrl = computed<string | undefined>(() => conversaSelecionada.value?.photo ?? undefined)
+const nome = computed(() => firstNonEmpty(conversaSelecionada.value?.name, conversaSelecionada.value?.phone, conversaAtual.value))
+const telefone = computed(() => firstNonEmpty(conversaSelecionada.value?.phone, conversaAtual.value))
+
+const menuRoot = ref<HTMLElement | null>(null)
+const menuOpen = ref(false)
+
+function toggleMenu() {
+  menuOpen.value = !menuOpen.value
+}
+
+function closeMenu() {
+  menuOpen.value = false
+}
+
+function onDocPointerDown(ev: PointerEvent) {
+  if (!menuOpen.value) return
+  const root = menuRoot.value
+  if (!root) return
+  const target = ev.target
+  if (target instanceof Node && root.contains(target)) return
+  closeMenu()
+}
+
+function fecharConversa() {
+  conversasStore.setConversaAtual(null)
+  closeMenu()
+}
+
+onMounted(() => {
+  document.addEventListener('pointerdown', onDocPointerDown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', onDocPointerDown)
+})
 </script>
 
 <template>
@@ -34,9 +102,36 @@ const telefone = '+55 11 98877-6655'
       <button type="button" class="rounded-full p-2 hover:bg-slate-50 dark:hover:bg-slate-900" aria-label="Buscar">
         <span class="material-symbols-outlined" aria-hidden="true">search</span>
       </button>
-      <button type="button" class="rounded-full p-2 hover:bg-slate-50 dark:hover:bg-slate-900" aria-label="Mais opções">
-        <span class="material-symbols-outlined" aria-hidden="true">more_vert</span>
-      </button>
+      <div ref="menuRoot" class="relative">
+        <button
+          type="button"
+          class="rounded-full p-2 hover:bg-slate-50 dark:hover:bg-slate-900"
+          aria-label="Mais opções"
+          aria-haspopup="menu"
+          :aria-expanded="menuOpen ? 'true' : 'false'"
+          aria-controls="menu-opcoes-conversa"
+          @click="toggleMenu"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">more_vert</span>
+        </button>
+
+        <div
+          v-if="menuOpen"
+          id="menu-opcoes-conversa"
+          class="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-950"
+          role="menu"
+        >
+          <button
+            type="button"
+            class="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
+            role="menuitem"
+            @click="fecharConversa"
+          >
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">close</span>
+            Fechar conversa
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 </template>

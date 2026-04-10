@@ -4,6 +4,8 @@ import type { MessageType } from '#shared/types/messageType'
 
 const props = withDefaults(
   defineProps<{
+    /** Chave/ID da conversa (ex.: phone ou lid). */
+    conversaId: string
     nome: string
     ultimaMensagem: string
     horario: string
@@ -23,6 +25,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   select: []
 }>()
+
+const conversas = useConversasStore()
 
 function emojiByType(t: MessageType | null | undefined): string {
   if (!t || t === 'conversation') return ''
@@ -79,6 +83,11 @@ const preview = computed(() => {
   if (!emoji) return props.ultimaMensagem
   return `${emoji} ${props.ultimaMensagem}`.trim()
 })
+
+function onSelect() {
+  conversas.setConversaAtual(props.conversaId)
+  emit('select')
+}
 </script>
 
 <template>
@@ -89,7 +98,7 @@ const preview = computed(() => {
         ? 'border-primary/30 ring-1 ring-primary/20 dark:border-primary/40'
         : 'border-orange-100 dark:border-orange-900/30'
     "
-    @click="emit('select')"
+    @click="onSelect"
   >
     <span
       v-if="props.selected"
