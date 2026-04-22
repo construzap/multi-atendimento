@@ -2,6 +2,13 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
+  runtimeConfig: {
+    b2Endpoint: '',
+    b2Region: '',
+    b2KeyId: '',
+    b2AppKey: '',
+    b2BucketName: '',
+  },
   vite: {
     server: {
       allowedHosts: ['fondness-auction-peroxide.ngrok-free.dev']

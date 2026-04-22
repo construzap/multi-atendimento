@@ -1,7 +1,9 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import type { MensagemNormalizada } from '#shared/types/webhook'
 
-type SupabaseAdmin = SupabaseClient<any>
+/** Cliente retornado por `serverSupabaseServiceRole` do módulo `@nuxtjs/supabase` (service role). */
+type SupabaseAdmin = ReturnType<
+  typeof import('#supabase/server').serverSupabaseServiceRole<any>
+>
 
 /**
  * Persiste conversa (upsert por `key`) e mensagem (upsert por `message_id`) a partir do payload normalizado.
@@ -49,7 +51,7 @@ export async function persistWebhookMensagem(
     connect_phone: normalizada.connected_phone,
     photo: normalizada.photo,
     from_me: normalizada.from_me,
-    media_url: normalizada.media_url as string | null,
+    media_url: normalizada.media_url,
   }
 
   const { error: convErr } = await admin
@@ -70,9 +72,9 @@ export async function persistWebhookMensagem(
     messagetype: normalizada.messagetype,
     from_api: normalizada.from_api,
     id_canal: normalizada.id_canal,
-    media_url: normalizada.media_url as string | null,
-    caption: normalizada.caption as string | null,
-    filename: normalizada.filename as string | null,
+    media_url: normalizada.media_url,
+    caption: normalizada.caption,
+    filename: normalizada.filename,
   }
 
   const { error: msgErr } = await admin
