@@ -1,18 +1,48 @@
 import type { MessageType } from '#shared/types/messageType'
-import type { MensagemNormalizada, UazapiWebhookPayload } from '#shared/types/webhook'
+import type { MensagemNormalizada, UazapiMessage, UazapiWebhookPayload } from '#shared/types/webhook'
+
+const MEDIA_MEDIA_TYPES = ['image', 'video', 'ptt', 'audio', 'document', 'sticker'] as const
+
+/** Mensagem de mídia suportada para download + B2 (uazapi `type === 'media'`). */
+export function isMediaMessage(msg: UazapiMessage): boolean {
+  if (msg.type !== 'media') return false
+  return (MEDIA_MEDIA_TYPES as readonly string[]).includes(msg.mediaType)
+}
 
 // ---------------------------------------------------------------------------
 // Helpers de normalização
 // ---------------------------------------------------------------------------
 
 /**
- * Extrai phone e lid a partir dos campos chatid / chatlid da uazapi.
+ * Preferência: `chat.wa_chatid` / `chat.wa_chatlid` (mais estáveis no payload da uazapi).
+ * Fallback: `message.chatid` / `message.chatlid`.
+ */
+function resolveChatIdentifiers(payload: UazapiWebhookPayload): { chatid: string; chatlid: string } {
+  const chat = payload.chat
+  const msg = payload.message
+
+  const waCid = typeof chat.wa_chatid === 'string' ? chat.wa_chatid.trim() : ''
+  const waLid = typeof chat.wa_chatlid === 'string' ? chat.wa_chatlid.trim() : ''
+  const mCid = typeof msg.chatid === 'string' ? msg.chatid.trim() : ''
+  const mLid = typeof msg.chatlid === 'string' ? msg.chatlid.trim() : ''
+
+  return {
+    chatid: waCid || mCid,
+    chatlid: waLid || mLid,
+  }
+}
+
+/**
+ * Extrai phone e lid a partir dos identificadores chatid / chatlid (já resolvidos).
  * Regras:
  *   - termina em @s.whatsapp.net → campo phone (remove o sufixo)
  *   - termina em @lid            → campo lid   (remove o sufixo)
  *   - se apenas um deles existir → assume para os dois
  */
-function extractPhoneLid(chatid: string, chatlid: string): { phone: string | null; lid: string | null } {
+function extractPhoneLid(chatidRaw: string | undefined | null, chatlidRaw: string | undefined | null): { phone: string | null; lid: string | null } {
+  const chatid = String(chatidRaw ?? '').trim()
+  const chatlid = String(chatlidRaw ?? '').trim()
+
   let phone: string | null = null
   let lid: string | null = null
 
@@ -22,9 +52,9 @@ function extractPhoneLid(chatid: string, chatlid: string): { phone: string | nul
     lid = chatid.replace('@lid', '')
   }
 
-  if (chatlid?.endsWith('@lid')) {
+  if (chatlid.endsWith('@lid')) {
     lid = chatlid.replace('@lid', '')
-  } else if (chatlid?.endsWith('@s.whatsapp.net')) {
+  } else if (chatlid.endsWith('@s.whatsapp.net')) {
     phone = chatlid.replace('@s.whatsapp.net', '')
   }
 
@@ -92,8 +122,9 @@ export function normalizarMensagem(
   // 2. Ignora grupos por enquanto
   if (msg.isGroup) return null
 
-  // 3. Phone e LID
-  const { phone, lid } = extractPhoneLid(msg.chatid, msg.chatlid)
+  // 3. Phone e LID (prioriza chat.wa_chatid / wa_chatlid)
+  const { chatid: resolvedChatid, chatlid: resolvedChatlid } = resolveChatIdentifiers(payload)
+  const { phone, lid } = extractPhoneLid(resolvedChatid, resolvedChatlid)
 
   // 4. Tipo de mensagem normalizado
   const messagetype = normalizeMessageType(msg.messageType)
@@ -102,8 +133,8 @@ export function normalizarMensagem(
   const name = msg.fromMe ? null : (msg.senderName?.trim() || null)
 
   // 6. Chave única da conversa: "{id_canal}-{lid}"
-  // Se por algum motivo vier sem lid/phone, cai no chatid bruto.
-  const lidOrFallback = lid ?? phone ?? msg.chatid
+  // Se por algum motivo vier sem lid/phone, cai no chatid resolvido (wa_* ou message).
+  const lidOrFallback = lid ?? phone ?? resolvedChatid
   const conversaKey = `${idCanal}-${lidOrFallback}`
 
   return {
@@ -117,9 +148,9 @@ export function normalizarMensagem(
     messagetype,
     from_api:        msg.wasSentByApi,
     id_canal:        idCanal,
-    media_url:       null, // TODO: baixar e salvar mídia no Supabase Storage
-    caption:         null, // TODO: extrair caption após salvar mídia
-    filename:        null, // TODO: extrair filename após salvar mídia
+    media_url:       null,
+    caption:         null,
+    filename:        null,
 
     // ── conversas ──────────────────────────────────────────────────────────
     conversa_key:      conversaKey,

@@ -82,7 +82,8 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
     .select(SELECT, { count: 'exact' })
     .eq('id_canal', canalId)
     .is('deleted_at', null)
-    // Mais recentes primeiro
+    // Mais recentes primeiro: conversa atualiza por `updated_at` (não por `created_at`)
+    .order('updated_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
     .range(from, to)
 

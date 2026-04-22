@@ -23,8 +23,9 @@ export default defineNuxtPlugin(() => {
       await canais.fetchInstanciaStatus(id).catch(() => {
         /* erro permanece em canais.instanciaStatusError */
       })
-      // Cache-first: se já tiver no Pinia, não refaz chamada.
-      await conversas.ensureLoaded(id, 1).catch(() => {
+      // Sempre refaz a 1ª página ao abrir o canal, para não ficar “preso” em cache antigo.
+      conversas.resetActive()
+      await conversas.fetchPage(1, id).catch(() => {
         /* erro permanece em conversas.error */
       })
     },

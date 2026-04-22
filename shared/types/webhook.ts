@@ -35,6 +35,8 @@ export interface UazapiChat {
 }
 
 export interface UazapiMessage {
+  /** Ex.: `text` | `media` */
+  type?: string
   messageid: string
   id: string
   chatid: string
@@ -71,12 +73,9 @@ export interface MensagemNormalizada {
   messagetype: MessageType
   from_api: boolean
   id_canal: number
-  /** TODO: preencher após baixar mídia e salvar no storage */
-  media_url: null
-  /** TODO: extrair após salvar mídia */
-  caption: null
-  /** TODO: extrair após salvar mídia */
-  filename: null
+  media_url: string | null
+  caption: string | null
+  filename: string | null
 
   /** Chave única da conversa no formato \"{id_canal}-{lid}\" (ex: \"23-0809870987897\"). */
   conversa_key: string
