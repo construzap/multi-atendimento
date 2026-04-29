@@ -44,6 +44,7 @@ function emojiByType(t: MessageType | null | undefined): string {
     case 'lottieStickerMessage':
       return '🧩'
     case 'locationMessage':
+    case 'liveLocationMessage':
       return '📍'
     case 'contactMessage':
     case 'contactsArrayMessage':

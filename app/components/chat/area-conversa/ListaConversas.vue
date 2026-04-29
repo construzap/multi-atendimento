@@ -32,6 +32,8 @@ function labelPreview(m: Conversa): string {
   if (low === 'imagemessage') return 'Enviou uma imagem'
   if (low === 'videomessage') return 'Enviou um vídeo'
   if (low === 'stickermessage') return 'Enviou um sticker'
+  if (low === 'locationmessage') return 'Localização — veja no WhatsApp'
+  if (low === 'livelocationmessage') return 'Localização ao vivo — veja no WhatsApp'
   return 'Enviou uma mensagem'
 }
 

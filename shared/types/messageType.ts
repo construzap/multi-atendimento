@@ -19,6 +19,7 @@ export type MessageType =
   | 'imageMessage'
   | 'interactiveMessage'
   | 'listMessage'
+  | 'liveLocationMessage'
   | 'locationMessage'
   | 'lottieStickerMessage'
   | 'orderMessage'

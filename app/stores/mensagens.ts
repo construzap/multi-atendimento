@@ -18,10 +18,10 @@ function mensagemErroFetch(err: unknown, fallback: string): string {
   return fallback
 }
 
-export type MensagensKey = `${number}:${string}`
+export type MensagensKey = `${number}-${string}`
 
 export function mensagensKey(idCanal: number, lid: string): MensagensKey {
-  return `${idCanal}:${lid}` as MensagensKey
+  return `${idCanal}-${lid}` as MensagensKey
 }
 
 const MAX_CACHE_KEYS = 5
@@ -39,7 +39,7 @@ type KeyMensagensState = {
 type MensagensState = {
   /** Chave ativa (id_canal + lid) para leitura via getters. */
   activeKey: MensagensKey | null
-  /** Cache por chave composta `id_canal:lid`. */
+  /** Cache por chave composta `id_canal-lid`. */
   byKey: Record<MensagensKey, KeyMensagensState>
   /** Ordem LRU (mais antigo → mais recente). */
   keyOrder: MensagensKey[]
@@ -150,6 +150,15 @@ export const useMensagensStore = defineStore('mensagens', {
       this.keyOrder = []
     },
 
+    /** Após excluir a conversa no backend: limpa cache e `activeKey` se for essa chave. */
+    afterConversaDeleted(key: MensagensKey) {
+      if (this.activeKey === key) this.activeKey = null
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+      delete this.byKey[key]
+      const idx = this.keyOrder.indexOf(key)
+      if (idx !== -1) this.keyOrder.splice(idx, 1)
+    },
+
     async fetchPage(idCanal: number, lid: string, page: number = 1, options: FetchOptions = {}) {
       const key = mensagensKey(idCanal, lid)
       this.setActiveKey(key)
@@ -214,9 +223,12 @@ export const useMensagensStore = defineStore('mensagens', {
       if (bucket.pending) return
       if (!(bucket.page * bucket.perPage < bucket.total)) return
 
-      const [rawCanal, ...lidParts] = String(key).split(':')
+      const keyStr = String(key)
+      const sepIdx = keyStr.indexOf('-')
+      if (sepIdx === -1) return
+      const rawCanal = keyStr.slice(0, sepIdx)
+      const lid = keyStr.slice(sepIdx + 1)
       const idCanal = Number.parseInt(rawCanal, 10)
-      const lid = lidParts.join(':')
       if (!Number.isFinite(idCanal) || !lid) return
 
       const nextPage = bucket.page + 1

@@ -86,7 +86,7 @@ function normalizeMessageType(raw: string): MessageType {
     'contactsArrayMessage', 'conversation', 'desconhecido', 'documentMessage',
     'documentWithCaptionMessage', 'editedMessage', 'ephemeralMessage',
     'extendedTextMessage', 'groupInviteMessage', 'imageMessage',
-    'interactiveMessage', 'listMessage', 'locationMessage', 'lottieStickerMessage',
+    'interactiveMessage', 'listMessage', 'liveLocationMessage', 'locationMessage', 'lottieStickerMessage',
     'orderMessage', 'pinInChatMessage', 'placeholderMessage', 'productMessage',
     'ptvMessage', 'reactionMessage', 'stickerMessage', 'templateButtonReplyMessage',
     'templateMessage', 'unknown', 'videoMessage', 'viewOnceMessage',

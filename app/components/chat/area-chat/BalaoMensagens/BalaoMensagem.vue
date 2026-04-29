@@ -4,6 +4,7 @@ import type { MessageType } from '#shared/types/messageType'
 import MessageAudio from '~/components/chat/area-chat/BalaoMensagens/MessageAudio.vue'
 import MessageDocument from '~/components/chat/area-chat/BalaoMensagens/MessageDocument.vue'
 import MessageImage from '~/components/chat/area-chat/BalaoMensagens/MessageImage.vue'
+import MessageLocation from '~/components/chat/area-chat/BalaoMensagens/MessageLocation.vue'
 import MessageSticker from '~/components/chat/area-chat/BalaoMensagens/MessageSticker.vue'
 import MessageText from '~/components/chat/area-chat/BalaoMensagens/MessageText.vue'
 import MessageUnsupported from '~/components/chat/area-chat/BalaoMensagens/MessageUnsupported.vue'
@@ -23,10 +24,14 @@ const isVideo = computed(() => t.value === 'videoMessage')
 const isDoc = computed(() => t.value === 'documentMessage' || t.value === 'documentWithCaptionMessage')
 const isAudio = computed(() => t.value === 'audioMessage')
 const isSticker = computed(() => t.value === 'stickerMessage' || t.value === 'lottieStickerMessage')
+const isLocation = computed(
+  () => t.value === 'locationMessage' || t.value === 'liveLocationMessage'
+)
 </script>
 
 <template>
   <MessageText v-if="isText" :mensagem="mensagem" />
+  <MessageLocation v-else-if="isLocation" :mensagem="mensagem" />
   <MessageImage v-else-if="isImage" :mensagem="mensagem" />
   <MessageVideo v-else-if="isVideo" :mensagem="mensagem" />
   <MessageDocument v-else-if="isDoc" :mensagem="mensagem" />

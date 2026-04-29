@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import BaseAvatar from '~/components/BaseAvatar.vue'
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import ModalAlerta from '~/components/ModalAlerta.vue'
+import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
+import { toast } from 'vue-sonner'
 import type { Conversa } from '#shared/types/conversa'
+import { mensagensKey, useMensagensStore } from '~/stores/mensagens'
 
 const conversasStore = useConversasStore()
+const canaisStore = useCanaisStore()
+const mensagensStore = useMensagensStore()
 const { conversaAtual, items } = storeToRefs(conversasStore)
 
 function firstNonEmpty(...vals: Array<string | null | undefined>): string {
@@ -42,38 +47,61 @@ const avatarUrl = computed<string | undefined>(() => conversaSelecionada.value?.
 const nome = computed(() => firstNonEmpty(conversaSelecionada.value?.name, conversaSelecionada.value?.phone, conversaAtual.value))
 const telefone = computed(() => firstNonEmpty(conversaSelecionada.value?.phone, conversaAtual.value))
 
-const menuRoot = ref<HTMLElement | null>(null)
-const menuOpen = ref(false)
-
-function toggleMenu() {
-  menuOpen.value = !menuOpen.value
-}
-
-function closeMenu() {
-  menuOpen.value = false
-}
-
-function onDocPointerDown(ev: PointerEvent) {
-  if (!menuOpen.value) return
-  const root = menuRoot.value
-  if (!root) return
-  const target = ev.target
-  if (target instanceof Node && root.contains(target)) return
-  closeMenu()
-}
-
 function fecharConversa() {
   conversasStore.setConversaAtual(null)
-  closeMenu()
 }
 
-onMounted(() => {
-  document.addEventListener('pointerdown', onDocPointerDown)
-})
+const modalExcluirAberto = ref(false)
+const excluindo = ref(false)
 
-onUnmounted(() => {
-  document.removeEventListener('pointerdown', onDocPointerDown)
-})
+const podeExcluir = computed(() => Boolean(mensagensStore.activeKey))
+
+function erroExclusaoFetch(err: unknown): string {
+  if (err && typeof err === 'object') {
+    const data = (err as { data?: { statusMessage?: string } }).data
+    if (typeof data?.statusMessage === 'string' && data.statusMessage.trim()) {
+      return data.statusMessage.trim()
+    }
+    const msg = (err as { message?: string }).message
+    if (typeof msg === 'string' && msg.trim()) return msg.trim()
+  }
+  if (err instanceof Error && err.message) return err.message
+  return 'Não foi possível excluir a conversa.'
+}
+
+function abrirModalExcluir() {
+  modalExcluirAberto.value = true
+}
+
+async function onConfirmarExclusaoConversa() {
+  const key = mensagensStore.activeKey
+  if (!key) {
+    modalExcluirAberto.value = false
+    return
+  }
+
+  const canalId = canaisStore.currentCanalId
+  const convAtual = conversasStore.conversaAtual
+
+  excluindo.value = true
+  try {
+    await $fetch('/api/conversas/deletar', {
+      method: 'POST',
+      body: { key }
+    })
+    conversasStore.removeConversaByDbKey(key)
+    if (canalId != null && convAtual != null && mensagensKey(canalId, convAtual) === key) {
+      conversasStore.setConversaAtual(null)
+    }
+    mensagensStore.afterConversaDeleted(key)
+    toast.success('Conversa excluída permanentemente.')
+    modalExcluirAberto.value = false
+  } catch (err: unknown) {
+    toast.error(erroExclusaoFetch(err), { duration: 8000 })
+  } finally {
+    excluindo.value = false
+  }
+}
 </script>
 
 <template>
@@ -92,46 +120,35 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="flex shrink-0 items-center gap-2 text-slate-500 dark:text-slate-400">
-      <button type="button" class="rounded-full p-2 hover:bg-slate-50 dark:hover:bg-slate-900" aria-label="Vídeo">
-        <span class="material-symbols-outlined" aria-hidden="true">videocam</span>
+    <div class="flex shrink-0 items-center gap-2">
+      <button
+        type="button"
+        class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-danger disabled:pointer-events-none disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-danger"
+        aria-label="Excluir conversa"
+        :disabled="!podeExcluir || excluindo"
+        @click="abrirModalExcluir"
+      >
+        <span class="material-symbols-outlined text-[22px]" aria-hidden="true">delete</span>
       </button>
-      <button type="button" class="rounded-full p-2 hover:bg-slate-50 dark:hover:bg-slate-900" aria-label="Ligar">
-        <span class="material-symbols-outlined" aria-hidden="true">call</span>
+      <button
+        type="button"
+        class="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900"
+        @click="fecharConversa"
+      >
+        Fechar conversa
       </button>
-      <button type="button" class="rounded-full p-2 hover:bg-slate-50 dark:hover:bg-slate-900" aria-label="Buscar">
-        <span class="material-symbols-outlined" aria-hidden="true">search</span>
-      </button>
-      <div ref="menuRoot" class="relative">
-        <button
-          type="button"
-          class="rounded-full p-2 hover:bg-slate-50 dark:hover:bg-slate-900"
-          aria-label="Mais opções"
-          aria-haspopup="menu"
-          :aria-expanded="menuOpen ? 'true' : 'false'"
-          aria-controls="menu-opcoes-conversa"
-          @click="toggleMenu"
-        >
-          <span class="material-symbols-outlined" aria-hidden="true">more_vert</span>
-        </button>
-
-        <div
-          v-if="menuOpen"
-          id="menu-opcoes-conversa"
-          class="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-950"
-          role="menu"
-        >
-          <button
-            type="button"
-            class="flex w-full items-center gap-2 px-4 py-3 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-900"
-            role="menuitem"
-            @click="fecharConversa"
-          >
-            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">close</span>
-            Fechar conversa
-          </button>
-        </div>
-      </div>
     </div>
+
+    <ModalAlerta
+      v-model:open="modalExcluirAberto"
+      title="Excluir conversa?"
+      texto="A conversa e todas as mensagens serão apagadas permanentemente do banco. Esta ação não poderá ser desfeita."
+      variante="perigo"
+      texto-confirmar="Excluir"
+      texto-cancelar="Cancelar"
+      :confirmar-desabilitado="excluindo"
+      :cancelar-desabilitado="excluindo"
+      @confirmar="onConfirmarExclusaoConversa"
+    />
   </header>
 </template>

@@ -222,6 +222,22 @@ export const useConversasStore = defineStore('conversas', {
       if (idCanal == null) return
       const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
       bucket.conversaAtual = key && key.trim() ? key.trim() : null
+    },
+
+    /** Remove da lista local o(s) registro(s) com essa `key` da tabela `conversas` (ex.: após DELETE na API). */
+    removeConversaByDbKey(conversaKey: string) {
+      const k = conversaKey.trim()
+      if (!k) return
+      for (const canalIdStr of Object.keys(this.byCanal)) {
+        const idCanal = Number.parseInt(canalIdStr, 10)
+        if (!Number.isFinite(idCanal)) continue
+        const bucket = this.byCanal[idCanal]
+        if (!bucket) continue
+        const before = bucket.items.length
+        bucket.items = bucket.items.filter((c) => c.key !== k)
+        const removed = before - bucket.items.length
+        if (removed > 0) bucket.total = Math.max(0, bucket.total - removed)
+      }
     }
   }
 })
