@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { Mensagem, MensagensListResponse } from '#shared/types/mensagem'
+import type { Mensagem, MensagensListResponse, PusherNovaMensagemPayload } from '#shared/types/mensagem'
 
 function mensagemErroFetch(err: unknown, fallback: string): string {
   if (err && typeof err === 'object') {
@@ -151,6 +151,30 @@ export const useMensagensStore = defineStore('mensagens', {
     },
 
     /** Após excluir a conversa no backend: limpa cache e `activeKey` se for essa chave. */
+    mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
+      const m = payload.conversa_key.match(/^(\d+)-(.+)$/)
+      if (!m) return
+      const cid = Number(m[1])
+      const lidPart = m[2]
+      if (!Number.isFinite(cid) || cid !== canalId || !lidPart) return
+
+      const key = mensagensKey(canalId, lidPart)
+      const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
+
+      // Mantém LRU coerente; pode podar caches antigos.
+      this.touchKey(key)
+      this.pruneCache()
+
+      if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
+
+      const msg = payload.mensagem
+      if (bucket.items.some((x) => x.message_id === msg.message_id)) return
+
+      // API armazena mais recente primeiro; mantemos o mesmo padrão.
+      bucket.items = [msg, ...bucket.items]
+      bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
+    },
+
     afterConversaDeleted(key: MensagensKey) {
       if (this.activeKey === key) this.activeKey = null
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete

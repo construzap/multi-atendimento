@@ -3,11 +3,22 @@ export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
   runtimeConfig: {
+    // --- Backblaze B2 (override: NUXT_B2_*) ---
     b2Endpoint: '',
     b2Region: '',
     b2KeyId: '',
     b2AppKey: '',
     b2BucketName: '',
+
+    // --- Pusher — só servidor (override: NUXT_PUSHER_SECRET) ---
+    pusherSecret: '',
+
+    public: {
+      // --- Pusher — browser + SSR (override: NUXT_PUBLIC_PUSHER_*) ---
+      pusherAppId: '',
+      pusherKey: '',
+      pusherCluster: '',
+    },
   },
   vite: {
     server: {

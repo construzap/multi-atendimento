@@ -65,6 +65,30 @@ function extractPhoneLid(chatidRaw: string | undefined | null, chatlidRaw: strin
   return { phone, lid }
 }
 
+function firstNonEmpty(...parts: Array<string | undefined | null>): string | null {
+  for (const p of parts) {
+    if (typeof p !== 'string') continue
+    const t = p.trim()
+    if (t) return t
+  }
+  return null
+}
+
+/**
+ * Nome exibido do contato na conversa (persistido em `conversas.name` / Pusher).
+ * Prioridade uazapi: `wa_name` → `wa_contactName` → `chat.name` → `senderName`.
+ */
+function resolveContactName(payload: UazapiWebhookPayload): string | null {
+  if (payload.message.fromMe) return null
+  const chat = payload.chat
+  return firstNonEmpty(
+    chat.wa_name,
+    chat.wa_contactName,
+    chat.name,
+    payload.message.senderName,
+  )
+}
+
 /**
  * Normaliza o messageType vindo da uazapi (ex: "Conversation", "ExtendedTextMessage")
  * para os valores do nosso enum MessageType.
@@ -129,8 +153,8 @@ export function normalizarMensagem(
   // 4. Tipo de mensagem normalizado
   const messagetype = normalizeMessageType(msg.messageType)
 
-  // 5. Nome do contato (somente quando a msg vem do usuário, não de mim)
-  const name = msg.fromMe ? null : (msg.senderName?.trim() || null)
+  // 5. Nome do contato (mensagens recebidas: wa_name / wa_contactName / …)
+  const name = resolveContactName(payload)
 
   // 6. Chave única da conversa: "{id_canal}-{lid}"
   // Se por algum motivo vier sem lid/phone, cai no chatid resolvido (wa_* ou message).

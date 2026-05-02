@@ -70,6 +70,18 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
   const to = from + PER_PAGE - 1
 
   const admin = serverSupabaseServiceRole<any>(event)
+
+  const conversaKey = `${canalId}-${lid}`
+  const { data: conv } = await admin
+    .from('conversas')
+    .select('name, photo')
+    .eq('key', conversaKey)
+    .maybeSingle()
+
+  const c = conv as { name: string | null; photo: string | null } | null
+  const contactName = c?.name ?? null
+  const contactPhoto = c?.photo ?? null
+
   const { data, error, count } = await admin
     .from('mensagens')
     .select(SELECT, { count: 'exact' })
@@ -82,8 +94,15 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
 
+  const rows = (data ?? []) as Omit<Mensagem, 'name' | 'photo'>[]
+  const enriched: Mensagem[] = rows.map((row) => ({
+    ...row,
+    name: contactName,
+    photo: contactPhoto,
+  }))
+
   return {
-    data: (data ?? []) as Mensagem[],
+    data: enriched,
     page,
     perPage: PER_PAGE,
     total: count ?? 0

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import type { Conversa, ConversasListResponse } from '#shared/types/conversa'
+import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { useCanaisStore } from '~/stores/canais'
 
 function mensagemErroFetch(err: unknown, fallback: string): string {
@@ -225,6 +226,55 @@ export const useConversasStore = defineStore('conversas', {
     },
 
     /** Remove da lista local o(s) registro(s) com essa `key` da tabela `conversas` (ex.: após DELETE na API). */
+    mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
+      const bucket = this.byCanal[canalId] ?? (this.byCanal[canalId] = emptyCanalState())
+      const msg = payload.mensagem
+
+      // Garante que o canal apareça como "carregado" caso a UI já esteja aberta.
+      if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
+
+      const idx = bucket.items.findIndex((c) => c.key === payload.conversa_key)
+      const preview = (msg.message ?? msg.caption ?? '').trim() || ' '
+      const createdAt = msg.created_at ?? null
+
+      if (idx === -1) {
+        const row: Conversa = {
+          key: payload.conversa_key,
+          message: preview,
+          messatype: msg.messagetype ?? null,
+          name: msg.from_me ? null : (msg.name ?? null),
+          created_at: createdAt,
+          updated_at: createdAt,
+          id_canal: canalId,
+          phone: msg.phone ?? null,
+          lid: msg.lid ?? null,
+          connect_phone: msg.connected_phone ?? null,
+          photo: msg.from_me ? null : (msg.photo ?? null),
+          from_me: msg.from_me ?? null,
+          media_url: msg.media_url ?? null,
+        }
+        bucket.items = [row, ...bucket.items]
+        bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
+        return
+      }
+
+      const current = bucket.items[idx]
+      const keepIdentity = Boolean(msg.from_me)
+      const merged: Conversa = {
+        ...current,
+        message: preview,
+        messatype: msg.messagetype ?? current.messatype,
+        from_me: msg.from_me ?? current.from_me,
+        media_url: msg.media_url ?? current.media_url,
+        updated_at: createdAt ?? current.updated_at,
+        name: keepIdentity ? current.name : (msg.name ?? current.name),
+        photo: keepIdentity ? current.photo : (msg.photo ?? current.photo),
+      }
+
+      // Move para o topo (mais recente)
+      bucket.items = [merged, ...bucket.items.filter((_, i) => i !== idx)]
+    },
+
     removeConversaByDbKey(conversaKey: string) {
       const k = conversaKey.trim()
       if (!k) return

@@ -1,8 +1,11 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import type { UazapiWebhookPayload } from '#shared/types/webhook'
+import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { mimeToExt, uploadToB2 } from '../../utils/b2Storage'
 import { downloadUazapiMedia } from '../../utils/downloadUazapiMedia'
+import { mensagemFromNormalizada } from '../../utils/mensagemFromNormalizada'
 import { persistWebhookMensagem } from '../../utils/persistWebhookMensagem'
+import { triggerNovaMensagem } from '../../utils/pusherServer'
 import { isMediaMessage, normalizarMensagem } from '../../utils/webhookNormalizer'
 
 /**
@@ -23,6 +26,8 @@ export default defineEventHandler(async (event) => {
     console.error('[webhook] body inválido ou vazio:', e)
     return { ok: false, error: 'invalid_body' }
   }
+
+  console.log('[webhook] payload completo:\n', JSON.stringify(body, null, 2))
 
   console.log(
     '[webhook] EventType:',
@@ -103,6 +108,12 @@ export default defineEventHandler(async (event) => {
       }
     }
   }
+
+  const payloadPusher: PusherNovaMensagemPayload = {
+    conversa_key: normalizada.conversa_key,
+    mensagem: mensagemFromNormalizada(normalizada),
+  }
+  await triggerNovaMensagem(event, normalizada.id_canal, payloadPusher)
 
   const saved = await persistWebhookMensagem(admin, normalizada)
 

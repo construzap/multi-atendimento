@@ -1,7 +1,7 @@
 import type { MessageType } from '#shared/types/messageType'
 
 /**
- * Tabela `public.mensagens` (Supabase) — campos expostos na API.
+ * Linha de mensagem na API: base em `public.mensagens` + `name`/`photo` da conversa (contato).
  */
 export interface Mensagem {
   message_id: string
@@ -17,6 +17,8 @@ export interface Mensagem {
   media_url: string | null
   caption: string | null
   filename: string | null
+  name: string | null
+  photo: string | null
 }
 
 /**
@@ -27,5 +29,15 @@ export interface MensagensListResponse {
   page: number
   perPage: number
   total: number
+}
+
+/**
+ * Corpo do evento Pusher `nova-mensagem`.
+ * Canal Pusher = só `id_canal` (ex.: subscribe em `"12"`); use `conversa_key` para saber o fio da conversa.
+ */
+export interface PusherNovaMensagemPayload {
+  /** `conversas.key` = `{id_canal}-{lid}` — qual conversa dentro do canal. */
+  conversa_key: string
+  mensagem: Mensagem
 }
 
