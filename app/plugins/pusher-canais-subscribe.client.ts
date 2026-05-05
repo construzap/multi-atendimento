@@ -5,7 +5,7 @@ import { useCanaisStore } from '~/stores/canais'
 import { useConversasStore } from '~/stores/conversas'
 import { useMensagensStore } from '~/stores/mensagens'
 
-/** Inscreve nos canais Pusher = `String(id_canal)` conforme `canais.items`. Eventos só são logados no console por ora. */
+/** Inscreve em `String(id_canal)` conforme `canais.items`; `nova-mensagem` atualiza conversas + mensagens. */
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
   const appKey = typeof config.public.pusherKey === 'string' ? config.public.pusherKey.trim() : ''
@@ -46,7 +46,6 @@ export default defineNuxtPlugin(() => {
         if (subscribedIds.has(id)) continue
         const channel = p.subscribe(String(id))
         channel.bind('nova-mensagem', (data: PusherNovaMensagemPayload) => {
-          console.log('[pusher] nova-mensagem', { canalId: id, payload: data })
           useConversasStore().mergeFromPusherNovaMensagem(id, data)
           useMensagensStore().mergeFromPusherNovaMensagem(id, data)
         })

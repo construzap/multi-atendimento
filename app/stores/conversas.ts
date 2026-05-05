@@ -225,12 +225,14 @@ export const useConversasStore = defineStore('conversas', {
       bucket.conversaAtual = key && key.trim() ? key.trim() : null
     },
 
-    /** Remove da lista local o(s) registro(s) com essa `key` da tabela `conversas` (ex.: após DELETE na API). */
+    /**
+     * Evento Pusher `nova-mensagem`: atualiza preview na lista ou cria a conversa.
+     * `name` / `photo` vêm do payload quando existirem (inclui `from_me === true`, teste — pode voltar a preservar só foto depois).
+     */
     mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
       const bucket = this.byCanal[canalId] ?? (this.byCanal[canalId] = emptyCanalState())
       const msg = payload.mensagem
 
-      // Garante que o canal apareça como "carregado" caso a UI já esteja aberta.
       if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
 
       const idx = bucket.items.findIndex((c) => c.key === payload.conversa_key)
@@ -242,14 +244,14 @@ export const useConversasStore = defineStore('conversas', {
           key: payload.conversa_key,
           message: preview,
           messatype: msg.messagetype ?? null,
-          name: msg.from_me ? null : (msg.name ?? null),
+          name: msg.name ?? null,
           created_at: createdAt,
           updated_at: createdAt,
           id_canal: canalId,
           phone: msg.phone ?? null,
           lid: msg.lid ?? null,
           connect_phone: msg.connected_phone ?? null,
-          photo: msg.from_me ? null : (msg.photo ?? null),
+          photo: msg.photo ?? null,
           from_me: msg.from_me ?? null,
           media_url: msg.media_url ?? null,
         }
@@ -259,7 +261,6 @@ export const useConversasStore = defineStore('conversas', {
       }
 
       const current = bucket.items[idx]
-      const keepIdentity = Boolean(msg.from_me)
       const merged: Conversa = {
         ...current,
         message: preview,
@@ -267,11 +268,10 @@ export const useConversasStore = defineStore('conversas', {
         from_me: msg.from_me ?? current.from_me,
         media_url: msg.media_url ?? current.media_url,
         updated_at: createdAt ?? current.updated_at,
-        name: keepIdentity ? current.name : (msg.name ?? current.name),
-        photo: keepIdentity ? current.photo : (msg.photo ?? current.photo),
+        name: msg.name ?? current.name,
+        photo: msg.photo ?? current.photo,
       }
 
-      // Move para o topo (mais recente)
       bucket.items = [merged, ...bucket.items.filter((_, i) => i !== idx)]
     },
 

@@ -17,7 +17,13 @@ import { isMediaMessage, normalizarMensagem } from '../../utils/webhookNormalize
  */
 export default defineEventHandler(async (event) => {
   const started = new Date().toISOString()
-  console.log('[webhook] POST recebido', started)
+  const reqUrl = getRequestURL(event)
+  const ua = getRequestHeader(event, 'user-agent') ?? '(sem User-Agent)'
+
+  console.log('\n────────── [webhook] POST recebido ──────────')
+  console.log('hora (ISO):', started)
+  console.log('URL:', reqUrl.href)
+  console.log('User-Agent (trecho):', String(ua).slice(0, 120))
 
   let body: UazapiWebhookPayload
   try {
@@ -27,7 +33,9 @@ export default defineEventHandler(async (event) => {
     return { ok: false, error: 'invalid_body' }
   }
 
-  console.log('[webhook] payload completo:\n', JSON.stringify(body, null, 2))
+  console.log('[webhook] payload completo (JSON):')
+  console.log(JSON.stringify(body, null, 2))
+  console.log('────────────────────────────────────────────\n')
 
   console.log(
     '[webhook] EventType:',

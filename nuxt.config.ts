@@ -2,6 +2,17 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
+
+  /**
+   * Opção 3 (porta / host): ngrok faz forward para 127.0.0.1:PORTA por padrão.
+   * Só escutar em [::1] (IPv6) quebra isso — o browser em localhost pode funcionar e o webhook não.
+   * `0.0.0.0` aceita IPv4 + IPv6 conforme o SO; porta fixa alinha com `ngrok http 3000`.
+   */
+  devServer: {
+    host: '0.0.0.0',
+    port: 3000,
+    strictPort: true,
+  },
   runtimeConfig: {
     // --- Backblaze B2 (override: NUXT_B2_*) ---
     b2Endpoint: '',

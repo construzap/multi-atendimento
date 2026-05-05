@@ -107,6 +107,64 @@ export const useMensagensStore = defineStore('mensagens', {
     }
   },
   actions: {
+    createTempId(): string {
+      // Curto e único o suficiente para UI; conciliado via Pusher.
+      return `tmp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
+    },
+
+    addOptimisticTextMessage(input: {
+      id_canal: number
+      lid: string
+      phone?: string | null
+      connected_phone?: string | null
+      text: string
+      name?: string | null
+      photo?: string | null
+    }): string {
+      const tempId = this.createTempId()
+      const key = mensagensKey(input.id_canal, input.lid)
+      const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
+
+      this.touchKey(key)
+      this.pruneCache()
+      if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
+
+      const nowIso = new Date().toISOString()
+      const msg: Mensagem = {
+        temp_id: tempId,
+        // placeholder: usado só para evitar undefined; a UI usa temp_id como key.
+        message_id: tempId,
+        created_at: nowIso,
+        from_me: true,
+        message: input.text,
+        phone: input.phone ?? null,
+        lid: input.lid,
+        connected_phone: input.connected_phone ?? null,
+        messagetype: 'conversation',
+        from_api: true,
+        id_canal: input.id_canal,
+        media_url: null,
+        caption: null,
+        filename: null,
+        name: input.name ?? null,
+        photo: input.photo ?? null,
+      }
+
+      bucket.items = [msg, ...bucket.items]
+      bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
+      return tempId
+    },
+
+    removeByTempId(canalId: number, lid: string, tempId: string) {
+      const key = mensagensKey(canalId, lid)
+      const bucket = this.byKey[key]
+      if (!bucket) return
+      const before = bucket.items.length
+      bucket.items = bucket.items.filter((m) => m.temp_id !== tempId)
+      const removed = before - bucket.items.length
+      if (removed > 0) bucket.total = Math.max(0, (bucket.total ?? 0) - removed)
+    },
+
     touchKey(key: MensagensKey) {
       const idx = this.keyOrder.indexOf(key)
       if (idx !== -1) this.keyOrder.splice(idx, 1)
@@ -150,7 +208,10 @@ export const useMensagensStore = defineStore('mensagens', {
       this.keyOrder = []
     },
 
-    /** Após excluir a conversa no backend: limpa cache e `activeKey` se for essa chave. */
+    /**
+     * Insere `payload.mensagem` no cache desta conversa (mesmo formato do GET /api/mensagens).
+     * Mais recente primeiro; ignora duplicata por `message_id`.
+     */
     mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
       const m = payload.conversa_key.match(/^(\d+)-(.+)$/)
       if (!m) return
@@ -161,20 +222,32 @@ export const useMensagensStore = defineStore('mensagens', {
       const key = mensagensKey(canalId, lidPart)
       const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
 
-      // Mantém LRU coerente; pode podar caches antigos.
       this.touchKey(key)
       this.pruneCache()
 
       if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
 
       const msg = payload.mensagem
+
+      const tempId = msg.temp_id ?? null
+      // Envio otimista confirmado: substitui a linha temporária pelo payload oficial (`message_id` real, etc.).
+      if (tempId) {
+        const idx = bucket.items.findIndex((x) => x.temp_id === tempId)
+        if (idx !== -1) {
+          const next = [...bucket.items]
+          next[idx] = { ...msg, temp_id: null }
+          bucket.items = next
+          return
+        }
+      }
+
       if (bucket.items.some((x) => x.message_id === msg.message_id)) return
 
-      // API armazena mais recente primeiro; mantemos o mesmo padrão.
       bucket.items = [msg, ...bucket.items]
       bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
     },
 
+    /** Após excluir a conversa no backend: limpa cache e `activeKey` se for essa chave. */
     afterConversaDeleted(key: MensagensKey) {
       if (this.activeKey === key) this.activeKey = null
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete

@@ -4,6 +4,8 @@ import type { MessageType } from '#shared/types/messageType'
  * Linha de mensagem na API: base em `public.mensagens` + `name`/`photo` da conversa (contato).
  */
 export interface Mensagem {
+  /** ID temporário (optimistic UI) para conciliar com Pusher. */
+  temp_id?: string | null
   message_id: string
   created_at: string
   from_me: boolean | null

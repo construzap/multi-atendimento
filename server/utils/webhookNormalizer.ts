@@ -1,5 +1,6 @@
 import type { MessageType } from '#shared/types/messageType'
 import type { MensagemNormalizada, UazapiMessage, UazapiWebhookPayload } from '#shared/types/webhook'
+import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
 
 const MEDIA_MEDIA_TYPES = ['image', 'video', 'ptt', 'audio', 'document', 'sticker'] as const
 
@@ -62,6 +63,10 @@ function extractPhoneLid(chatidRaw: string | undefined | null, chatlidRaw: strin
   if (phone && !lid) lid = phone
   if (lid && !phone) phone = lid
 
+  // Normaliza BR (remoção do "9º dígito" quando aplicável) mantendo chaves consistentes.
+  if (phone) phone = normalizeWhatsappBr(phone) || phone
+  if (lid) lid = normalizeWhatsappBr(lid) || lid
+
   return { phone, lid }
 }
 
@@ -75,11 +80,11 @@ function firstNonEmpty(...parts: Array<string | undefined | null>): string | nul
 }
 
 /**
- * Nome exibido do contato na conversa (persistido em `conversas.name` / Pusher).
- * Prioridade uazapi: `wa_name` → `wa_contactName` → `chat.name` → `senderName`.
+ * Nome exibido do contato / conversa para UI e Pusher (`mensagem.name`).
+ * Prioridade uazapi: `chat.wa_name` → `wa_contactName` → `chat.name` → `senderName`.
+ * Também quando `fromMe` é true (mensagem sua), para o cliente poder mostrar o mesmo rótulo do WhatsApp.
  */
 function resolveContactName(payload: UazapiWebhookPayload): string | null {
-  if (payload.message.fromMe) return null
   const chat = payload.chat
   return firstNonEmpty(
     chat.wa_name,
@@ -153,7 +158,7 @@ export function normalizarMensagem(
   // 4. Tipo de mensagem normalizado
   const messagetype = normalizeMessageType(msg.messageType)
 
-  // 5. Nome do contato (mensagens recebidas: wa_name / wa_contactName / …)
+  // 5. Nome para conversa / Pusher (prioriza `chat.wa_name`, inclusive se fromMe)
   const name = resolveContactName(payload)
 
   // 6. Chave única da conversa: "{id_canal}-{lid}"

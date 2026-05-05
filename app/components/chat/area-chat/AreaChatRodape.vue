@@ -1,14 +1,80 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
+import { storeToRefs } from 'pinia'
+import { toast } from 'vue-sonner'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 
 const mensagem = ref('')
 
+const conversasStore = useConversasStore()
+const canaisStore = useCanaisStore()
+const mensagensStore = useMensagensStore()
+const { conversaAtual, items } = storeToRefs(conversasStore)
+
+function firstNonEmpty(...vals: Array<string | null | undefined>): string {
+  for (const v of vals) {
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  return ''
+}
+
+const conversaSelecionada = computed(() => {
+  const key = conversaAtual.value
+  if (!key) return null
+  const list = items.value
+  if (!list?.length) return null
+  return list.find((c) => firstNonEmpty(c.lid, c.phone, c.key) === key) ?? null
+})
+
+const telefoneDestino = computed(() => {
+  const c = conversaSelecionada.value
+  return firstNonEmpty(c?.phone, c?.lid, conversaAtual.value)
+})
+
 function enviarMensagem() {
   const t = mensagem.value.trim()
   if (!t) return
-  // Integração com API / store do chat em seguida
+  const idCanal = canaisStore.currentCanalId
+  if (!idCanal) {
+    toast.error('Selecione um canal antes de enviar.')
+    return
+  }
+  const tel = telefoneDestino.value
+  if (!tel) {
+    toast.error('Selecione uma conversa antes de enviar.')
+    return
+  }
+
+  const lidSessao = String(conversaAtual.value)
+
+  const tempId = mensagensStore.addOptimisticTextMessage({
+    id_canal: idCanal,
+    lid: lidSessao,
+    phone: conversaSelecionada.value?.phone ?? null,
+    connected_phone: null,
+    text: t,
+    name: conversaSelecionada.value?.name ?? null,
+    photo: conversaSelecionada.value?.photo ?? null,
+  })
+
   mensagem.value = ''
+
+  void $fetch('/api/mensagens', {
+    method: 'POST',
+    body: {
+      id_canal: idCanal,
+      telefone: tel,
+      conteudo: t,
+      temp_id: tempId,
+      conversa_sessao: lidSessao,
+    },
+  }).catch(() => {
+    mensagensStore.removeByTempId(idCanal, lidSessao, tempId)
+    toast.error(
+      'Não foi possível enviar a mensagem. Tente de novo em instantes. Se o erro continuar, fale com o suporte.',
+      { duration: 8000 },
+    )
+  })
 }
 </script>
 
@@ -54,7 +120,7 @@ function enviarMensagem() {
 
       <button
         type="button"
-        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95"
+        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
         aria-label="Enviar mensagem"
         @click="enviarMensagem"
       >

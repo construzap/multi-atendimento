@@ -156,7 +156,7 @@ watch(
       <!-- Ancora mensagens no rodapé quando houver poucas (como WhatsApp Web). -->
       <div v-else class="flex min-h-full flex-col justify-end">
         <div class="flex flex-col">
-          <BalaoMensagem v-for="m in mensagensOrdenadas" :key="m.message_id" :mensagem="m" />
+          <BalaoMensagem v-for="m in mensagensOrdenadas" :key="m.temp_id ?? m.message_id" :mensagem="m" />
         </div>
       </div>
     </div>
