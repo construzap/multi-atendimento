@@ -155,6 +155,54 @@ export const useMensagensStore = defineStore('mensagens', {
       return tempId
     },
 
+    addOptimisticMediaMessage(input: {
+      id_canal: number
+      lid: string
+      phone?: string | null
+      connected_phone?: string | null
+      /** `MessageType` correspondente (imageMessage/videoMessage/documentMessage/audioMessage). */
+      messagetype: Mensagem['messagetype']
+      /** URL pública do arquivo (ou placeholder se ainda for gerar). */
+      media_url: string
+      /** Legenda opcional (vai em `caption`). */
+      caption?: string | null
+      filename?: string | null
+      name?: string | null
+      photo?: string | null
+    }): string {
+      const tempId = this.createTempId()
+      const key = mensagensKey(input.id_canal, input.lid)
+      const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
+
+      this.touchKey(key)
+      this.pruneCache()
+      if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
+
+      const nowIso = new Date().toISOString()
+      const msg: Mensagem = {
+        temp_id: tempId,
+        message_id: tempId,
+        created_at: nowIso,
+        from_me: true,
+        message: null,
+        phone: input.phone ?? null,
+        lid: input.lid,
+        connected_phone: input.connected_phone ?? null,
+        messagetype: input.messagetype ?? 'conversation',
+        from_api: true,
+        id_canal: input.id_canal,
+        media_url: input.media_url,
+        caption: input.caption ?? null,
+        filename: input.filename ?? null,
+        name: input.name ?? null,
+        photo: input.photo ?? null,
+      }
+
+      bucket.items = [msg, ...bucket.items]
+      bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
+      return tempId
+    },
+
     removeByTempId(canalId: number, lid: string, tempId: string) {
       const key = mensagensKey(canalId, lid)
       const bucket = this.byKey[key]

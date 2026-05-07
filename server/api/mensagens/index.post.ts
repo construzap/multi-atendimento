@@ -18,6 +18,7 @@ function uazapiTimestampToMs(raw: unknown): number {
 type Body = {
   id_canal?: number | string
   telefone?: string
+  /** Texto (para `send/text`) ou legenda/descrição (para `send/media`). */
   conteudo?: string
   temp_id?: string
   /**
@@ -26,6 +27,11 @@ type Body = {
    * montava `conversa_key` só com o PN e duplicava o bucket (`12-lid` vs `12-phone`).
    */
   conversa_sessao?: string
+
+  /** Envio de mídia (Uazapi `send/media`). */
+  media_type?: 'image' | 'video' | 'document' | 'audio'
+  /** URL pública do arquivo (ex.: B2 público). */
+  media_file?: string
 }
 
 function normalizeStatus(s: string) {
@@ -92,7 +98,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const conteudo = typeof body.conteudo === 'string' ? body.conteudo.trim() : ''
-  if (!conteudo) {
+
+  const mediaType = body.media_type
+  const mediaFile = typeof body.media_file === 'string' ? body.media_file.trim() : ''
+  const isMedia = Boolean(mediaType && mediaFile)
+  if (!isMedia && !conteudo) {
     throw createError({ statusCode: 400, statusMessage: 'Informe conteudo.' })
   }
 
@@ -129,16 +139,23 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Canal não possui token/servidor configurados.' })
   }
 
-  const url = `${servidor.replace(/\/+$/, '')}/send/text`
+  const url = `${servidor.replace(/\/+$/, '')}${isMedia ? '/send/media' : '/send/text'}`
 
   try {
     const res = await $fetch<any>(url, {
       method: 'POST',
       headers: { token },
-      body: {
-        number: numero,
-        text: conteudo,
-      },
+      body: isMedia
+        ? {
+            number: numero,
+            type: mediaType,
+            file: mediaFile,
+            text: conteudo || undefined,
+          }
+        : {
+            number: numero,
+            text: conteudo,
+          },
     })
 
     const pnLocal = numero.split('@')[0] ?? ''
@@ -159,6 +176,24 @@ export default defineEventHandler(async (event) => {
     const tsMs = uazapiTimestampToMs(res?.messageTimestamp)
     const createdAt = new Date(tsMs).toISOString()
 
+    // Para mídia, tenta usar o link retornado; fallback para o file enviado.
+    const fileUrlFromRes =
+      (typeof res?.response?.fileUrl === 'string' && res.response.fileUrl.trim()) ||
+      (typeof res?.fileURL === 'string' && res.fileURL.trim()) ||
+      ''
+    const media_url = isMedia ? (fileUrlFromRes || mediaFile || null) : null
+
+    const messagetype =
+      !isMedia
+        ? ('conversation' as const)
+        : mediaType === 'image'
+          ? ('imageMessage' as const)
+          : mediaType === 'video'
+            ? ('videoMessage' as const)
+            : mediaType === 'audio'
+              ? ('audioMessage' as const)
+              : ('documentMessage' as const)
+
     const { data: convExisting } = await admin
       .from('conversas')
       .select('photo')
@@ -177,11 +212,11 @@ export default defineEventHandler(async (event) => {
       phone: pnLocal || null,
       lid: lidSessao || null,
       connected_phone: '',
-      messagetype: 'conversation',
+      messagetype,
       from_api: true,
       id_canal: canalId,
-      media_url: null,
-      caption: null,
+      media_url,
+      caption: isMedia && messageText ? messageText : null,
       filename: null,
       name: null,
       photo: photoExisting,
@@ -205,11 +240,11 @@ export default defineEventHandler(async (event) => {
       phone: pnLocal || null,
       lid: lidSessao || null,
       connected_phone: null,
-      messagetype: 'conversation',
+      messagetype,
       from_api: true,
       id_canal: canalId,
-      media_url: null,
-      caption: null,
+      media_url,
+      caption: isMedia && messageText ? messageText : null,
       filename: null,
       name: null,
       photo: photoExisting,

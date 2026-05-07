@@ -5,11 +5,14 @@ withDefaults(
   defineProps<{
     title: string
     align?: 'left' | 'right'
+    /** Lado em que o painel abre (ex.: no rodapé, use `top`). */
+    side?: 'top' | 'bottom'
     /** Largura mínima do painel (Tailwind: ex. w-64) */
     panelClass?: string
   }>(),
   {
     align: 'right',
+    side: 'bottom',
     panelClass: 'w-64 min-w-[14rem]'
   }
 )
@@ -87,8 +90,14 @@ onUnmounted(() => {
     >
       <div
         v-show="open"
-        class="absolute top-full z-50 mt-2 origin-top rounded-2xl border border-outline/40 bg-surface-container-lowest py-2 shadow-lg ring-1 ring-black/5 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:ring-white/10"
-        :class="[panelClass, align === 'right' ? 'right-0' : 'left-0']"
+        class="absolute z-50 rounded-2xl border border-outline/40 bg-surface-container-lowest py-2 shadow-lg ring-1 ring-black/5 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:ring-white/10"
+        :class="[
+          panelClass,
+          align === 'right' ? 'right-0' : 'left-0',
+          side === 'top'
+            ? 'bottom-full mb-2 origin-bottom'
+            : 'top-full mt-2 origin-top',
+        ]"
         role="menu"
         :aria-label="title"
       >

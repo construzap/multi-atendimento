@@ -7,6 +7,7 @@ const props = defineProps<{
 }>()
 
 const isFromMe = computed(() => Boolean(props.mensagem.from_me))
+const isSending = computed(() => Boolean(props.mensagem.temp_id))
 
 const isLive = computed(() => props.mensagem.messagetype === 'liveLocationMessage')
 
@@ -50,8 +51,13 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
         Esta mensagem é uma localização. Para ver no mapa, abra esta conversa no
         <span class="font-medium">WhatsApp</span>.
       </p>
-      <div class="mt-2 flex justify-end">
-        <span class="text-[10px] text-on-primary-container/80">{{ hora }}</span>
+      <div class="mt-2 flex items-center justify-end gap-1">
+        <span class="text-[10px] text-on-primary-container/80">
+          {{ hora }}<span v-if="isSending"> · enviando…</span>
+        </span>
+        <span class="material-symbols-outlined text-[12px] text-on-primary-container" aria-hidden="true">
+          {{ isSending ? 'done' : 'done_all' }}
+        </span>
       </div>
     </div>
   </div>

@@ -5,6 +5,7 @@ import type { Mensagem } from '#shared/types/mensagem'
 const props = defineProps<{ mensagem: Mensagem }>()
 
 const isFromMe = computed(() => Boolean(props.mensagem.from_me))
+const isSending = computed(() => Boolean(props.mensagem.temp_id))
 const url = computed(() => (props.mensagem.media_url ?? '').trim())
 const caption = computed(() => (props.mensagem.caption ?? '').trim())
 
@@ -46,9 +47,11 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
         {{ caption }}
       </p>
       <div class="mt-1 flex items-center justify-end gap-1 px-2">
-        <span class="text-[10px] text-on-primary-container/80">{{ hora }}</span>
+        <span class="text-[10px] text-on-primary-container/80">
+          {{ hora }}<span v-if="isSending"> · enviando…</span>
+        </span>
         <span class="material-symbols-outlined text-[12px] text-on-primary-container" aria-hidden="true">
-          done_all
+          {{ isSending ? 'done' : 'done_all' }}
         </span>
       </div>
     </div>

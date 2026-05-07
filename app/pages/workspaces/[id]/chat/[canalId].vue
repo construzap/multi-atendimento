@@ -23,12 +23,20 @@ function parsePositiveInt(raw: unknown): number | null {
 const canalId = computed(() => parsePositiveInt(route.params.canalId))
 const workspaceId = computed(() => parsePositiveInt(route.params.id))
 
+const cookieName = computed(() => {
+  const wid = workspaceId.value
+  return wid ? `last_chat_canal_ws_${wid}` : 'last_chat_canal_ws_0'
+})
+const lastCanalCookie = useCookie<string | null>(cookieName.value)
+
 /** Canal da rota no momento (para limpar seleção ao sair da página; a rota pode já ter mudado no `onUnmounted`). */
 const canalIdSnapshot = ref<number | null>(null)
 watch(
   canalId,
   (id) => {
     if (id != null) canalIdSnapshot.value = id
+    // Salva sempre o último canal acessado para esse workspace (usado pelo /chat sem :canalId).
+    if (id != null) lastCanalCookie.value = String(id)
   },
   { immediate: true }
 )

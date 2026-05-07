@@ -5,6 +5,7 @@ import type { Mensagem } from '#shared/types/mensagem'
 const props = defineProps<{ mensagem: Mensagem }>()
 
 const isFromMe = computed(() => Boolean(props.mensagem.from_me))
+const isSending = computed(() => Boolean(props.mensagem.temp_id))
 
 function formatHora(iso: string): string {
   const d = new Date(iso)
@@ -48,9 +49,11 @@ const tipo = computed(() => props.mensagem.messagetype ?? 'unknown')
       </div>
       <span class="mt-1 block text-[10px] text-on-primary-container/80">Tipo: {{ tipo }}</span>
       <div class="mt-1 flex items-center justify-end gap-1">
-        <span class="text-[10px] text-on-primary-container/80">{{ hora }}</span>
+        <span class="text-[10px] text-on-primary-container/80">
+          {{ hora }}<span v-if="isSending"> · enviando…</span>
+        </span>
         <span class="material-symbols-outlined text-[12px] text-on-primary-container" aria-hidden="true">
-          done_all
+          {{ isSending ? 'done' : 'done_all' }}
         </span>
       </div>
     </div>

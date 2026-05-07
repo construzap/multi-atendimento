@@ -9,6 +9,9 @@ const workspaceId = computed(() => String(route.params.id ?? ''))
 const canaisStore = useCanaisStore()
 const pending = ref(true)
 
+const cookieName = computed(() => `last_chat_canal_ws_${workspaceId.value || '0'}`)
+const lastCanalCookie = useCookie<string | null>(cookieName.value)
+
 onMounted(async () => {
   pending.value = true
   try {
@@ -17,9 +20,15 @@ onMounted(async () => {
 
     const list = await canaisStore.fetchCanais(wid).catch(() => [])
     if (list.length > 0) {
+      const preferredRaw = String(lastCanalCookie.value ?? '').trim()
+      const preferredId = preferredRaw ? Number.parseInt(preferredRaw, 10) : NaN
+      const target = Number.isFinite(preferredId) ? list.find((c) => c.id === preferredId) : null
+      const next = target ?? list[0]!
+
       // Define o canal atual ANTES do redirect, para disparar o watcher de conversas.
-      canaisStore.setCurrentCanal(list[0]!)
-      await navigateTo(`/workspaces/${workspaceId.value}/chat/${list[0]!.id}`, { replace: true })
+      canaisStore.setCurrentCanal(next)
+      lastCanalCookie.value = String(next.id)
+      await navigateTo(`/workspaces/${workspaceId.value}/chat/${next.id}`, { replace: true })
     }
   } finally {
     pending.value = false
