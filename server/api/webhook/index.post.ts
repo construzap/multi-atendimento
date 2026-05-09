@@ -57,7 +57,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: canal, error: canalError } = await admin
     .from('canais')
-    .select('id')
+    .select('id, workspace_id')
     .eq('token', body.token)
     .is('deleted_at', null)
     .maybeSingle()
@@ -75,7 +75,12 @@ export default defineEventHandler(async (event) => {
   console.log('[webhook] canal id:', canal.id)
 
   // ── Normaliza o payload ──────────────────────────────────────────────────
-  const normalizada = normalizarMensagem(body, canal.id)
+  const workspaceId =
+    canal && typeof canal === 'object' && 'workspace_id' in canal && typeof (canal as any).workspace_id === 'number'
+      ? (canal as any).workspace_id
+      : null
+
+  const normalizada = normalizarMensagem(body, canal.id, workspaceId)
 
   if (!normalizada) {
     console.log('[webhook] skip: mensagem ignorada (grupo ou filtro interno)')
@@ -117,12 +122,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const payloadPusher: PusherNovaMensagemPayload = {
-    conversa_key: normalizada.conversa_key,
-    mensagem: mensagemFromNormalizada(normalizada),
-  }
-  await triggerNovaMensagem(event, normalizada.id_canal, payloadPusher)
-
   const saved = await persistWebhookMensagem(admin, normalizada)
 
   if (!saved.ok) {
@@ -130,7 +129,13 @@ export default defineEventHandler(async (event) => {
     return { ok: false, error: 'persist_failed', step: saved.step, message: saved.message }
   }
 
-  console.log('[webhook] ok salvo:', normalizada.message_id, normalizada.conversa_key)
+  const payloadPusher: PusherNovaMensagemPayload = {
+    conversa_key: saved.conversa_key,
+    mensagem: mensagemFromNormalizada(normalizada, saved.conversa_key),
+  }
+  await triggerNovaMensagem(event, normalizada.id_canal, payloadPusher)
 
-  return { ok: true, saved: true, conversa_key: normalizada.conversa_key, message_id: normalizada.message_id }
+  console.log('[webhook] ok salvo:', normalizada.message_id, saved.conversa_key)
+
+  return { ok: true, saved: true, conversa_key: saved.conversa_key, message_id: normalizada.message_id }
 })

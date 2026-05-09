@@ -18,15 +18,23 @@ function mensagemErroFetch(err: unknown, fallback: string): string {
   return fallback
 }
 
-export type MensagensKey = `${number}-${string}`
+/** Bucket no Pinia = `public.conversas.key` (UUID ou legado). */
+export type MensagensBucketKey = string
 
-export function mensagensKey(idCanal: number, lid: string): MensagensKey {
-  return `${idCanal}-${lid}` as MensagensKey
+/** Compat: segundo arg é sempre `conversas.key`. */
+export function mensagensKey(_idCanal: number, conversaKey: string): MensagensBucketKey {
+  return conversaKey.trim()
+}
+
+export function mensagensBucketKey(conversaKey: string): MensagensBucketKey {
+  return conversaKey.trim()
 }
 
 const MAX_CACHE_KEYS = 5
 
 type KeyMensagensState = {
+  /** Canal usado no último GET (paginação “carregar mais”). */
+  id_canal: number | null
   items: Mensagem[]
   page: number
   perPage: number
@@ -37,23 +45,21 @@ type KeyMensagensState = {
 }
 
 type MensagensState = {
-  /** Chave ativa (id_canal + lid) para leitura via getters. */
-  activeKey: MensagensKey | null
-  /** Cache por chave composta `id_canal-lid`. */
-  byKey: Record<MensagensKey, KeyMensagensState>
-  /** Ordem LRU (mais antigo → mais recente). */
-  keyOrder: MensagensKey[]
+  activeKey: MensagensBucketKey | null
+  byKey: Record<MensagensBucketKey, KeyMensagensState>
+  keyOrder: MensagensBucketKey[]
 }
 
 function emptyKeyState(): KeyMensagensState {
   return {
+    id_canal: null,
     items: [],
     page: 1,
     perPage: 30,
     total: 0,
     pending: false,
     error: null,
-    loadedAt: null
+    loadedAt: null,
   }
 }
 
@@ -65,7 +71,7 @@ export const useMensagensStore = defineStore('mensagens', {
   state: (): MensagensState => ({
     activeKey: null,
     byKey: {},
-    keyOrder: []
+    keyOrder: [],
   }),
   getters: {
     active(state): KeyMensagensState | null {
@@ -104,17 +110,17 @@ export const useMensagensStore = defineStore('mensagens', {
     hasCacheForActive(state): boolean {
       const a = state.activeKey ? state.byKey[state.activeKey] : null
       return Boolean(a && a.loadedAt != null)
-    }
+    },
   },
   actions: {
     createTempId(): string {
-      // Curto e único o suficiente para UI; conciliado via Pusher.
       return `tmp_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`
     },
 
     addOptimisticTextMessage(input: {
       id_canal: number
-      lid: string
+      conversa_key: string
+      lid?: string | null
       phone?: string | null
       connected_phone?: string | null
       text: string
@@ -122,23 +128,24 @@ export const useMensagensStore = defineStore('mensagens', {
       photo?: string | null
     }): string {
       const tempId = this.createTempId()
-      const key = mensagensKey(input.id_canal, input.lid)
+      const key = mensagensBucketKey(input.conversa_key)
       const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
 
       this.touchKey(key)
       this.pruneCache()
       if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
+      bucket.id_canal = input.id_canal
 
       const nowIso = new Date().toISOString()
       const msg: Mensagem = {
+        key_conversa: key,
         temp_id: tempId,
-        // placeholder: usado só para evitar undefined; a UI usa temp_id como key.
         message_id: tempId,
         created_at: nowIso,
         from_me: true,
         message: input.text,
         phone: input.phone ?? null,
-        lid: input.lid,
+        lid: input.lid ?? null,
         connected_phone: input.connected_phone ?? null,
         messagetype: 'conversation',
         from_api: true,
@@ -157,36 +164,36 @@ export const useMensagensStore = defineStore('mensagens', {
 
     addOptimisticMediaMessage(input: {
       id_canal: number
-      lid: string
+      conversa_key: string
+      lid?: string | null
       phone?: string | null
       connected_phone?: string | null
-      /** `MessageType` correspondente (imageMessage/videoMessage/documentMessage/audioMessage). */
       messagetype: Mensagem['messagetype']
-      /** URL pública do arquivo (ou placeholder se ainda for gerar). */
       media_url: string
-      /** Legenda opcional (vai em `caption`). */
       caption?: string | null
       filename?: string | null
       name?: string | null
       photo?: string | null
     }): string {
       const tempId = this.createTempId()
-      const key = mensagensKey(input.id_canal, input.lid)
+      const key = mensagensBucketKey(input.conversa_key)
       const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
 
       this.touchKey(key)
       this.pruneCache()
       if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
+      bucket.id_canal = input.id_canal
 
       const nowIso = new Date().toISOString()
       const msg: Mensagem = {
+        key_conversa: key,
         temp_id: tempId,
         message_id: tempId,
         created_at: nowIso,
         from_me: true,
         message: null,
         phone: input.phone ?? null,
-        lid: input.lid,
+        lid: input.lid ?? null,
         connected_phone: input.connected_phone ?? null,
         messagetype: input.messagetype ?? 'conversation',
         from_api: true,
@@ -203,8 +210,8 @@ export const useMensagensStore = defineStore('mensagens', {
       return tempId
     },
 
-    removeByTempId(canalId: number, lid: string, tempId: string) {
-      const key = mensagensKey(canalId, lid)
+    removeByTempId(conversa_key: string, tempId: string) {
+      const key = mensagensBucketKey(conversa_key)
       const bucket = this.byKey[key]
       if (!bucket) return
       const before = bucket.items.length
@@ -213,29 +220,26 @@ export const useMensagensStore = defineStore('mensagens', {
       if (removed > 0) bucket.total = Math.max(0, (bucket.total ?? 0) - removed)
     },
 
-    touchKey(key: MensagensKey) {
+    touchKey(key: MensagensBucketKey) {
       const idx = this.keyOrder.indexOf(key)
       if (idx !== -1) this.keyOrder.splice(idx, 1)
       this.keyOrder.push(key)
     },
 
     pruneCache() {
-      // Remove as mais antigas até caber no limite.
       while (this.keyOrder.length > MAX_CACHE_KEYS) {
         const oldest = this.keyOrder.shift()
         if (!oldest) break
-        // Evita deletar a chave ativa por segurança.
         if (oldest === this.activeKey) {
           this.keyOrder.push(oldest)
           break
         }
-        // `delete` é ok aqui: queremos liberar memória e forçar re-fetch se precisar.
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
         delete this.byKey[oldest]
       }
     },
 
-    setActiveKey(key: MensagensKey | null) {
+    setActiveKey(key: MensagensBucketKey | null) {
       this.activeKey = key
       if (!key) return
       if (!this.byKey[key]) this.byKey[key] = emptyKeyState()
@@ -247,7 +251,6 @@ export const useMensagensStore = defineStore('mensagens', {
       if (!this.activeKey) return
       const k = this.activeKey
       this.byKey[k] = emptyKeyState()
-      // Opcional: mantém no LRU, pois ainda é uma chave conhecida/recente.
     },
 
     resetAll() {
@@ -256,29 +259,24 @@ export const useMensagensStore = defineStore('mensagens', {
       this.keyOrder = []
     },
 
-    /**
-     * Insere `payload.mensagem` no cache desta conversa (mesmo formato do GET /api/mensagens).
-     * Mais recente primeiro; ignora duplicata por `message_id`.
-     */
     mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
-      const m = payload.conversa_key.match(/^(\d+)-(.+)$/)
-      if (!m) return
-      const cid = Number(m[1])
-      const lidPart = m[2]
-      if (!Number.isFinite(cid) || cid !== canalId || !lidPart) return
+      const mid = payload.mensagem.id_canal
+      if (mid != null && mid !== canalId) return
 
-      const key = mensagensKey(canalId, lidPart)
+      const key = mensagensBucketKey(payload.conversa_key)
+      if (!key) return
+
       const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
 
       this.touchKey(key)
       this.pruneCache()
 
       if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
+      bucket.id_canal = canalId
 
       const msg = payload.mensagem
 
       const tempId = msg.temp_id ?? null
-      // Envio otimista confirmado: substitui a linha temporária pelo payload oficial (`message_id` real, etc.).
       if (tempId) {
         const idx = bucket.items.findIndex((x) => x.temp_id === tempId)
         if (idx !== -1) {
@@ -295,8 +293,7 @@ export const useMensagensStore = defineStore('mensagens', {
       bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
     },
 
-    /** Após excluir a conversa no backend: limpa cache e `activeKey` se for essa chave. */
-    afterConversaDeleted(key: MensagensKey) {
+    afterConversaDeleted(key: MensagensBucketKey) {
       if (this.activeKey === key) this.activeKey = null
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete this.byKey[key]
@@ -304,21 +301,22 @@ export const useMensagensStore = defineStore('mensagens', {
       if (idx !== -1) this.keyOrder.splice(idx, 1)
     },
 
-    async fetchPage(idCanal: number, lid: string, page: number = 1, options: FetchOptions = {}) {
-      const key = mensagensKey(idCanal, lid)
+    async fetchPage(idCanal: number, conversaKey: string, page: number = 1, options: FetchOptions = {}) {
+      const key = mensagensBucketKey(conversaKey)
       this.setActiveKey(key)
       const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
 
       bucket.pending = true
       bucket.error = null
+      bucket.id_canal = idCanal
       try {
         const res = await $fetch<MensagensListResponse>('/api/mensagens', {
           method: 'GET',
           query: {
             id_canal: idCanal,
-            lid,
-            page
-          }
+            key: conversaKey,
+            page,
+          },
         })
 
         if (options.append) {
@@ -338,7 +336,6 @@ export const useMensagensStore = defineStore('mensagens', {
         bucket.perPage = res.perPage
         bucket.total = res.total
         bucket.loadedAt = Date.now()
-        // Considera essa chave "usada recentemente" e aplica o limite.
         this.touchKey(key)
         this.pruneCache()
       } catch (err) {
@@ -351,16 +348,14 @@ export const useMensagensStore = defineStore('mensagens', {
       }
     },
 
-    /** Cache-first para uma chave (id_canal + lid). */
-    async ensureLoaded(idCanal: number, lid: string, page: number = 1) {
-      const key = mensagensKey(idCanal, lid)
+    async ensureLoaded(idCanal: number, conversaKey: string, page: number = 1) {
+      const key = mensagensBucketKey(conversaKey)
       this.setActiveKey(key)
       const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
       if (bucket.loadedAt != null) return
-      await this.fetchPage(idCanal, lid, page)
+      await this.fetchPage(idCanal, conversaKey, page)
     },
 
-    /** Carrega a próxima página para a chave ativa (append). */
     async fetchNextPage() {
       const key = this.activeKey
       if (!key) return
@@ -368,17 +363,11 @@ export const useMensagensStore = defineStore('mensagens', {
       if (bucket.pending) return
       if (!(bucket.page * bucket.perPage < bucket.total)) return
 
-      const keyStr = String(key)
-      const sepIdx = keyStr.indexOf('-')
-      if (sepIdx === -1) return
-      const rawCanal = keyStr.slice(0, sepIdx)
-      const lid = keyStr.slice(sepIdx + 1)
-      const idCanal = Number.parseInt(rawCanal, 10)
-      if (!Number.isFinite(idCanal) || !lid) return
+      const idCanal = bucket.id_canal
+      if (idCanal == null) return
 
       const nextPage = bucket.page + 1
-      await this.fetchPage(idCanal, lid, nextPage, { append: true })
-    }
-  }
+      await this.fetchPage(idCanal, key, nextPage, { append: true })
+    },
+  },
 })
-

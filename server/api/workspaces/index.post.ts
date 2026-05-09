@@ -73,6 +73,51 @@ export default defineEventHandler(async (event): Promise<Workspace> => {
     })
   }
 
+  // Cria funil padrão do workspace + colunas padrão
+  const workspaceId =
+    data && typeof data === 'object' && 'id' in data && typeof (data as any).id === 'number'
+      ? (data as any).id
+      : null
+
+  if (workspaceId != null) {
+    const { data: funilRow, error: funilErr } = await admin
+      .from('funil_workspace')
+      .upsert(
+        {
+          workspace_id: workspaceId,
+          nome: 'Funil padrao',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'workspace_id' },
+      )
+      .select('id')
+      .single()
+
+    if (funilErr) {
+      throw createError({ statusCode: 500, statusMessage: funilErr.message })
+    }
+
+    const funilId =
+      funilRow && typeof funilRow === 'object' && 'id' in funilRow && typeof (funilRow as any).id === 'number'
+        ? (funilRow as any).id
+        : null
+
+    if (funilId != null) {
+      const nowIso = new Date().toISOString()
+      const cols = [
+        { funil_id: funilId, nome: 'Em atendimento com I.A', cor: '#38BDF8', ordem: 1 },
+        { funil_id: funilId, nome: 'Precisa de Atendimento', cor: '#F59E0B', ordem: 2 },
+        { funil_id: funilId, nome: 'Prioridade', cor: '#F43F5E', ordem: 3 },
+        { funil_id: funilId, nome: 'Venda', cor: '#10B981', ordem: 4 },
+      ].map((c) => ({ ...c, updated_at: nowIso }))
+
+      const { error: colsErr } = await admin.from('funil_workspace_colunas').insert(cols)
+      if (colsErr) {
+        throw createError({ statusCode: 500, statusMessage: colsErr.message })
+      }
+    }
+  }
+
   return data as Workspace
 })
 

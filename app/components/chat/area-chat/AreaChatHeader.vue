@@ -5,7 +5,7 @@ import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type { Conversa } from '#shared/types/conversa'
-import { mensagensKey, useMensagensStore } from '~/stores/mensagens'
+import { useMensagensStore } from '~/stores/mensagens'
 
 const conversasStore = useConversasStore()
 const canaisStore = useCanaisStore()
@@ -31,7 +31,7 @@ const conversaSelecionada = computed<Conversa | null>(() => {
   const list = items.value
   if (!list?.length) return null
 
-  const filtrada = list.filter((m) => firstNonEmpty(m.lid, m.phone, m.key) === key)
+  const filtrada = list.filter((m) => m.key === key)
   if (!filtrada.length) return null
 
   // Pega o registro mais recente dessa conversa para extrair nome/foto/phone.
@@ -90,7 +90,7 @@ async function onConfirmarExclusaoConversa() {
       body: { key }
     })
     conversasStore.removeConversaByDbKey(key)
-    if (canalId != null && convAtual != null && mensagensKey(canalId, convAtual) === key) {
+    if (canalId != null && convAtual != null && convAtual === key) {
       conversasStore.setConversaAtual(null)
     }
     mensagensStore.afterConversaDeleted(key)
@@ -108,7 +108,7 @@ async function onConfirmarExclusaoConversa() {
   <header
     class="flex h-16 shrink-0 items-center justify-between border-b border-outline-variant/10 bg-white px-6 dark:bg-slate-950"
   >
-    <div class="flex min-w-0 items-center gap-3">
+    <div class="flex min-w-0 items-center gap-3 pl-12 md:pl-0">
       <BaseAvatar :image-url="avatarUrl" :alt="nome" :size="40" variant="circle" />
       <div class="min-w-0">
         <h2 class="truncate font-headline text-base font-semibold text-slate-900 dark:text-slate-100">

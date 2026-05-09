@@ -33,7 +33,7 @@ const conversaSelecionada = computed<Conversa | null>(() => {
   const list = items.value
   if (!list?.length) return null
 
-  const filtrada = list.filter((m) => firstNonEmpty(m.lid, m.phone, m.key) === key)
+  const filtrada = list.filter((m) => m.key === key)
   if (!filtrada.length) return null
 
   const sorted = [...filtrada].sort((a, b) => {
@@ -221,15 +221,6 @@ onMounted(() => {
             <span>{{ durationLabel }}</span>
           </div>
         </div>
-
-        <BaseAvatar
-          :image-url="avatarUrl || undefined"
-          :alt="avatarAlt"
-          :size="40"
-          variant="circle"
-          class="shrink-0"
-          fallback-class="bg-black/10 text-on-primary-container"
-        />
       </div>
 
       <div class="mt-1 flex items-center justify-end gap-1">

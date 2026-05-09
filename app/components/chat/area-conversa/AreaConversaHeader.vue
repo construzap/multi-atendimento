@@ -6,18 +6,25 @@ import BaseAvatar from '~/components/BaseAvatar.vue'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
+import BaseModal from '~/components/BaseModal.vue'
 import ModalQrCode from '~/components/chat/area-conversa/ModalQrCode.vue'
 import DropdownConfig from '~/components/chat/area-conversa/DropdownConfig.vue'
 import ModalAddCanal from '~/components/workspaces/canais/ModalAddCanal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import { mensagemErroFetch } from '~/stores/canais'
+import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
 
 const pesquisa = ref('')
+const modalNovaConversaAberto = ref(false)
+const novoTelefoneLocal = ref('')
+const paisDdi = ref<'BR' | 'PT' | 'US' | 'AR' | 'CL' | 'MX'>('BR')
+const criandoNovaConversa = ref(false)
 
 const canaisStore = useCanaisStore()
 const workspacesStore = useWorkspacesStore()
 const { currentCanal, instanciaStatus, items } = storeToRefs(canaisStore)
 const route = useRoute()
+const conversasStore = useConversasStore()
 
 function parsePositiveInt(raw: unknown): number | null {
   const s = String(raw ?? '').trim()
@@ -121,6 +128,64 @@ async function confirmarExclusaoCanal() {
     toast.error(msg, { duration: 8000 })
   }
 }
+
+function currentDdiDigits(): string {
+  return paisDdi.value === 'BR'
+    ? '55'
+    : paisDdi.value === 'PT'
+      ? '351'
+      : paisDdi.value === 'US'
+        ? '1'
+        : paisDdi.value === 'AR'
+          ? '54'
+          : paisDdi.value === 'CL'
+            ? '56'
+            : '52' // MX
+}
+
+function validateAndNormalizeTelefone(localRaw: string): string | null {
+  const local = String(localRaw ?? '').replace(/\D/g, '')
+  if (!local) return null
+
+  const ddi = currentDdiDigits()
+
+  // Para BR, pedimos DDD(2) + (9?) + número(8) => 10 ou 11 (sem o 55)
+  if (ddi === '55') {
+    if (local.length !== 10 && local.length !== 11) return null
+  } else {
+    // Regra mínima genérica para evitar números curtos demais
+    if (local.length < 8) return null
+  }
+
+  const digits = `${ddi}${local}`
+  return normalizeWhatsappBr(digits)
+}
+
+async function criarNovaConversa() {
+  const canalId = currentCanal.value?.id
+  if (!canalId) {
+    toast.warning('Selecione um canal antes de iniciar uma nova conversa.')
+    return
+  }
+
+  const normalized = validateAndNormalizeTelefone(novoTelefoneLocal.value)
+  if (!normalized) {
+    toast.warning('Digite um número válido (DDD+número).')
+    return
+  }
+
+  criandoNovaConversa.value = true
+  try {
+    await conversasStore.ensureConversaByPhone({ id_canal: canalId, phone: normalized })
+    modalNovaConversaAberto.value = false
+    novoTelefoneLocal.value = ''
+  } catch (err: unknown) {
+    const msg = mensagemErroFetch(err, 'Não foi possível criar/abrir a conversa.')
+    toast.error(msg, { duration: 8000 })
+  } finally {
+    criandoNovaConversa.value = false
+  }
+}
 </script>
 
 <template>
@@ -152,7 +217,7 @@ async function confirmarExclusaoCanal() {
     />
 
     <!-- Linha 1: nome do canal + configurações (tema só no botão flutuante global) -->
-    <div class="flex items-start justify-between gap-3 px-4 pb-3 pt-4">
+    <div class="flex items-start justify-between gap-3 px-4 pb-3 pt-4 pl-16 md:pl-4">
       <h2
         class="min-w-0 flex-1 truncate font-headline text-lg font-bold leading-tight text-slate-900 dark:text-slate-100"
         :title="nomeCanal"
@@ -270,29 +335,110 @@ async function confirmarExclusaoCanal() {
     </div>
 
     <div class="border-t border-slate-100 px-4 pb-4 pt-2 dark:border-slate-800">
-      <BaseInput
-        id="conversas-pesquisa"
-        v-model="pesquisa"
-        type="search"
-        name="pesquisa-conversas"
-        placeholder="Buscar conversas…"
-        autocomplete="off"
-        wrapper-id="conversas-pesquisa-wrap"
-      >
-        <template #leading>
-          <svg
-            class="h-5 w-5 text-gray-400 dark:text-dark-on-surface-variant/70"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            aria-hidden="true"
-          >
-            <circle cx="11" cy="11" r="8" />
-            <path d="m21 21-4.35-4.35" stroke-linecap="round" />
-          </svg>
-        </template>
-      </BaseInput>
+      <div class="flex items-center gap-2">
+        <BaseInput
+          id="conversas-pesquisa"
+          v-model="pesquisa"
+          type="search"
+          name="pesquisa-conversas"
+          placeholder="Buscar conversas…"
+          autocomplete="off"
+          wrapper-id="conversas-pesquisa-wrap"
+          class="flex-1"
+        >
+          <template #leading>
+            <svg
+              class="h-5 w-5 text-gray-400 dark:text-dark-on-surface-variant/70"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" stroke-linecap="round" />
+            </svg>
+          </template>
+        </BaseInput>
+
+        <BaseButton
+          type="button"
+          variant="primary"
+          size="sm"
+          :block="false"
+          class="shrink-0"
+          @click="modalNovaConversaAberto = true"
+        >
+          Nova conversa
+        </BaseButton>
+      </div>
     </div>
+
+    <BaseModal
+      v-model:open="modalNovaConversaAberto"
+      title="Nova conversa"
+      :show-close="!criandoNovaConversa"
+      panel-class="w-full max-w-md"
+    >
+      <template #subtitle>
+        Selecione o país (DDI) e digite DDD+número.
+      </template>
+
+      <div class="space-y-3">
+        <div class="flex items-stretch gap-2">
+          <label class="sr-only" for="nova-conversa-ddi">País / DDI</label>
+          <select
+            id="nova-conversa-ddi"
+            v-model="paisDdi"
+            class="h-[52px] w-[9.5rem] rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm text-gray-900 transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 dark:border-dark-outline/50 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+            :disabled="criandoNovaConversa"
+          >
+            <option value="BR">Brasil (+55)</option>
+            <option value="PT">Portugal (+351)</option>
+            <option value="US">EUA (+1)</option>
+            <option value="AR">Argentina (+54)</option>
+            <option value="CL">Chile (+56)</option>
+            <option value="MX">México (+52)</option>
+          </select>
+
+          <BaseInput
+            id="nova-conversa-telefone"
+            v-model="novoTelefoneLocal"
+            type="tel"
+            name="nova-conversa-telefone"
+            placeholder="DDD + número"
+            autocomplete="off"
+            class="flex-1"
+          />
+        </div>
+        <p class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+          Para Brasil, vamos normalizar automaticamente o “9º dígito” quando aplicável.
+        </p>
+      </div>
+
+      <template #footer>
+        <BaseButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          :block="false"
+          :disabled="criandoNovaConversa"
+          @click="modalNovaConversaAberto = false"
+        >
+          Cancelar
+        </BaseButton>
+        <BaseButton
+          type="button"
+          variant="primary"
+          size="sm"
+          :block="false"
+          :loading="criandoNovaConversa"
+          :disabled="criandoNovaConversa"
+          @click="criarNovaConversa"
+        >
+          Abrir conversa
+        </BaseButton>
+      </template>
+    </BaseModal>
   </div>
 </template>

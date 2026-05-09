@@ -112,6 +112,81 @@ export const useConversasStore = defineStore('conversas', {
     }
   },
   actions: {
+    createTempKey(seed?: string): string {
+      const base = seed?.trim() ? seed.trim() : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+      return `temp:${base}`
+    },
+
+    addOrUpdateLocalConversa(conversa: Conversa, canalId?: number) {
+      const idCanal = canalId ?? this.activeCanalId
+      if (idCanal == null) return
+      this.setActiveCanalId(idCanal)
+      const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
+      if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
+
+      const idx = bucket.items.findIndex((c) => c.key === conversa.key)
+      if (idx === -1) {
+        bucket.items = [conversa, ...bucket.items]
+        bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
+        return
+      }
+
+      const merged = { ...bucket.items[idx]!, ...conversa }
+      bucket.items = [merged, ...bucket.items.filter((_, i) => i !== idx)]
+    },
+
+    removeLocalConversaByKey(conversaKey: string, canalId?: number) {
+      const idCanal = canalId ?? this.activeCanalId
+      if (idCanal == null) return
+      const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
+      const before = bucket.items.length
+      bucket.items = bucket.items.filter((c) => c.key !== conversaKey)
+      const removed = before - bucket.items.length
+      if (removed > 0) bucket.total = Math.max(0, (bucket.total ?? 0) - removed)
+      if (bucket.conversaAtual === conversaKey) bucket.conversaAtual = null
+    },
+
+    /**
+     * Garante que exista uma conversa no banco para (canal + phone).
+     * - Cria uma conversa temporária (key `temp:`) imediatamente no Pinia e seleciona.
+     * - Depois resolve no backend (busca ou cria) e substitui no Pinia.
+     */
+    async ensureConversaByPhone(input: { id_canal: number; phone: string }) {
+      const idCanal = input.id_canal
+      const phone = input.phone.trim()
+      if (!idCanal || !phone) return
+
+      const tempKey = this.createTempKey(phone)
+      const temp: Conversa = {
+        key: tempKey,
+        message: null,
+        messatype: null,
+        name: null,
+        created_at: null,
+        updated_at: null,
+        id_canal: idCanal,
+        phone,
+        lid: null,
+        connect_phone: null,
+        photo: null,
+        from_me: null,
+        media_url: null,
+      }
+
+      this.addOrUpdateLocalConversa(temp, idCanal)
+      this.setConversaAtual(tempKey, idCanal)
+
+      const real = await $fetch<Conversa>('/api/conversas/ensure', {
+        method: 'POST',
+        body: { id_canal: idCanal, telefone: phone },
+      })
+
+      // troca temp pelo real
+      this.removeLocalConversaByKey(tempKey, idCanal)
+      this.addOrUpdateLocalConversa(real, idCanal)
+      this.setConversaAtual(real.key, idCanal)
+    },
+
     /** Troca o canal ativo (não apaga cache). */
     setActiveCanalId(id: number | null) {
       this.activeCanalId = id
@@ -215,8 +290,7 @@ export const useConversasStore = defineStore('conversas', {
 
     ,
     /**
-     * Define a conversa/contato selecionado dentro do canal.
-     * `key` é a mesma chave usada na lista (ex.: phone ou lid).
+     * Define a conversa selecionada dentro do canal (`conversas.key`).
      */
     setConversaAtual(key: string | null, canalId?: number) {
       const idCanal = canalId ?? this.activeCanalId
@@ -230,18 +304,21 @@ export const useConversasStore = defineStore('conversas', {
      * `name` / `photo` vêm do payload quando existirem (inclui `from_me === true`, teste — pode voltar a preservar só foto depois).
      */
     mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
+      const conversaKey = payload.conversa_key?.trim()
+      if (!conversaKey) return
+
       const bucket = this.byCanal[canalId] ?? (this.byCanal[canalId] = emptyCanalState())
       const msg = payload.mensagem
 
       if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
 
-      const idx = bucket.items.findIndex((c) => c.key === payload.conversa_key)
+      const idx = bucket.items.findIndex((c) => c.key === conversaKey)
       const preview = (msg.message ?? msg.caption ?? '').trim() || ' '
       const createdAt = msg.created_at ?? null
 
       if (idx === -1) {
         const row: Conversa = {
-          key: payload.conversa_key,
+          key: conversaKey,
           message: preview,
           messatype: msg.messagetype ?? null,
           name: msg.name ?? null,
@@ -260,7 +337,7 @@ export const useConversasStore = defineStore('conversas', {
         return
       }
 
-      const current = bucket.items[idx]
+      const current = bucket.items[idx]!
       const merged: Conversa = {
         ...current,
         message: preview,

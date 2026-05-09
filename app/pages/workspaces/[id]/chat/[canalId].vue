@@ -9,6 +9,7 @@ definePageMeta({
 
 const route = useRoute()
 const canaisStore = useCanaisStore()
+const conversasStore = useConversasStore()
 
 function parsePositiveInt(raw: unknown): number | null {
   const s = String(raw ?? '').trim()
@@ -28,6 +29,27 @@ const cookieName = computed(() => {
   return wid ? `last_chat_canal_ws_${wid}` : 'last_chat_canal_ws_0'
 })
 const lastCanalCookie = useCookie<string | null>(cookieName.value)
+
+/**
+ * Navegação mobile do chat:
+ * - list: lista de conversas
+ * - chat: mensagens
+ * - info: painel de contexto
+ */
+const mobilePane = useState<'list' | 'chat' | 'info'>('chat_mobile_pane', () => 'list')
+
+watch(
+  () => conversasStore.conversaAtual,
+  (cur) => {
+    // Selecionou conversa → abre chat; limpou → volta para lista.
+    if (cur) {
+      if (mobilePane.value === 'list') mobilePane.value = 'chat'
+      return
+    }
+    if (mobilePane.value !== 'list') mobilePane.value = 'list'
+  },
+  { immediate: true },
+)
 
 /** Canal da rota no momento (para limpar seleção ao sair da página; a rota pode já ter mudado no `onUnmounted`). */
 const canalIdSnapshot = ref<number | null>(null)
@@ -78,7 +100,6 @@ onMounted(async () => {
   }
 })
 
-const conversasStore = useConversasStore()
 onUnmounted(() => {
   const id = canalIdSnapshot.value
   if (id != null) conversasStore.setConversaAtual(null, id)
@@ -87,9 +108,17 @@ onUnmounted(() => {
 
 <template>
   <!-- Altura própria: não depende de flex no layout global (evita alterar outras páginas). -->
-  <div class="flex h-[100dvh] min-h-0 w-full flex-row overflow-hidden">
+  <!-- Desktop: 3 colunas -->
+  <div class="hidden h-[100dvh] min-h-0 w-full flex-row overflow-hidden md:flex">
     <AreaConversa />
     <AreaChat />
     <AreaInfoConversa />
+  </div>
+
+  <!-- Mobile: 1 tela por vez -->
+  <div class="flex h-[100dvh] min-h-0 w-full flex-row overflow-hidden md:hidden">
+    <AreaConversa v-if="mobilePane === 'list'" />
+    <AreaChat v-else-if="mobilePane === 'chat'" />
+    <AreaInfoConversa v-else />
   </div>
 </template>

@@ -7,16 +7,29 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 const PER_PAGE = 30
 
 const SELECT =
-  'message_id, created_at, from_me, message, phone, lid, connected_phone, messagetype, from_api, id_canal, media_url, caption, filename'
+  'message_id, created_at, from_me, message, phone, lid, connected_phone, messagetype, from_api, id_canal, media_url, caption, filename, key_conversa'
+
+function pickQueryStr(...vals: unknown[]): string {
+  for (const v of vals) {
+    if (typeof v === 'string' && v.trim()) return v.trim()
+    if (v != null && String(v).trim()) return String(v).trim()
+  }
+  return ''
+}
 
 /**
- * GET /api/mensagens?id_canal=&lid=&page=
- * Lista mensagens do canal + lid, paginadas (30 por página), mais recentes primeiro.
+ * GET /api/mensagens?id_canal=&key=&page=
+ *
+ * **Principal:** `key` — mesmo valor de `public.conversas.key` e `mensagens.key_conversa`.
+ * Aliases aceitos: `key_conversa` (mesmo significado).
+ *
+ * **Legado:** `lid` — só quando não há `key`; mensagens antigas sem `key_conversa` preenchido.
  *
  * Query:
  * - `id_canal` (obrigatório)
- * - `lid` (obrigatório)
- * - `page` (opcional, padrão 1): página 1-based
+ * - `key` ou `key_conversa` (obrigatório salvo uso legado com `lid`)
+ * - `lid` (opcional, legado)
+ * - `page` (opcional, padrão 1)
  */
 export default defineEventHandler(async (event): Promise<MensagensListResponse> => {
   const client = await serverSupabaseClient(event)
@@ -43,17 +56,22 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
     throw createError({ statusCode: 400, statusMessage: 'id_canal inválido.' })
   }
 
-  const rawLid = q.lid
-  const lid = typeof rawLid === 'string' ? rawLid.trim() : String(rawLid ?? '').trim()
-  if (!lid) {
-    throw createError({ statusCode: 400, statusMessage: 'Informe lid na query.' })
+  /** Nova PK da conversa (`conversas.key`); aceita também o nome `key_conversa` na query. */
+  const conversaKey = pickQueryStr(q.key, q.key_conversa)
+  const lidLegacy = pickQueryStr(q.lid)
+
+  if (!conversaKey && !lidLegacy) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Informe key (ou key_conversa), ou lid apenas para dados legados.',
+    })
   }
 
   const allowed = await checkChannel(event, canalId, userId)
   if (!allowed) {
     throw createError({
       statusCode: 403,
-      statusMessage: 'Canal não encontrado ou sem permissão para acessar as mensagens.'
+      statusMessage: 'Canal não encontrado ou sem permissão para acessar as mensagens.',
     })
   }
 
@@ -71,22 +89,50 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
 
   const admin = serverSupabaseServiceRole<any>(event)
 
-  const conversaKey = `${canalId}-${lid}`
-  const { data: conv } = await admin
-    .from('conversas')
-    .select('name, photo')
-    .eq('key', conversaKey)
-    .maybeSingle()
+  let contactName: string | null = null
+  let contactPhoto: string | null = null
 
-  const c = conv as { name: string | null; photo: string | null } | null
-  const contactName = c?.name ?? null
-  const contactPhoto = c?.photo ?? null
+  if (conversaKey) {
+    const { data: convRow, error: convErr } = await admin
+      .from('conversas')
+      .select('key, name, photo')
+      .eq('id_canal', canalId)
+      .eq('key', conversaKey)
+      .maybeSingle()
 
-  const { data, error, count } = await admin
-    .from('mensagens')
-    .select(SELECT, { count: 'exact' })
-    .eq('id_canal', canalId)
-    .eq('lid', lid)
+    if (convErr) {
+      throw createError({ statusCode: 500, statusMessage: convErr.message })
+    }
+    if (!convRow) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Conversa não encontrada neste canal.',
+      })
+    }
+    contactName = convRow.name ?? null
+    contactPhoto = convRow.photo ?? null
+  } else if (lidLegacy) {
+    const { data: convByLid } = await admin
+      .from('conversas')
+      .select('key, name, photo')
+      .eq('id_canal', canalId)
+      .eq('lid', lidLegacy)
+      .maybeSingle()
+
+    const c = convByLid as { name: string | null; photo: string | null } | null
+    contactName = c?.name ?? null
+    contactPhoto = c?.photo ?? null
+  }
+
+  let query = admin.from('mensagens').select(SELECT, { count: 'exact' }).eq('id_canal', canalId)
+
+  if (conversaKey) {
+    query = query.eq('key_conversa', conversaKey)
+  } else {
+    query = query.eq('lid', lidLegacy)
+  }
+
+  const { data, error, count } = await query
     .order('created_at', { ascending: false })
     .range(from, to)
 
@@ -105,7 +151,6 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
     data: enriched,
     page,
     perPage: PER_PAGE,
-    total: count ?? 0
+    total: count ?? 0,
   }
 })
-

@@ -4,8 +4,8 @@ import { useConversasStore } from '~/stores/conversas'
 import { useMensagensStore } from '~/stores/mensagens'
 
 /**
- * Quando o usuário seleciona uma conversa (lid) dentro de um canal,
- * garante que as mensagens (id_canal + lid) estejam carregadas (cache-first).
+ * Quando o usuário seleciona uma conversa (`conversas.key`) dentro de um canal,
+ * garante que as mensagens estejam carregadas (cache-first).
  */
 export default defineNuxtPlugin(() => {
   const canais = useCanaisStore()
@@ -14,9 +14,11 @@ export default defineNuxtPlugin(() => {
 
   watch(
     [() => canais.currentCanalId, () => conversas.conversaAtual],
-    async ([canalId, lid]) => {
-      if (!canalId || !lid) return
-      await mensagens.ensureLoaded(canalId, lid, 1).catch(() => {
+    async ([canalId, conversaKey]) => {
+      if (!canalId || !conversaKey) return
+      // Conversas temporárias (criadas no front) ainda não existem no banco.
+      if (String(conversaKey).startsWith('temp:')) return
+      await mensagens.ensureLoaded(canalId, conversaKey, 1).catch(() => {
         /* erro fica em mensagens.error */
       })
     },

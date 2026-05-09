@@ -1,19 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import BalaoMensagem from '~/components/chat/area-chat/BalaoMensagens/BalaoMensagem.vue'
-import { mensagensKey } from '~/stores/mensagens'
 
-const canais = useCanaisStore()
 const conversas = useConversasStore()
 const mensagens = useMensagensStore()
 
-const canalId = computed(() => canais.currentCanalId)
-const lid = computed(() => conversas.conversaAtual)
-
-const activeKey = computed(() => {
-  if (!canalId.value || !lid.value) return null
-  return mensagensKey(canalId.value, lid.value)
-})
+const activeKey = computed(() => conversas.conversaAtual)
 
 watch(
   activeKey,
@@ -62,7 +54,7 @@ async function scrollToBottom() {
 
 /** Botão “rolar ao fim”: só quando há conversa aberta e o usuário não está no rodapé. */
 const showScrollDownFab = computed(() => {
-  if (!canalId.value || !lid.value) return false
+  if (!activeKey.value) return false
   return !isAtBottom.value
 })
 
@@ -74,7 +66,7 @@ async function onFabScrollToBottom() {
 
 /** Próximo ao topo + ainda há páginas na API (30 em 30). */
 const showLoadMoreFab = computed(() => {
-  if (!canalId.value || !lid.value) return false
+  if (!activeKey.value) return false
   if (!isAtTop.value) return false
   return mensagens.hasMore
 })
@@ -147,7 +139,7 @@ watch(
       </div>
 
       <div
-        v-if="!canalId || !lid"
+        v-if="!activeKey"
         class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
       >
         Selecione uma conversa para ver as mensagens.

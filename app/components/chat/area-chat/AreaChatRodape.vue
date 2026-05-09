@@ -4,6 +4,7 @@ import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
+import { mensagemErroFetch } from '~/stores/canais'
 
 const mensagem = ref('')
 const isRecording = ref(false)
@@ -23,39 +24,48 @@ const fileInputImage = ref<HTMLInputElement | null>(null)
 const fileInputVideo = ref<HTMLInputElement | null>(null)
 const fileInputDocument = ref<HTMLInputElement | null>(null)
 
-function firstNonEmpty(...vals: Array<string | null | undefined>): string {
-  for (const v of vals) {
-    if (typeof v === 'string' && v.trim()) return v.trim()
-  }
-  return ''
-}
-
 const conversaSelecionada = computed(() => {
   const key = conversaAtual.value
   if (!key) return null
   const list = items.value
   if (!list?.length) return null
-  return list.find((c) => firstNonEmpty(c.lid, c.phone, c.key) === key) ?? null
+  return list.find((c) => c.key === key) ?? null
 })
 
-const telefoneDestino = computed(() => {
-  const c = conversaSelecionada.value
-  return firstNonEmpty(c?.phone, c?.lid, conversaAtual.value)
+const phoneOpt = computed(() => {
+  const p = conversaSelecionada.value?.phone
+  return typeof p === 'string' && p.trim() ? p.trim() : ''
 })
 
-function ensureCanSend(): { idCanal: number; tel: string; lidSessao: string } | null {
+const lidOpt = computed(() => {
+  const l = conversaSelecionada.value?.lid
+  return typeof l === 'string' && l.trim() ? l.trim() : ''
+})
+
+function ensureCanSend(): {
+  idCanal: number
+  conversaKey: string
+  telefone?: string
+  lid?: string
+} | null {
   const idCanal = canaisStore.currentCanalId
   if (!idCanal) {
     toast.error('Selecione um canal antes de enviar.')
     return null
   }
-  const tel = telefoneDestino.value
-  if (!tel) {
-    toast.error('Selecione uma conversa antes de enviar.')
+  const tel = phoneOpt.value
+  const lid = lidOpt.value
+  if (!tel && !lid) {
+    toast.error('Esta conversa não tem telefone nem LID para enviar.')
     return null
   }
-  const lidSessao = String(conversaAtual.value)
-  return { idCanal, tel, lidSessao }
+  const conversaKey = String(conversaAtual.value)
+  return {
+    idCanal,
+    conversaKey,
+    ...(tel ? { telefone: tel } : {}),
+    ...(lid ? { lid } : {}),
+  }
 }
 
 function enviarMensagem() {
@@ -63,11 +73,12 @@ function enviarMensagem() {
   if (!t) return
   const ctx = ensureCanSend()
   if (!ctx) return
-  const { idCanal, tel, lidSessao } = ctx
+  const { idCanal, conversaKey, telefone, lid } = ctx
 
   const tempId = mensagensStore.addOptimisticTextMessage({
     id_canal: idCanal,
-    lid: lidSessao,
+    conversa_key: conversaKey,
+    lid: conversaSelecionada.value?.lid ?? null,
     phone: conversaSelecionada.value?.phone ?? null,
     connected_phone: null,
     text: t,
@@ -81,17 +92,16 @@ function enviarMensagem() {
     method: 'POST',
     body: {
       id_canal: idCanal,
-      telefone: tel,
+      ...(telefone ? { telefone } : {}),
+      ...(lid ? { lid } : {}),
       conteudo: t,
       temp_id: tempId,
-      conversa_sessao: lidSessao,
+      conversa_sessao: conversaKey,
     },
-  }).catch(() => {
-    mensagensStore.removeByTempId(idCanal, lidSessao, tempId)
-    toast.error(
-      'Não foi possível enviar a mensagem. Tente de novo em instantes. Se o erro continuar, fale com o suporte.',
-      { duration: 8000 },
-    )
+  }).catch((err: unknown) => {
+    mensagensStore.removeByTempId(conversaKey, tempId)
+    const msg = mensagemErroFetch(err, 'Não foi possível enviar a mensagem.')
+    toast.error(msg, { duration: 8000 })
   })
 }
 
@@ -118,7 +128,7 @@ async function uploadFileToB2(idCanal: number, file: File): Promise<string> {
 async function enviarMidia(kind: 'image' | 'video' | 'document', file: File) {
   const ctx = ensureCanSend()
   if (!ctx) return
-  const { idCanal, tel, lidSessao } = ctx
+  const { idCanal, conversaKey, telefone, lid } = ctx
 
   const caption = mensagem.value.trim()
   mensagem.value = ''
@@ -133,7 +143,8 @@ async function enviarMidia(kind: 'image' | 'video' | 'document', file: File) {
 
   const tempId = mensagensStore.addOptimisticMediaMessage({
     id_canal: idCanal,
-    lid: lidSessao,
+    conversa_key: conversaKey,
+    lid: conversaSelecionada.value?.lid ?? null,
     phone: conversaSelecionada.value?.phone ?? null,
     connected_phone: null,
     messagetype,
@@ -150,20 +161,19 @@ async function enviarMidia(kind: 'image' | 'video' | 'document', file: File) {
       method: 'POST',
       body: {
         id_canal: idCanal,
-        telefone: tel,
+        ...(telefone ? { telefone } : {}),
+        ...(lid ? { lid } : {}),
         conteudo: caption,
         temp_id: tempId,
-        conversa_sessao: lidSessao,
+        conversa_sessao: conversaKey,
         media_type: kind,
         media_file: url,
       },
     })
-  } catch {
-    mensagensStore.removeByTempId(idCanal, lidSessao, tempId)
-    toast.error(
-      'Não foi possível enviar a mídia. Tente de novo em instantes. Se o erro continuar, fale com o suporte.',
-      { duration: 8000 },
-    )
+  } catch (err: unknown) {
+    mensagensStore.removeByTempId(conversaKey, tempId)
+    const msg = mensagemErroFetch(err, 'Não foi possível enviar a mídia.')
+    toast.error(msg, { duration: 8000 })
   } finally {
     // evita acumular object URLs
     try { URL.revokeObjectURL(localUrl) } catch {}
@@ -255,7 +265,7 @@ async function sendRecordedAudio() {
   if (!recorder || !isRecording.value) return
   const ctx = ensureCanSend()
   if (!ctx) return
-  const { idCanal, tel, lidSessao } = ctx
+  const { idCanal, conversaKey, telefone, lid } = ctx
 
   const r = recorder
   const mime = recordMime || 'audio/webm'
@@ -283,7 +293,8 @@ async function sendRecordedAudio() {
   const localUrl = URL.createObjectURL(blob)
   const tempId = mensagensStore.addOptimisticMediaMessage({
     id_canal: idCanal,
-    lid: lidSessao,
+    conversa_key: conversaKey,
+    lid: conversaSelecionada.value?.lid ?? null,
     phone: conversaSelecionada.value?.phone ?? null,
     connected_phone: null,
     messagetype: 'audioMessage',
@@ -315,20 +326,19 @@ async function sendRecordedAudio() {
       method: 'POST',
       body: {
         id_canal: idCanal,
-        telefone: tel,
+        ...(telefone ? { telefone } : {}),
+        ...(lid ? { lid } : {}),
         conteudo: '',
         temp_id: tempId,
-        conversa_sessao: lidSessao,
+        conversa_sessao: conversaKey,
         media_type: 'audio',
         media_file: url,
       },
     })
-  } catch {
-    mensagensStore.removeByTempId(idCanal, lidSessao, tempId)
-    toast.error(
-      'Não foi possível enviar o áudio. Tente de novo em instantes. Se o erro continuar, fale com o suporte.',
-      { duration: 8000 },
-    )
+  } catch (err: unknown) {
+    mensagensStore.removeByTempId(conversaKey, tempId)
+    const msg = mensagemErroFetch(err, 'Não foi possível enviar o áudio.')
+    toast.error(msg, { duration: 8000 })
   } finally {
     try { URL.revokeObjectURL(localUrl) } catch {}
   }

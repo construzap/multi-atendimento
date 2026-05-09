@@ -73,12 +73,12 @@ export interface MensagemNormalizada {
   messagetype: MessageType
   from_api: boolean
   id_canal: number
+  workspace_id: number | null
   media_url: string | null
   caption: string | null
   filename: string | null
 
-  /** Chave única da conversa no formato \"{id_canal}-{lid}\" (ex: \"23-0809870987897\"). */
-  conversa_key: string
+  /** Resolvida em persistência (lookup por canal + lid/phone). */
   name: string | null
   photo: string | null
   message_timestamp: number

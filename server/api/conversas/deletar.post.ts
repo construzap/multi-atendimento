@@ -4,25 +4,12 @@ import { checkChannel } from '../../utils/checkChannel'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 /**
- * Extrai `id_canal` e o restante da chave (lid ou fallback) no formato `{id_canal}-{lid}`.
- */
-function parseConversaKey(raw: string): { idCanal: number; lidPart: string } | null {
-  const s = String(raw).trim()
-  const i = s.indexOf('-')
-  if (i === -1) return null
-  const idCanal = Number.parseInt(s.slice(0, i), 10)
-  const lidPart = s.slice(i + 1)
-  if (!Number.isFinite(idCanal) || !lidPart) return null
-  return { idCanal, lidPart }
-}
-
-/**
  * POST /api/conversas/deletar
- * Body: `{ key: string }` — mesma chave que `conversas.key` / `mensagens.activeKey` (ex.: `12-6589117378660`).
+ * Body: `{ key: string }` — `conversas.key` (UUID ou chave legada).
  *
  * 1) Confere dono do canal (`checkChannel`).
- * 2) Remove linhas em `mensagens` (`id_canal` + `lid`).
- * 3) Hard delete da linha em `conversas` pela `key`.
+ * 2) Remove mensagens (`key_conversa` = key; fallback legado por `lid` sem `key_conversa`).
+ * 3) Hard delete da linha em `conversas`.
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
@@ -45,21 +32,6 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Informe key no body (chave da conversa).' })
   }
 
-  const parsed = parseConversaKey(keyRaw)
-  if (!parsed) {
-    throw createError({ statusCode: 400, statusMessage: 'Chave inválida (use o formato id_canal-lid).' })
-  }
-
-  const { idCanal, lidPart } = parsed
-
-  const allowed = await checkChannel(event, idCanal, userId)
-  if (!allowed) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: 'Canal não encontrado ou sem permissão.'
-    })
-  }
-
   const admin = serverSupabaseServiceRole<any>(event)
 
   const { data: row, error: selErr } = await admin
@@ -72,30 +44,59 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: selErr.message })
   }
 
-  if (!row) {
+  if (!row || typeof row !== 'object') {
     throw createError({ statusCode: 404, statusMessage: 'Conversa não encontrada.' })
   }
 
-  if (row.id_canal !== idCanal) {
-    throw createError({ statusCode: 400, statusMessage: 'Chave inconsistente com o canal.' })
+  const idCanal =
+    row && typeof row === 'object' && 'id_canal' in row && typeof (row as { id_canal: unknown }).id_canal === 'number'
+      ? (row as { id_canal: number }).id_canal
+      : null
+
+  if (idCanal == null || !Number.isFinite(idCanal)) {
+    throw createError({ statusCode: 400, statusMessage: 'Conversa sem id_canal válido.' })
   }
 
-  const lidForMsgs =
-    typeof row.lid === 'string' && row.lid.trim()
-      ? row.lid.trim()
-      : lidPart
+  const allowed = await checkChannel(event, idCanal, userId)
+  if (!allowed) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Canal não encontrado ou sem permissão.',
+    })
+  }
 
-  const { error: delMsgErr } = await admin
+  const lidVal =
+    row && typeof row === 'object' && 'lid' in row && typeof (row as { lid: unknown }).lid === 'string'
+      ? (row as { lid: string }).lid.trim()
+      : ''
+
+  const { error: delMsgKey } = await admin
     .from('mensagens')
     .delete()
     .eq('id_canal', idCanal)
-    .eq('lid', lidForMsgs)
+    .eq('key_conversa', keyRaw)
 
-  if (delMsgErr) {
+  if (delMsgKey) {
     throw createError({
       statusCode: 500,
-      statusMessage: `Falha ao apagar mensagens: ${delMsgErr.message}`
+      statusMessage: `Falha ao apagar mensagens: ${delMsgKey.message}`,
     })
+  }
+
+  if (lidVal) {
+    const { error: delLegacy } = await admin
+      .from('mensagens')
+      .delete()
+      .eq('id_canal', idCanal)
+      .eq('lid', lidVal)
+      .is('key_conversa', null)
+
+    if (delLegacy) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `Falha ao apagar mensagens legadas: ${delLegacy.message}`,
+      })
+    }
   }
 
   const { data: deletedRows, error: delConvErr } = await admin

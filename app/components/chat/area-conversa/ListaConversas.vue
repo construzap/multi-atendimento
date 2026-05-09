@@ -54,54 +54,23 @@ const itens = computed<ConversaListaItem[]>(() => {
   // Se não houver canal selecionado, não lista nada.
   if (!canais.currentCanalId) return []
 
-  // Usa sempre as conversas do canal ativo (getter do store de conversas).
   const msgs = conversas.items
   if (!msgs.length) return []
 
-  // Agrupa por contato (prioriza `lid` — necessário para buscar mensagens; fallback phone; fallback key).
-  const byContato = new Map<string, Conversa[]>()
-  for (const m of msgs) {
-    const contatoKey = firstNonEmpty(m.lid, m.phone, m.key)
-    if (!contatoKey) continue
-    const arr = byContato.get(contatoKey)
-    if (arr) arr.push(m)
-    else byContato.set(contatoKey, [m])
-  }
-
-  const cards: ConversaListaItem[] = []
-  for (const [contatoKey, list] of byContato.entries()) {
-    // Escolhe a mais recente pelo updated_at (ou created_at).
-    const sorted = [...list].sort((a, b) => {
-      const ta = a.updated_at ?? a.created_at
-      const tb = b.updated_at ?? b.created_at
-      return sortIsoAsc(ta ?? null, tb ?? null)
-    })
-    const last = sorted[sorted.length - 1]!
-
-    const nome = firstNonEmpty(last.name, last.phone, contatoKey)
-    const horario = formatHora(last.updated_at ?? last.created_at)
-    const ultimaMensagem = labelPreview(last) || ' '
-
-    cards.push({
-      id: contatoKey,
-      nome,
-      ultimaMensagem,
-      horario,
-      avatarSrc: last.photo ?? null,
-      messatype: last.messatype ?? null
-    })
-  }
-
-  // Ordena a lista por mais recente primeiro.
-  cards.sort((a, b) => {
-    const aMsg = byContato.get(a.id)?.[byContato.get(a.id)!.length - 1]
-    const bMsg = byContato.get(b.id)?.[byContato.get(b.id)!.length - 1]
-    const ta = (aMsg?.updated_at ?? aMsg?.created_at) ?? null
-    const tb = (bMsg?.updated_at ?? bMsg?.created_at) ?? null
-    return sortIsoAsc(tb, ta)
+  const sorted = [...msgs].sort((a, b) => {
+    const ta = a.updated_at ?? a.created_at
+    const tb = b.updated_at ?? b.created_at
+    return sortIsoAsc(tb ?? null, ta ?? null)
   })
 
-  return cards
+  return sorted.map((m) => ({
+    id: m.key,
+    nome: firstNonEmpty(m.name, m.phone, m.lid, m.key),
+    ultimaMensagem: labelPreview(m) || ' ',
+    horario: formatHora(m.updated_at ?? m.created_at),
+    avatarSrc: m.photo ?? null,
+    messatype: m.messatype ?? null,
+  }))
 })
 
 // Se a lista trocar (ex.: canal mudou), não auto-seleciona nada.

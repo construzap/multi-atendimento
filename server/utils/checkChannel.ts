@@ -31,3 +31,34 @@ export async function checkChannel(
 
   return data != null
 }
+
+/**
+ * Versão batch: verifica se o usuário é dono de TODOS os canais informados.
+ * Mantém compatibilidade com `checkChannel` (usada em outros endpoints).
+ */
+export async function checkChannels(
+  event: H3Event,
+  canalIds: number[],
+  userId: string
+): Promise<boolean> {
+  const ids = Array.from(new Set((canalIds ?? []).filter((x) => Number.isFinite(x) && Number.isInteger(x) && x > 0)))
+  if (!ids.length) return false
+
+  const admin = serverSupabaseServiceRole<any>(event)
+
+  const { data, error } = await admin
+    .from('canais')
+    .select('id')
+    .in('id', ids)
+    .eq('user_id', userId)
+
+  if (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: error.message
+    })
+  }
+
+  const found = new Set((data ?? []).map((r: any) => r?.id).filter((x: any) => typeof x === 'number'))
+  return ids.every((id) => found.has(id))
+}

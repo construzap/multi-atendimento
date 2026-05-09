@@ -36,9 +36,9 @@ function resolveChatIdentifiers(payload: UazapiWebhookPayload): { chatid: string
 /**
  * Extrai phone e lid a partir dos identificadores chatid / chatlid (já resolvidos).
  * Regras:
- *   - termina em @s.whatsapp.net → campo phone (remove o sufixo)
- *   - termina em @lid            → campo lid   (remove o sufixo)
- *   - se apenas um deles existir → assume para os dois
+ *   - termina em @s.whatsapp.net → campo phone (só dígitos normalizados BR)
+ *   - termina em @lid → campo lid **com o sufixo @lid** (persistência / lookup)
+ * Não replica phone→lid nem lid→phone (intermitência da API).
  */
 function extractPhoneLid(chatidRaw: string | undefined | null, chatlidRaw: string | undefined | null): { phone: string | null; lid: string | null } {
   const chatid = String(chatidRaw ?? '').trim()
@@ -48,24 +48,19 @@ function extractPhoneLid(chatidRaw: string | undefined | null, chatlidRaw: strin
   let lid: string | null = null
 
   if (chatid.endsWith('@s.whatsapp.net')) {
-    phone = chatid.replace('@s.whatsapp.net', '')
+    const digits = chatid.replace('@s.whatsapp.net', '')
+    phone = normalizeWhatsappBr(digits) || digits || null
   } else if (chatid.endsWith('@lid')) {
-    lid = chatid.replace('@lid', '')
+    lid = chatid
   }
 
   if (chatlid.endsWith('@lid')) {
-    lid = chatlid.replace('@lid', '')
+    lid = chatlid
   } else if (chatlid.endsWith('@s.whatsapp.net')) {
-    phone = chatlid.replace('@s.whatsapp.net', '')
+    const digits = chatlid.replace('@s.whatsapp.net', '')
+    const n = normalizeWhatsappBr(digits) || digits || null
+    phone = phone ?? n
   }
-
-  // Se só veio um dos dois, replica para o outro
-  if (phone && !lid) lid = phone
-  if (lid && !phone) phone = lid
-
-  // Normaliza BR (remoção do "9º dígito" quando aplicável) mantendo chaves consistentes.
-  if (phone) phone = normalizeWhatsappBr(phone) || phone
-  if (lid) lid = normalizeWhatsappBr(lid) || lid
 
   return { phone, lid }
 }
@@ -82,7 +77,7 @@ function firstNonEmpty(...parts: Array<string | undefined | null>): string | nul
 /**
  * Nome exibido do contato / conversa para UI e Pusher (`mensagem.name`).
  * Prioridade uazapi: `chat.wa_name` → `wa_contactName` → `chat.name` → `senderName`.
- * Também quando `fromMe` é true (mensagem sua), para o cliente poder mostrar o mesmo rótulo do WhatsApp.
+ * Não usar em mensagens `fromMe`: ecó da API costuma trazer dados do chat/contato e a UI não deve mostrar foto/nome como se fossem do remetente.
  */
 function resolveContactName(payload: UazapiWebhookPayload): string | null {
   const chat = payload.chat
@@ -141,6 +136,7 @@ function normalizeMessageType(raw: string): MessageType {
 export function normalizarMensagem(
   payload: UazapiWebhookPayload,
   idCanal: number,
+  workspaceId: number | null,
 ): MensagemNormalizada | null {
 
   // 1. Filtra apenas eventos de mensagem
@@ -158,13 +154,11 @@ export function normalizarMensagem(
   // 4. Tipo de mensagem normalizado
   const messagetype = normalizeMessageType(msg.messageType)
 
-  // 5. Nome para conversa / Pusher (prioriza `chat.wa_name`, inclusive se fromMe)
-  const name = resolveContactName(payload)
-
-  // 6. Chave única da conversa: "{id_canal}-{lid}"
-  // Se por algum motivo vier sem lid/phone, cai no chatid resolvido (wa_* ou message).
-  const lidOrFallback = lid ?? phone ?? resolvedChatid
-  const conversaKey = `${idCanal}-${lidOrFallback}`
+  // 5. Nome / foto para Pusher e merge na UI (somente mensagens recebidas do contato)
+  const name =
+    msg.fromMe ? null : resolveContactName(payload)
+  const photo =
+    msg.fromMe ? null : (payload.chat.imagePreview || null)
 
   return {
     // ── mensagens ──────────────────────────────────────────────────────────
@@ -177,14 +171,14 @@ export function normalizarMensagem(
     messagetype,
     from_api:        msg.wasSentByApi,
     id_canal:        idCanal,
+    workspace_id:    workspaceId,
     media_url:       null,
     caption:         null,
     filename:        null,
 
-    // ── conversas ──────────────────────────────────────────────────────────
-    conversa_key:      conversaKey,
+    // ── conversas (key resolvida em persistWebhookMensagem) ───────────────
     name,
-    photo:             payload.chat.imagePreview || null,
+    photo,
     message_timestamp: msg.messageTimestamp,
   }
 }

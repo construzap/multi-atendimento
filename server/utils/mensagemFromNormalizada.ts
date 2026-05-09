@@ -5,13 +5,14 @@ import type { MensagemNormalizada } from '#shared/types/webhook'
  * Mesmo formato do GET /api/mensagens / evento Pusher (inclui `name`/`photo` do contato).
  * `created_at` deriva de `message_timestamp` do webhook até o insert no Supabase.
  */
-export function mensagemFromNormalizada(n: MensagemNormalizada): Mensagem {
+export function mensagemFromNormalizada(n: MensagemNormalizada, conversa_key: string): Mensagem {
   const createdAt =
     Number.isFinite(n.message_timestamp) && n.message_timestamp > 0
       ? new Date(n.message_timestamp).toISOString()
       : new Date().toISOString()
 
   return {
+    key_conversa: conversa_key,
     message_id: n.message_id,
     created_at: createdAt,
     from_me: n.from_me,
