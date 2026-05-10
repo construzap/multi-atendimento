@@ -13,6 +13,8 @@ export type KanbanCard = {
   photo: string | null
   preview: string | null
   updated_at: string | null
+  /** Nome do canal (`canais.nome`) da conversa; null se sem canal ou sem nome. */
+  canal_nome: string | null
 }
 
 export type KanbanColumn = {

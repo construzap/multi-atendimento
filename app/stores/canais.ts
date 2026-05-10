@@ -222,11 +222,14 @@ export const useCanaisStore = defineStore('canais', {
       }
     },
 
-    async fetchSubscription() {
+    async fetchSubscription(workspaceId: number) {
       this.subscriptionPending = true
       this.subscriptionError = null
       try {
-        const data = await $fetch<CanaisSubscription>('/api/canais/subscription', { method: 'GET' })
+        const data = await $fetch<CanaisSubscription>('/api/canais/subscription', {
+          method: 'GET',
+          query: { workspace_id: workspaceId },
+        })
         this.subscription = data
         return data
       } catch (err) {
@@ -262,7 +265,7 @@ export const useCanaisStore = defineStore('canais', {
           this.fetchCanais(input.workspace_id).catch(() => {
             /* lista pode falhar sem invalidar o canal criado */
           }),
-          this.fetchSubscription().catch(() => {
+          this.fetchSubscription(input.workspace_id).catch(() => {
             /* contagem pode falhar sem invalidar o canal criado */
           })
         ])
@@ -314,7 +317,7 @@ export const useCanaisStore = defineStore('canais', {
     /**
      * Remove o canal (Uazapi + soft delete). Atualiza lista, canal atual e assinatura.
      */
-    async deleteCanal(id_canal: number): Promise<void> {
+    async deleteCanal(id_canal: number, workspace_id: number): Promise<void> {
       this.pending = true
       this.error = null
 
@@ -330,7 +333,7 @@ export const useCanaisStore = defineStore('canais', {
           this.instanciaStatus = null
           this.instanciaStatusError = null
         }
-        await this.fetchSubscription().catch(() => {
+        await this.fetchSubscription(workspace_id).catch(() => {
           /* contagem opcional */
         })
       } catch (err) {

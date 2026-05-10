@@ -119,7 +119,7 @@ async function confirmarExclusaoCanal() {
     return
   }
   try {
-    await canaisStore.deleteCanal(id)
+    await canaisStore.deleteCanal(id, wid)
     modalExcluirCanalAberto.value = false
     toast.success('Canal deletado com sucesso.')
     await navigateTo(`/workspaces/${wid}/canais`)

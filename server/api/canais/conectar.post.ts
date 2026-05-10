@@ -6,6 +6,7 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 
 type Body = {
   id_canal?: number | string
+  workspace_id?: number | string
 }
 
 /**
@@ -44,12 +45,21 @@ export default defineEventHandler(async (event): Promise<{ qrcode: string | null
     throw createError({ statusCode: 400, statusMessage: 'id_canal inválido.' })
   }
 
+  const rawWs = body.workspace_id
+  if (rawWs === undefined || rawWs === null || rawWs === '') {
+    throw createError({ statusCode: 400, statusMessage: 'Informe workspace_id no body.' })
+  }
+  const workspaceId = typeof rawWs === 'number' ? rawWs : Number.parseInt(String(rawWs), 10)
+  if (!Number.isFinite(workspaceId) || !Number.isInteger(workspaceId) || workspaceId < 1) {
+    throw createError({ statusCode: 400, statusMessage: 'workspace_id inválido.' })
+  }
+
   const isOwner = await checkChannel(event, canalId, userId)
   if (!isOwner) {
     throw createError({ statusCode: 403, statusMessage: 'Você não tem permissão para acessar este canal.' })
   }
 
-  const sub = await checkSubscription(event)
+  const sub = await checkSubscription(event, workspaceId)
   const statusAssinatura = sub.status_assinatura.trim().toLowerCase()
   if (statusAssinatura === 'cancelado' || statusAssinatura === 'pendente') {
     throw createError({

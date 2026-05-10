@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
+import { toast } from 'vue-sonner'
+import type { KanbanColumn as KanbanColumnData } from '#shared/types/kanban'
 import KanbanColumn from './KanbanColumn.vue'
+import ModalNovaColuna from './ModalNovaColuna.vue'
+import ModalAlerta from '~/components/ModalAlerta.vue'
 import { useKanbanStore } from '~/stores/kanban'
 
 type DragState = {
@@ -14,10 +18,23 @@ const props = defineProps<{
 }>()
 
 const kanban = useKanbanStore()
-const { columns } = storeToRefs(kanban)
+const { columns, reorderingColumnId } = storeToRefs(kanban)
 
 const dragging = ref<DragState>(null)
 const dragOverColumnId = ref<string | number | null>(null)
+
+const modalColunaOpen = ref(false)
+const modalColunaMode = ref<'create' | 'edit'>('create')
+const colunaEmEdicao = ref<KanbanColumnData | null>(null)
+
+const modalExcluirColuna = ref(false)
+const colunaParaExcluir = ref<KanbanColumnData | null>(null)
+const excluindoColuna = ref(false)
+
+const textoConfirmarExclusao = computed(() => {
+  const n = colunaParaExcluir.value?.nome?.trim() || 'esta etapa'
+  return `Tem certeza que deseja excluir a etapa "${n}"? Esta ação não pode ser desfeita.`
+})
 
 const gridStyle = computed(() => {
   const n = columns.value.length
@@ -30,6 +47,60 @@ const gridStyle = computed(() => {
 })
 
 const titulo = computed(() => kanban.funilNome?.trim() || 'Kanban')
+
+function abrirNovaColuna() {
+  modalColunaMode.value = 'create'
+  colunaEmEdicao.value = null
+  modalColunaOpen.value = true
+}
+
+function onColumnEdit(col: KanbanColumnData) {
+  modalColunaMode.value = 'edit'
+  colunaEmEdicao.value = col
+  modalColunaOpen.value = true
+}
+
+function onColumnDelete(col: KanbanColumnData) {
+  if (col.cards.length > 0) {
+    toast.warning('Mova os cards para outra etapa antes de excluir.', { duration: 6000 })
+    return
+  }
+  colunaParaExcluir.value = col
+  modalExcluirColuna.value = true
+}
+
+function onColumnReorder(payload: {
+  columnId: number
+  direcao: 'esquerda' | 'direita'
+}) {
+  if (!props.workspaceId) return
+  void kanban.reorderColumnAdjacent({
+    workspaceId: props.workspaceId,
+    colunaId: payload.columnId,
+    direcao: payload.direcao,
+  })
+}
+
+async function confirmarExcluirColuna() {
+  const c = colunaParaExcluir.value
+  if (!c || !props.workspaceId) {
+    modalExcluirColuna.value = false
+    return
+  }
+  excluindoColuna.value = true
+  try {
+    const ok = await kanban.deleteColumn({
+      workspaceId: props.workspaceId,
+      colunaId: c.id,
+    })
+    if (ok) {
+      modalExcluirColuna.value = false
+      colunaParaExcluir.value = null
+    }
+  } finally {
+    excluindoColuna.value = false
+  }
+}
 
 function moveCard(fromColumnId: string, cardId: string, toColumnId: string) {
   if (!fromColumnId || !toColumnId || !cardId) return
@@ -85,10 +156,34 @@ function onDrop(payload: { toColumnId: string | number; raw: string }) {
           Arraste conversas entre as etapas do funil.
         </p>
       </div>
-      <div class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
-        Dica: segure e arraste pelo card
+      <div class="flex items-center justify-end">
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-xl border border-outline/40 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:hover:bg-dark-surface-container"
+          @click="abrirNovaColuna"
+        >
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">add</span>
+          Nova coluna
+        </button>
       </div>
     </div>
+
+    <ModalNovaColuna
+      v-model:open="modalColunaOpen"
+      :workspace-id="workspaceId"
+      :mode="modalColunaMode"
+      :column="colunaEmEdicao"
+    />
+
+    <ModalAlerta
+      v-model:open="modalExcluirColuna"
+      title="Excluir etapa"
+      :texto="textoConfirmarExclusao"
+      variante="perigo"
+      texto-confirmar="Excluir"
+      :confirmar-desabilitado="excluindoColuna"
+      @confirmar="confirmarExcluirColuna"
+    />
 
     <div
       v-if="columns.length > 0"
@@ -96,9 +191,12 @@ function onDrop(payload: { toColumnId: string | number; raw: string }) {
       :style="gridStyle"
     >
       <KanbanColumn
-        v-for="c in columns"
+        v-for="(c, i) in columns"
         :key="c.id"
         :column="c"
+        :pode-mover-esquerda="i > 0"
+        :pode-mover-direita="i < columns.length - 1"
+        :reordenando="reorderingColumnId === c.id"
         :dragging-id="dragging?.cardId ?? null"
         :drag-over-column-id="dragOverColumnId"
         @card-drag-start="onCardDragStart"
@@ -106,6 +204,9 @@ function onDrop(payload: { toColumnId: string | number; raw: string }) {
         @column-drag-over="dragOverColumnId = $event.toColumnId"
         @column-drag-leave="dragOverColumnId = null"
         @column-drop="onDrop"
+        @column-edit="onColumnEdit"
+        @column-delete="onColumnDelete"
+        @column-reorder="onColumnReorder"
       />
     </div>
 

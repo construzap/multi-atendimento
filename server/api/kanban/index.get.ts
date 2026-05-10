@@ -2,20 +2,23 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { createError, getQuery } from 'h3'
 import type { KanbanBoardResponse, KanbanCard, KanbanColumn } from '#shared/types/kanban'
 import { getAuthUserId } from '../../utils/getAuthUserId'
+import { checkWorkspace } from '../../utils/checkWorkspace'
+
+type ConvEmbed = {
+  name: string | null
+  phone: string | null
+  photo: string | null
+  message: string | null
+  updated_at: string | null
+  id_canal: number | null
+}
 
 type StatusRow = {
   conversa_key: string
   coluna_id: number
   prioridade: number | null
-  conversas:
-    | {
-        name: string | null
-        phone: string | null
-        photo: string | null
-        message: string | null
-        updated_at: string | null
-      }
-    | null
+  /** Supabase pode devolver objeto ou array de 1 elemento no join. */
+  conversas: ConvEmbed | ConvEmbed[] | null
 }
 
 /**
@@ -49,24 +52,9 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse> =>
     throw createError({ statusCode: 400, statusMessage: 'workspace_id inválido.' })
   }
 
+  await checkWorkspace(event, workspaceId, userId)
+
   const admin = serverSupabaseServiceRole<any>(event)
-
-  const { data: wsRow, error: wsErr } = await admin
-    .from('workspace')
-    .select('id')
-    .eq('id', workspaceId)
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (wsErr) {
-    throw createError({ statusCode: 500, statusMessage: wsErr.message })
-  }
-  if (!wsRow) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: 'Workspace não encontrado ou sem permissão.',
-    })
-  }
 
   const { data: funil, error: funilErr } = await admin
     .from('funil_workspace')
@@ -110,7 +98,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse> =>
   const { data: statusRows, error: stErr } = await admin
     .from('funil_conversa_status')
     .select(
-      'conversa_key, coluna_id, prioridade, conversas(name, phone, photo, message, updated_at)',
+      'conversa_key, coluna_id, prioridade, conversas(name, phone, photo, message, updated_at, id_canal)',
     )
     .eq('workspace_id', workspaceId)
 
@@ -118,14 +106,71 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse> =>
     throw createError({ statusCode: 500, statusMessage: stErr.message })
   }
 
+  const rows = (statusRows ?? []) as StatusRow[]
+  const canalIds = new Set<number>()
+  for (const row of rows) {
+    const rawConv = row.conversas
+    const conv = Array.isArray(rawConv) ? rawConv[0] ?? null : rawConv
+    const rawId =
+      conv && typeof conv === 'object' && 'id_canal' in conv
+        ? (conv as { id_canal: unknown }).id_canal
+        : null
+    const id =
+      rawId != null && Number.isFinite(Number(rawId))
+        ? Number(rawId)
+        : null
+    if (id != null && id >= 1) {
+      canalIds.add(id)
+    }
+  }
+
+  const nomePorCanalId = new Map<number, string>()
+  if (canalIds.size > 0) {
+    const { data: canaisRows, error: canaisErr } = await admin
+      .from('canais')
+      .select('id, nome')
+      .eq('workspace_id', workspaceId)
+      .is('deleted_at', null)
+      .in('id', [...canalIds])
+
+    if (canaisErr) {
+      throw createError({ statusCode: 500, statusMessage: canaisErr.message })
+    }
+
+    for (const r of canaisRows ?? []) {
+      const id = typeof r.id === 'number' ? r.id : Number(r.id)
+      if (!Number.isFinite(id)) continue
+      const nome =
+        typeof r.nome === 'string' && r.nome.trim()
+          ? r.nome.trim()
+          : null
+      if (nome) {
+        nomePorCanalId.set(id, nome)
+      }
+    }
+  }
+
   const byColId = new Map<number, KanbanCard[]>()
   for (const c of colunas) {
     byColId.set(c.id, [])
   }
 
-  for (const row of (statusRows ?? []) as StatusRow[]) {
+  for (const row of rows) {
     const rawConv = row.conversas
     const conv = Array.isArray(rawConv) ? rawConv[0] ?? null : rawConv
+    const rawCanalId =
+      conv && typeof conv === 'object' && 'id_canal' in conv
+        ? (conv as { id_canal: unknown }).id_canal
+        : null
+    const idCanal =
+      rawCanalId != null && Number.isFinite(Number(rawCanalId))
+        ? Number(rawCanalId)
+        : null
+    const canalNome =
+      idCanal != null && nomePorCanalId.has(idCanal)
+        ? nomePorCanalId.get(idCanal) ?? null
+        : null
+
     const card: KanbanCard = {
       conversa_key: row.conversa_key,
       coluna_id: row.coluna_id,
@@ -138,6 +183,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse> =>
       photo: conv && typeof conv === 'object' && 'photo' in conv ? (conv as { photo: string | null }).photo : null,
       preview: conv && typeof conv === 'object' && 'message' in conv ? (conv as { message: string | null }).message : null,
       updated_at: conv && typeof conv === 'object' && 'updated_at' in conv ? (conv as { updated_at: string | null }).updated_at : null,
+      canal_nome: canalNome,
     }
 
     const list = byColId.get(row.coluna_id)

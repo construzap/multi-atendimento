@@ -18,6 +18,7 @@ let recordMime: string | null = null
 const conversasStore = useConversasStore()
 const canaisStore = useCanaisStore()
 const mensagensStore = useMensagensStore()
+const workspacesStore = useWorkspacesStore()
 const { conversaAtual, items } = storeToRefs(conversasStore)
 
 const fileInputImage = ref<HTMLInputElement | null>(null)
@@ -92,6 +93,7 @@ function enviarMensagem() {
     method: 'POST',
     body: {
       id_canal: idCanal,
+      workspace_id: workspacesStore.currentWorkspaceId,
       ...(telefone ? { telefone } : {}),
       ...(lid ? { lid } : {}),
       conteudo: t,
@@ -161,6 +163,7 @@ async function enviarMidia(kind: 'image' | 'video' | 'document', file: File) {
       method: 'POST',
       body: {
         id_canal: idCanal,
+        workspace_id: workspacesStore.currentWorkspaceId,
         ...(telefone ? { telefone } : {}),
         ...(lid ? { lid } : {}),
         conteudo: caption,
@@ -326,6 +329,7 @@ async function sendRecordedAudio() {
       method: 'POST',
       body: {
         id_canal: idCanal,
+        workspace_id: workspacesStore.currentWorkspaceId,
         ...(telefone ? { telefone } : {}),
         ...(lid ? { lid } : {}),
         conteudo: '',

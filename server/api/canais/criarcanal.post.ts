@@ -2,6 +2,7 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { createError, readBody } from 'h3'
 import { checkSubscription } from '../../utils/checkSubscription'
 import { getAuthUserId } from '../../utils/getAuthUserId'
+import { checkWorkspace } from '../../utils/checkWorkspace'
 import { initUazapiInstance } from '../../utils/uazapi'
 
 type CreateCanalBody = {
@@ -79,7 +80,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const sub = await checkSubscription(event)
+  const sub = await checkSubscription(event, workspaceId)
   const statusAssinatura = sub.status_assinatura.trim().toLowerCase()
 
   if (statusAssinatura === 'pendente' || statusAssinatura === 'cancelado') {
@@ -118,29 +119,7 @@ export default defineEventHandler(async (event) => {
   // Tipos do DB ainda não configurados (Database = unknown), então usamos any aqui.
   const admin = serverSupabaseServiceRole<any>(event)
 
-  const { data: wsRow, error: wsError } = await admin
-    .from('workspace')
-    .select('id')
-    .eq('id', workspaceId)
-    .eq('user_id', userId)
-    .is('deleted_by', null)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (wsError) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: wsError.message
-    })
-  }
-
-  if (!wsRow) {
-    throw createError({
-      statusCode: 403,
-      statusMessage:
-        'Workspace não encontrado, não pertence ao seu usuário ou foi removido.'
-    })
-  }
+  await checkWorkspace(event, workspaceId, userId)
 
   const { data, error } = await admin
     .from('canais')

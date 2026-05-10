@@ -17,6 +17,7 @@ function uazapiTimestampToMs(raw: unknown): number {
 
 type Body = {
   id_canal?: number | string
+  workspace_id?: number | string
   /** DDI+DDD+número ou já com `@s.whatsapp.net`. */
   telefone?: string
   /** JID do contato, ex.: `…@lid`. Se vier só dígitos, acrescenta `@lid`. */
@@ -169,6 +170,15 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'id_canal inválido.' })
   }
 
+  const rawWs = body.workspace_id
+  if (rawWs === undefined || rawWs === null || rawWs === '') {
+    throw createError({ statusCode: 400, statusMessage: 'Informe workspace_id no body.' })
+  }
+  const workspaceId = typeof rawWs === 'number' ? rawWs : Number.parseInt(String(rawWs), 10)
+  if (!Number.isFinite(workspaceId) || !Number.isInteger(workspaceId) || workspaceId < 1) {
+    throw createError({ statusCode: 400, statusMessage: 'workspace_id inválido.' })
+  }
+
   const telefoneRaw =
     typeof body.telefone === 'string' ? body.telefone.trim() : String(body.telefone ?? '').trim()
   const lidBodyRaw = typeof body.lid === 'string' ? body.lid.trim() : String(body.lid ?? '').trim()
@@ -194,7 +204,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 403, statusMessage: 'Você não tem permissão para acessar este canal.' })
   }
 
-  const sub = await checkSubscription(event)
+  const sub = await checkSubscription(event, workspaceId)
   const statusAssinatura = normalizeStatus(sub.status_assinatura)
   if (statusAssinatura === 'cancelado' || statusAssinatura === 'pendente') {
     throw createError({

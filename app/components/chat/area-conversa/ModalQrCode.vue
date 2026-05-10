@@ -12,6 +12,7 @@ const emit = defineEmits<{
 }>()
 
 const canaisStore = useCanaisStore()
+const workspacesStore = useWorkspacesStore()
 
 const qrcode = ref<string | null>(null)
 const loading = ref(false)
@@ -71,7 +72,7 @@ async function buscarQrCode() {
   try {
     const res = await $fetch<{ qrcode: string | null; status: string | null }>('/api/canais/conectar', {
       method: 'POST',
-      body: { id_canal: id }
+      body: { id_canal: id, workspace_id: workspacesStore.currentWorkspaceId }
     })
     qrcode.value = res.qrcode ?? null
     if (qrcode.value) iniciarTimer()

@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
-import type { Contato } from '#shared/types/contato'
-import type { ContatosListResponse } from '#shared/types/contato'
+import type { Contato, ContatosListResponse } from '#shared/types/contato'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseButton from '~/components/BaseButton.vue'
 import ContatosTabela from '~/components/contatos/ContatosTabela.vue'
@@ -14,8 +12,6 @@ definePageMeta({
 })
 
 const route = useRoute()
-const canaisStore = useCanaisStore()
-const { items: canaisItems } = storeToRefs(canaisStore)
 
 function parsePositiveInt(raw: unknown): number | null {
   const s = String(raw ?? '').trim()
@@ -49,21 +45,9 @@ async function fetchContatos() {
   pending.value = true
   error.value = null
   try {
-    if (!canaisItems.value.length) {
-      await canaisStore.fetchCanais(wid).catch(() => {
-        /* erro tratado abaixo */
-      })
-    }
-
-    const ids = (canaisItems.value ?? []).map((c) => c.id).filter((n) => typeof n === 'number')
-    if (!ids.length) {
-      all.value = []
-      return
-    }
-
     const res = await $fetch<ContatosListResponse>('/api/contatos', {
       method: 'GET',
-      query: { canais: ids.join(',') },
+      query: { workspace_id: wid },
     })
     all.value = res.data ?? []
   } catch (err: unknown) {

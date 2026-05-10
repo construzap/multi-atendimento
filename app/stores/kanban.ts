@@ -20,6 +20,8 @@ export const useKanbanStore = defineStore('kanban', {
     workspaceIdLoaded: null as number | null,
     /** Evita double-submit por conversa_key durante drag. */
     movingKeys: {} as Record<string, boolean>,
+    /** Durante POST de reordenar colunas (vizinho). */
+    reorderingColumnId: null as number | null,
   }),
   actions: {
     async fetchBoard(workspaceId: number) {
@@ -111,6 +113,110 @@ export const useKanbanStore = defineStore('kanban', {
       }
     },
 
+    /**
+     * Cria coluna em `funil_workspace_colunas` (ordem calculada no servidor).
+     * Usa `funilId` carregado pelo último `fetchBoard`.
+     */
+    /** Retorna `true` se criou e recarregou o board com sucesso. */
+    async createColumn(payload: { workspaceId: number; nome: string; cor: string | null }): Promise<boolean> {
+      const fid = this.funilId
+      if (!fid || fid < 1) {
+        toast.error('Não há funil neste workspace.', { duration: 6000 })
+        return false
+      }
+      if (!payload.workspaceId) return false
+
+      try {
+        await $fetch('/api/kanban/coluna', {
+          method: 'POST',
+          body: {
+            workspace_id: payload.workspaceId,
+            funil_id: fid,
+            nome: payload.nome.trim(),
+            cor: payload.cor?.trim() || null,
+          },
+        })
+        await this.fetchBoard(payload.workspaceId)
+        return true
+      } catch (err: unknown) {
+        const msg = mensagemErroFetch(err, 'Não foi possível criar a coluna.')
+        toast.error(msg, { duration: 8000 })
+        return false
+      }
+    },
+
+    async updateColumn(payload: {
+      workspaceId: number
+      colunaId: number
+      nome: string
+      cor: string | null
+    }): Promise<boolean> {
+      if (!payload.workspaceId || !payload.colunaId) return false
+      try {
+        await $fetch('/api/kanban/coluna', {
+          method: 'PATCH',
+          body: {
+            workspace_id: payload.workspaceId,
+            coluna_id: payload.colunaId,
+            nome: payload.nome.trim(),
+            cor: payload.cor?.trim() || null,
+          },
+        })
+        await this.fetchBoard(payload.workspaceId)
+        return true
+      } catch (err: unknown) {
+        const msg = mensagemErroFetch(err, 'Não foi possível atualizar a coluna.')
+        toast.error(msg, { duration: 8000 })
+        return false
+      }
+    },
+
+    async reorderColumnAdjacent(payload: {
+      workspaceId: number
+      colunaId: number
+      direcao: 'esquerda' | 'direita'
+    }): Promise<boolean> {
+      if (!payload.workspaceId || !payload.colunaId) return false
+      if (this.reorderingColumnId != null) return false
+
+      this.reorderingColumnId = payload.colunaId
+      try {
+        await $fetch('/api/kanban/coluna/reordenar', {
+          method: 'POST',
+          body: {
+            workspace_id: payload.workspaceId,
+            coluna_id: payload.colunaId,
+            direcao: payload.direcao,
+          },
+        })
+        await this.fetchBoard(payload.workspaceId)
+        return true
+      } catch (err: unknown) {
+        const msg = mensagemErroFetch(err, 'Não foi possível reordenar a coluna.')
+        toast.error(msg, { duration: 8000 })
+        return false
+      } finally {
+        this.reorderingColumnId = null
+      }
+    },
+
+    async deleteColumn(payload: { workspaceId: number; colunaId: number }): Promise<boolean> {
+      if (!payload.workspaceId || !payload.colunaId) return false
+      try {
+        await $fetch(
+          `/api/kanban/coluna?workspace_id=${payload.workspaceId}&coluna_id=${payload.colunaId}`,
+          { method: 'DELETE' },
+        )
+        await this.fetchBoard(payload.workspaceId)
+        toast.success('Coluna excluída.')
+        return true
+      } catch (err: unknown) {
+        const msg = mensagemErroFetch(err, 'Não foi possível excluir a coluna.')
+        toast.error(msg, { duration: 8000 })
+        return false
+      }
+    },
+
     reset() {
       this.funilId = null
       this.funilNome = ''
@@ -120,6 +226,7 @@ export const useKanbanStore = defineStore('kanban', {
       this.loadedAt = null
       this.workspaceIdLoaded = null
       this.movingKeys = {}
+      this.reorderingColumnId = null
     },
   },
 })

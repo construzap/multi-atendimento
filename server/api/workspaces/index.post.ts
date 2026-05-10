@@ -13,7 +13,8 @@ type CreateWorkspaceBody = {
  * Cria um workspace para o usuário logado.
  *
  * - Recebe: nome, descricao
- * - Salva: user_id do auth
+ * - Salva: user_id do auth em `workspace`
+ * - Insere em `atendentes`: mesmo usuário como admin e atendente do workspace
  * - Escrita via service role (tabela com RLS)
  */
 export default defineEventHandler(async (event): Promise<Workspace> => {
@@ -80,6 +81,16 @@ export default defineEventHandler(async (event): Promise<Workspace> => {
       : null
 
   if (workspaceId != null) {
+    const { error: atendenteErr } = await admin.from('atendentes').insert({
+      workspace_id: workspaceId,
+      admin_user_id: userId,
+      atendente_user_id: userId,
+    })
+
+    if (atendenteErr) {
+      throw createError({ statusCode: 500, statusMessage: atendenteErr.message })
+    }
+
     const { data: funilRow, error: funilErr } = await admin
       .from('funil_workspace')
       .upsert(
