@@ -20,6 +20,8 @@ export default defineNuxtConfig({
     b2KeyId: '',
     b2AppKey: '',
     b2BucketName: '',
+    /** Bucket B2 para mídia de agendamento (default no código: multiatendimentoconstruzap). */
+    b2AgendamentoBucketName: '',
 
     // --- Pusher — só servidor (override: NUXT_PUSHER_SECRET) ---
     pusherSecret: '',

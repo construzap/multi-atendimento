@@ -1,4 +1,23 @@
 /**
+ * Garante DDI `55` quando o usuário digita só DDD + número (10 ou 11 dígitos),
+ * depois aplica `normalizeWhatsappBr` (9º dígito).
+ *
+ * - `(11) 99999-0001` → `5511999990001` → regra do 9º dígito se aplicável.
+ * - Já com `55…` mantém e só normaliza.
+ * - Outros formatos (só dígitos): repassa para `normalizeWhatsappBr` sem prefixar.
+ */
+export function normalizeTelefoneBrParaEnvio(input: string): string {
+  let digits = String(input ?? '').replace(/\D/g, '')
+  if (!digits) return ''
+
+  if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
+    digits = `55${digits}`
+  }
+
+  return normalizeWhatsappBr(digits)
+}
+
+/**
  * Normaliza números do WhatsApp (BR) para o caso do "9º dígito".
  *
  * Regra pedida:

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-type ButtonVariant = 'primary' | 'secondary'
+type ButtonVariant = 'primary' | 'secondary' | 'info' | 'success'
 type ButtonSize = 'md' | 'sm'
 
 const props = withDefaults(
@@ -44,6 +44,22 @@ const variantClass = computed(() => {
       'hover:bg-surface-container-high hover:text-on-surface hover:shadow-md',
       'dark:border-dark-outline/50 dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface',
       'disabled:hover:bg-transparent dark:disabled:hover:bg-transparent'
+    ].join(' ')
+  }
+
+  if (props.variant === 'info') {
+    return [
+      'bg-info text-info-on shadow-sm',
+      'hover:brightness-110 hover:shadow-md',
+      'dark:bg-dark-info-container dark:text-dark-on-info dark:hover:brightness-110'
+    ].join(' ')
+  }
+
+  if (props.variant === 'success') {
+    return [
+      'bg-success text-success-on shadow-sm',
+      'hover:brightness-110 hover:shadow-md',
+      'dark:bg-dark-success dark:text-dark-on-success dark:hover:brightness-110'
     ].join(' ')
   }
 

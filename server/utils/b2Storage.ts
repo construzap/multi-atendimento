@@ -46,6 +46,12 @@ export function mimeToExt(mimetype: string): string {
     'audio/mpeg': '.mp3',
     'audio/mp3': '.mp3',
     'audio/ogg': '.ogg',
+    'audio/webm': '.webm',
+    'audio/wav': '.wav',
+    'audio/x-wav': '.wav',
+    'audio/mp4': '.m4a',
+    'audio/aac': '.aac',
+    'audio/flac': '.flac',
     'application/pdf': '.pdf',
     'text/plain': '.txt',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
@@ -62,11 +68,13 @@ export async function uploadToB2(
   buffer: Buffer,
   key: string,
   mimeType: string,
+  /** Se informado, envia para este bucket em vez de `NUXT_B2_BUCKET_NAME`. */
+  bucketOverride?: string,
 ): Promise<string> {
   const config = useRuntimeConfig()
-  const bucket = String(config.b2BucketName ?? '').trim()
+  const bucket = String((bucketOverride ?? config.b2BucketName) ?? '').trim()
   if (!bucket) {
-    throw new Error('NUXT_B2_BUCKET_NAME não configurado.')
+    throw new Error('Bucket B2 não configurado (NUXT_B2_BUCKET_NAME ou override).')
   }
 
   const client = getB2Client()

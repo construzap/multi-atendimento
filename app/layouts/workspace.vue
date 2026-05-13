@@ -8,7 +8,16 @@ const mobileSidebarOpen = ref(false)
 type NavItem = {
   label: string
   to: string
-  icon: 'dashboard' | 'chat' | 'contato' | 'canais' | 'atendentes' | 'configuracoes'
+  icon:
+    | 'dashboard'
+    | 'chat'
+    | 'contato'
+    | 'canais'
+    | 'produtos'
+    | 'atendentes'
+    | 'frete'
+    | 'agendamento'
+    | 'configuracoes'
 }
 
 const route = useRoute()
@@ -22,7 +31,10 @@ const items = computed<NavItem[]>(() => [
   { label: 'Chat', to: `${base.value}/chat`, icon: 'chat' },
   { label: 'Contato', to: `${base.value}/contato`, icon: 'contato' },
   { label: 'Canais', to: `${base.value}/canais`, icon: 'canais' },
+  { label: 'Produtos', to: `${base.value}/produtos`, icon: 'produtos' },
   { label: 'Atendentes', to: `${base.value}/atendentes`, icon: 'atendentes' },
+  { label: 'Frete', to: `${base.value}/frete`, icon: 'frete' },
+  { label: 'Agendamento de mensagens', to: `${base.value}/agendamento-mensagens`, icon: 'agendamento' },
   { label: 'Configurações', to: `${base.value}/configuracoes`, icon: 'configuracoes' }
 ])
 
@@ -125,12 +137,28 @@ function closeMobileSidebar() {
               <svg v-else-if="it.icon === 'canais'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" />
               </svg>
+              <svg v-else-if="it.icon === 'produtos'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round" />
+                <path d="M3.27 6.96 12 12.01 20.73 6.96M12 22.08V12" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
               <svg v-else-if="it.icon === 'atendentes'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                 <circle cx="9" cy="7" r="4" />
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke-linecap="round" />
               </svg>
-              <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg v-else-if="it.icon === 'frete'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 18V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h1" />
+                <path d="M15 18H9" />
+                <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
+                <circle cx="17" cy="18" r="2" />
+                <circle cx="7" cy="18" r="2" />
+              </svg>
+              <svg v-else-if="it.icon === 'agendamento'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <path d="M16 2v4M8 2v4M3 10h18" />
+                <path d="M12 14v3M10.5 15.5h3" />
+              </svg>
+              <svg v-else-if="it.icon === 'configuracoes'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
                 <circle cx="12" cy="12" r="4" />
               </svg>
@@ -235,12 +263,28 @@ function closeMobileSidebar() {
             <svg v-else-if="it.icon === 'canais'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round" />
             </svg>
+            <svg v-else-if="it.icon === 'produtos'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round" />
+              <path d="M3.27 6.96 12 12.01 20.73 6.96M12 22.08V12" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
             <svg v-else-if="it.icon === 'atendentes'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
               <circle cx="9" cy="7" r="4" />
               <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke-linecap="round" />
             </svg>
-            <svg v-else class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg v-else-if="it.icon === 'frete'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 18V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h1" />
+              <path d="M15 18H9" />
+              <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
+              <circle cx="17" cy="18" r="2" />
+              <circle cx="7" cy="18" r="2" />
+            </svg>
+            <svg v-else-if="it.icon === 'agendamento'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" />
+              <path d="M16 2v4M8 2v4M3 10h18" />
+              <path d="M12 14v3M10.5 15.5h3" />
+            </svg>
+            <svg v-else-if="it.icon === 'configuracoes'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
               <circle cx="12" cy="12" r="4" />
             </svg>

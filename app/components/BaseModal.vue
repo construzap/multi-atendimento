@@ -9,11 +9,17 @@ const props = withDefaults(
     showClose?: boolean
     /** largura do painel (Tailwind) */
     panelClass?: string
+    /** fechar ao clicar fora do painel */
+    closeOnBackdrop?: boolean
+    /** fechar com Escape */
+    closeOnEscape?: boolean
   }>(),
   {
     showClose: true,
-    panelClass: 'w-full max-w-lg'
-  }
+    panelClass: 'w-full max-w-lg',
+    closeOnBackdrop: true,
+    closeOnEscape: true,
+  },
 )
 
 const emit = defineEmits<{
@@ -26,8 +32,12 @@ function close() {
   emit('close')
 }
 
+function onBackdropClick() {
+  if (props.closeOnBackdrop) close()
+}
+
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape') close()
+  if (e.key === 'Escape' && props.closeOnEscape) close()
 }
 
 watch(
@@ -62,7 +72,7 @@ onUnmounted(() => {
         role="dialog"
         aria-modal="true"
         :aria-label="title"
-        @click.self="close"
+        @click.self="onBackdropClick"
       >
         <Transition
           enter-active-class="transition duration-200 ease-out"
