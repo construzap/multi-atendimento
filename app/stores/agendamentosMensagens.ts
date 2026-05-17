@@ -35,6 +35,8 @@ type AgendamentosMensagensState = {
   porMes: Record<string, AgendamentoDiaItem[]>
   loadingMes: Record<string, boolean>
   erroMes: Record<string, string | null>
+  /** Agendamento em edição (modal); `null` quando fechado ou modo criar. */
+  agendamentoSelecionado: AgendamentoDiaItem | null
 }
 
 export const useAgendamentosMensagensStore = defineStore('agendamentosMensagens', {
@@ -42,6 +44,7 @@ export const useAgendamentosMensagensStore = defineStore('agendamentosMensagens'
     porMes: {},
     loadingMes: {},
     erroMes: {},
+    agendamentoSelecionado: null,
   }),
 
   getters: {
@@ -70,6 +73,15 @@ export const useAgendamentosMensagensStore = defineStore('agendamentosMensagens'
       delete this.porMes[key]
       delete this.loadingMes[key]
       delete this.erroMes[key]
+    },
+
+    /** Cópia superficial — evita o modal mutar o objeto da lista em cache. */
+    setAgendamentoSelecionado(item: AgendamentoDiaItem | null) {
+      this.agendamentoSelecionado = item ? { ...item } : null
+    },
+
+    limparAgendamentoSelecionado() {
+      this.agendamentoSelecionado = null
     },
 
     /**

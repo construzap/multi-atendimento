@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type {
   AgendamentoMensagemAtualizarBody,
@@ -19,6 +20,7 @@ import type {
 } from '~/components/agendamento-de-mensagem/types'
 import { useWorkspacesStore } from '~/stores/workspaces'
 import { useCanaisStore } from '~/stores/canais'
+import { useAgendamentosMensagensStore } from '~/stores/agendamentosMensagens'
 import { OPCOES_FUSO_BRASIL, defaultFusoDoNavegador, isIanaFusoBrasilPermitido } from '#shared/constants/ianaTimezonesBrasil'
 import { dataHoraLocalEmFuso, parseDataHoraLocalBrasilParaUtcIso } from '#shared/utils/agendamentoDataUtc'
 import { normalizeTelefoneBrParaEnvio } from '#shared/utils/normalizeWhatsappBr'
@@ -32,15 +34,12 @@ const props = withDefaults(
     tituloModal?: string
     /** Pré-preenche data (yyyy-mm-dd) ao abrir */
     prefillDate?: string | null
-    /** Modo edição: exibe dados iniciais (somente UI) */
-    editItem?: AgendamentoDiaItem | null
     /** Lista estática para demonstrar a aba “Contatos” sem backend */
     contatosDemonstracao?: ContatoDestinoUi[]
   }>(),
   {
     tituloModal: 'Criar agendamento',
     prefillDate: null,
-    editItem: null,
     contatosDemonstracao: () => [
       { id: 1, nomecliente: 'Maria Silva', telefone: '+55 11 99999-0001' },
       { id: 2, nomecliente: 'João Souza', telefone: '+55 21 98888-1234' },
@@ -60,6 +59,8 @@ const emit = defineEmits<{
 
 const workspacesStore = useWorkspacesStore()
 const canaisStore = useCanaisStore()
+const agendamentosMensagensStore = useAgendamentosMensagensStore()
+const { agendamentoSelecionado } = storeToRefs(agendamentosMensagensStore)
 const route = useRoute()
 const submitPending = ref(false)
 
@@ -272,37 +273,50 @@ function resetFormularioVazio() {
   idCanalSelecionado.value = null
 }
 
+function intervaloDbParaRecorrenciaUi(
+  intervalo: string | null | undefined,
+  rec: boolean | null | undefined,
+): { repetir: boolean; freq: Exclude<AgendamentoRecorrenciaUi, 'unico'> } {
+  if (rec !== true) return { repetir: false, freq: 'semanal' }
+  const s = String(intervalo ?? '').trim().toLowerCase()
+  if (s.includes('year')) return { repetir: true, freq: 'anual' }
+  if (s.includes('mon')) return { repetir: true, freq: 'mensal' }
+  if (s.includes('week') || (s.includes('7') && s.includes('day'))) return { repetir: true, freq: 'semanal' }
+  if (s.includes('day')) return { repetir: true, freq: 'diaria' }
+  return { repetir: true, freq: 'semanal' }
+}
+
 watch(
-  () => props.open,
-  async (isOpen) => {
+  () => [props.open, agendamentoSelecionado.value] as const,
+  async ([isOpen, item]) => {
     if (!isOpen) {
       abortarMidiaTemporariaNavegador()
       return
     }
     const wid = workspaceIdAtual()
 
-    if (!props.editItem) {
+    if (!item) {
       resetFormularioVazio()
     }
     if (props.prefillDate) {
       dataCampo.value = props.prefillDate
     }
-    if (props.editItem) {
+    if (item) {
       encerrarSomenteGravadorMicrofone()
-      const tzRaw = props.editItem.iana_timezone?.trim() ?? ''
+      const tzRaw = item.iana_timezone?.trim() ?? ''
       ianaTimezone.value = isIanaFusoBrasilPermitido(tzRaw) ? tzRaw : defaultFusoDoNavegador()
-      const partes = dataHoraLocalEmFuso(props.editItem.data_agendada, ianaTimezone.value)
+      const partes = dataHoraLocalEmFuso(item.data_agendada, ianaTimezone.value)
       if (partes) {
         dataCampo.value = partes.data
         horaCampo.value = partes.hora
       } else {
-        const d = new Date(props.editItem.data_agendada)
+        const d = new Date(item.data_agendada)
         dataCampo.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         horaCampo.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
       }
-      const t = (props.editItem.mensagem_type ?? 'texto').trim()
+      const t = (item.mensagem_type ?? 'texto').trim()
       tipo.value = t === 'imagem' ? 'imagem' : t === 'audio' ? 'audio' : 'texto'
-      const texto = props.editItem.mensagem_texto ?? ''
+      const texto = item.mensagem_texto ?? ''
       const parts = texto.split('\n\n')
       titulo.value = tipo.value === 'texto' ? (parts[0] ?? '') : ''
       mensagem.value = tipo.value === 'texto' ? parts.slice(1).join('\n\n') : texto
@@ -310,26 +324,27 @@ watch(
       audioNome.value = null
       imagemArquivo.value = null
       audioArquivo.value = null
-      if (props.editItem.usuario_empresa_id != null) {
+      if (item.usuario_empresa_id != null) {
         destMode.value = 'contatos'
         contatoSelecionado.value = {
-          id: props.editItem.usuario_empresa_id,
-          nomecliente: props.editItem.nomecliente,
-          telefone: props.editItem.telefone,
+          id: item.usuario_empresa_id,
+          nomecliente: item.nomecliente,
+          telefone: item.telefone,
         }
         manualNome.value = ''
         manualTelefone.value = ''
       } else {
         destMode.value = 'numeros'
         contatoSelecionado.value = null
-        manualNome.value = props.editItem.nomecliente ?? ''
-        manualTelefone.value = props.editItem.telefone ?? ''
+        manualNome.value = item.nomecliente ?? ''
+        manualTelefone.value = item.telefone ?? ''
       }
       gravandoUi.value = false
       elapsedSegundos.value = 0
       limparTimerGravacao()
-      repetirAgendamento.value = false
-      frequenciaRecorrencia.value = 'semanal'
+      const recUi = intervaloDbParaRecorrenciaUi(item.intervalo_recorrencia, item.recorrente)
+      repetirAgendamento.value = recUi.repetir
+      frequenciaRecorrencia.value = recUi.freq
     }
 
     if (wid != null) {
@@ -340,11 +355,11 @@ watch(
       }
       const it = canaisStore.items
       if (
-        props.editItem &&
-        typeof props.editItem.id_canal === 'number' &&
-        it.some((c) => c.id === props.editItem!.id_canal)
+        item &&
+        typeof item.id_canal === 'number' &&
+        it.some((c) => c.id === item.id_canal)
       ) {
-        idCanalSelecionado.value = props.editItem.id_canal
+        idCanalSelecionado.value = item.id_canal
       } else if (it.length > 0) {
         const pref = canaisStore.currentCanalId
         idCanalSelecionado.value =
@@ -510,11 +525,11 @@ function validarAntesDeEnviar(p: CriarAgendamentoPayloadUi): string | null {
   if (gravandoUi.value) return 'Finalize a gravação (pare o microfone) antes de criar o agendamento.'
   if (p.tipo === 'texto' && !p.titulo.trim() && !p.mensagem.trim()) return 'Preencha título ou mensagem.'
   if (p.tipo === 'imagem' && !imagemArquivo.value) {
-    const temMidiaExistente = Boolean(String(props.editItem?.midia_url ?? '').trim())
+    const temMidiaExistente = Boolean(String(agendamentoSelecionado.value?.midia_url ?? '').trim())
     if (!temMidiaExistente) return 'Anexe uma imagem.'
   }
   if (p.tipo === 'audio' && !audioArquivo.value) {
-    const temMidiaExistente = Boolean(String(props.editItem?.midia_url ?? '').trim())
+    const temMidiaExistente = Boolean(String(agendamentoSelecionado.value?.midia_url ?? '').trim())
     if (!temMidiaExistente) return 'Grave um áudio no navegador ou importe um arquivo de áudio.'
   }
   if (!isIanaFusoBrasilPermitido(p.ianaTimezone)) {
@@ -535,7 +550,7 @@ async function salvar() {
     return
   }
 
-  if (props.editItem?.id != null) {
+  if (agendamentoSelecionado.value?.id != null) {
     const wid = workspaceIdAtual()
     if (wid == null) {
       toast.error('Workspace não selecionado. Abra um workspace e tente de novo.')
@@ -561,7 +576,7 @@ async function salvar() {
         })
         midia_url = up.url
       } else if (payload.tipo === 'imagem') {
-        const m = String(props.editItem?.midia_url ?? '').trim()
+        const m = String(agendamentoSelecionado.value?.midia_url ?? '').trim()
         midia_url = m.length > 0 ? m : null
       } else if (payload.tipo === 'audio' && audioArquivo.value) {
         const part = await arquivoParaBase64Payload(audioArquivo.value)
@@ -577,7 +592,7 @@ async function salvar() {
         })
         midia_url = up.url
       } else if (payload.tipo === 'audio') {
-        const m = String(props.editItem?.midia_url ?? '').trim()
+        const m = String(agendamentoSelecionado.value?.midia_url ?? '').trim()
         midia_url = m.length > 0 ? m : null
       }
 
@@ -602,7 +617,7 @@ async function salvar() {
         recorrencia: payload.recorrencia,
       }
 
-      const row = await $fetch<AgendamentoMensagemRow>(`/api/agendamento-de-mensagem/${props.editItem.id}`, {
+      const row = await $fetch<AgendamentoMensagemRow>(`/api/agendamento-de-mensagem/${agendamentoSelecionado.value!.id}`, {
         method: 'PATCH',
         body,
       })
@@ -684,7 +699,7 @@ async function salvar() {
   }
 }
 
-const modalTitulo = () => (props.editItem?.id != null ? 'Editar agendamento' : props.tituloModal)
+const modalTitulo = () => (agendamentoSelecionado.value?.id != null ? 'Editar agendamento' : props.tituloModal)
 </script>
 
 <template>
@@ -1143,11 +1158,11 @@ const modalTitulo = () => (props.editItem?.id != null ? 'Editar agendamento' : p
       </BaseButton>
       <BaseButton variant="primary" :block="false" :disabled="submitPending" @click="salvar()">
         {{
-          submitPending && editItem?.id != null
+          submitPending && agendamentoSelecionado?.id != null
             ? 'Salvando…'
-            : submitPending && editItem?.id == null
+            : submitPending && agendamentoSelecionado?.id == null
               ? 'Criando…'
-              : editItem?.id != null
+              : agendamentoSelecionado?.id != null
                 ? 'Salvar'
                 : 'Criar'
         }}

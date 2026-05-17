@@ -31,7 +31,6 @@ const mesAtual = ref(new Date())
 const busca = ref('')
 const diaSelecionado = ref<number | null>(null)
 const modalAberto = ref(false)
-const editando = ref<AgendamentoDiaItem | null>(null)
 
 const labelMes = computed(() =>
   new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(mesAtual.value),
@@ -136,17 +135,17 @@ function aoClicarDia(day: number) {
 }
 
 function abrirCriar() {
-  editando.value = null
+  agStore.limparAgendamentoSelecionado()
   modalAberto.value = true
 }
 
 function abrirEditar(item: AgendamentoDiaItem) {
-  editando.value = item
+  agStore.setAgendamentoSelecionado(item)
   modalAberto.value = true
 }
 
 function aoCriadoAgendamento(row: AgendamentoMensagemRow) {
-  editando.value = null
+  agStore.limparAgendamentoSelecionado()
   const wid = workspaceId.value
   if (wid == null) return
   const ry = new Date(row.data_agendada).getFullYear()
@@ -160,12 +159,10 @@ function aoCriadoAgendamento(row: AgendamentoMensagemRow) {
 }
 
 function aoAtualizadoAgendamento(row: AgendamentoMensagemRow) {
+  const old = agStore.agendamentoSelecionado
+  agStore.limparAgendamentoSelecionado()
   const wid = workspaceId.value
-  const old = editando.value
-  editando.value = null
   modalAberto.value = false
-
-  if (wid == null) return
 
   if (old) {
     const oy = new Date(old.data_agendada).getFullYear()
@@ -179,7 +176,9 @@ function aoAtualizadoAgendamento(row: AgendamentoMensagemRow) {
 
   const vy = mesAtual.value.getFullYear()
   const vm = mesAtual.value.getMonth() + 1
-  void agStore.carregarMesSeNecessario(wid, vy, vm)
+  if (wid != null) {
+    void agStore.carregarMesSeNecessario(wid, vy, vm)
+  }
 }
 </script>
 
@@ -239,10 +238,9 @@ function aoAtualizadoAgendamento(row: AgendamentoMensagemRow) {
     <CriarAgendamentoModal
       v-model:open="modalAberto"
       :prefill-date="prefillDataIso"
-      :edit-item="editando"
       @criado="aoCriadoAgendamento"
       @atualizado="aoAtualizadoAgendamento"
-      @cancelar="editando = null"
+      @cancelar="agStore.limparAgendamentoSelecionado()"
     />
   </div>
 </template>
