@@ -10,8 +10,6 @@ export type CanalCriado = {
   id: number
   workspace_id: number
   user_id: string
-  token: string | null
-  servidor: string | null
   nome: string | null
   descricao: string | null
   created_at: string

@@ -1,32 +1,54 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type {
   ProdutoAtualizarResponse,
+  ProdutoSelecionadoRef,
+  ProdutoWorkspaceCampos,
   ProdutoWorkspaceItem,
   ProdutoWorkspacePatch,
   ProdutosExcluirResponse,
 } from '#shared/types/produtos'
+import ProdutosModalImagens from '~/components/produtos/ProdutosModalImagens.vue'
+import ProdutosModalNovaVariacao from '~/components/produtos/ProdutosModalNovaVariacao.vue'
+import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
 import { mensagemErroFetch } from '~/stores/canais'
-import ProdutosItemCategoria from '~/components/produtos/ProdutosItemCategoria.vue'
+import { useProdutoCategoriasStore } from '~/stores/produtoCategorias'
+import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
+import { useProdutosStore } from '~/stores/produtos'
 import { parseDecimalPtBr } from '~/utils/mapearLinhasImportacaoProduto'
 
-const LS_LARGURAS = 'produtos-tabela-larguras-colunas-v4'
+const produtosStore = useProdutosStore()
+const { items: itemsPinia } = storeToRefs(produtosStore)
 
-/** `true` para voltar a mostrar a coluna «Imagem» (URL + miniatura). */
-const EXIBIR_COLUNA_IMAGEM = false
+/** Listagem API vem da Pinia; rascunho continua via prop. */
+const itemsExibicao = computed(() =>
+  props.modo === 'rascunho' ? props.items : itemsPinia.value,
+)
+
+const LS_LARGURAS = 'produtos-tabela-larguras-colunas-v6'
 
 const columns = [
   { id: 'sel' as const, label: '' },
-  ...(EXIBIR_COLUNA_IMAGEM ? ([{ id: 'imagem' as const, label: 'Imagem' }] as const) : []),
-  { id: 'produto', label: 'Produto' },
-  { id: 'categoria', label: 'Categoria' },
-  { id: 'unidade', label: 'Unidade de Venda' },
-  { id: 'preco', label: 'Preço a vista' },
-  { id: 'prazo', label: 'Preço a Prazo' },
-  { id: 'peso', label: 'Peso(Kg)' },
-  { id: 'codigo', label: 'Código' },
+  { id: 'produto', label: 'PRODUTO' },
+  { id: 'categoria', label: 'CATEGORIA' },
+  { id: 'termos', label: 'TERMOS PESQUISA' },
+  { id: 'unidade', label: 'UNIDADE DE VENDA' },
+  { id: 'marca', label: 'MARCA' },
+  { id: 'preco_custo', label: 'PREÇO CUSTO' },
+  { id: 'preco', label: 'PREÇO À VISTA' },
+  { id: 'prazo', label: 'PREÇO A PRAZO' },
+  { id: 'preco_promocional', label: 'PREÇO PROMO' },
+  { id: 'peso', label: 'PESO (KG)' },
+  { id: 'largura', label: 'LARG. (CM)' },
+  { id: 'comprimento', label: 'COMP. (CM)' },
+  { id: 'altura', label: 'ALT. (CM)' },
   { id: 'sku', label: 'SKU' },
+  { id: 'codigo_ncm', label: 'NCM' },
+  { id: 'codigo_barras', label: 'CÓDIGO BARRAS' },
+  { id: 'infos', label: 'INFOS RELEVANTES' },
+  { id: 'codigo', label: 'CÓDIGO' },
   { id: 'status', label: 'STATUS' },
 ] as const
 
@@ -34,15 +56,24 @@ type ColId = (typeof columns)[number]['id']
 
 const DEFAULT_WIDTHS: Record<ColId, number> = {
   sel: 52,
-  ...(EXIBIR_COLUNA_IMAGEM ? { imagem: 200 } : {}),
   produto: 320,
-  categoria: 220,
+  categoria: 200,
+  termos: 260,
   unidade: 200,
+  marca: 180,
+  preco_custo: 128,
   preco: 128,
   prazo: 128,
+  preco_promocional: 140,
   peso: 118,
-  codigo: 104,
+  largura: 120,
+  comprimento: 130,
+  altura: 120,
   sku: 132,
+  codigo_ncm: 140,
+  codigo_barras: 160,
+  infos: 320,
+  codigo: 104,
   status: 118,
 } as Record<ColId, number>
 
@@ -72,13 +103,45 @@ const larguraTabelaPx = computed(() =>
 )
 
 const thClass =
-  'relative border border-outline/35 bg-surface-container-high/95 px-4 py-3.5 text-left align-middle font-headline text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant dark:border-dark-outline/40 dark:bg-dark-surface-container-high/90 dark:text-dark-on-surface-variant'
+  'relative bg-zinc-50 px-3 py-2 text-left align-middle text-[11px] font-medium uppercase tracking-wide text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400'
 
-const tdClass =
-  'border border-outline/35 bg-surface-container-lowest px-4 py-3.5 align-middle dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest'
+const tdClass = 'p-0 align-middle bg-transparent'
+
+const celulaInnerClass =
+  'flex min-h-[2.75rem] w-full cursor-text items-center px-3 py-2 transition-colors duration-150 hover:bg-zinc-100/80 focus-within:bg-white dark:hover:bg-zinc-800/50 dark:focus-within:bg-zinc-900'
+
+/** Mesma altura/padding da célula interna (coluna PRODUTO e afins). */
+const celulaLinhaClass =
+  'flex min-h-[2.75rem] w-full items-center transition-colors duration-150 hover:bg-zinc-100/80 focus-within:bg-white dark:hover:bg-zinc-800/50 dark:focus-within:bg-zinc-900'
+
+/** Ícone/miniatura do produto na coluna PRODUTO (estilo Notion). */
+const iconImagemProdutoClass =
+  'relative mr-2.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center overflow-hidden rounded-sm text-zinc-400 transition-colors hover:bg-zinc-200/70 hover:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-zinc-700 dark:hover:text-zinc-300'
+
+const tdSelClass = 'group/check p-0 align-middle'
+const thSelClass =
+  'group/check relative bg-zinc-50 p-0 align-middle dark:bg-zinc-900'
+const checkboxCelulaLabelClass =
+  'flex min-h-[2.75rem] w-full cursor-pointer items-center justify-center px-2 py-2'
+const checkboxCelulaLabelHeaderClass =
+  'flex min-h-[2.75rem] w-full cursor-pointer items-center justify-center px-2 py-2'
+
+/** Visual estilo Notion: oculto até hover da célula; permanece se marcado/indeterminado. */
+const checkboxVisualBaseClass =
+  'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] border transition-all duration-150 ease-out'
+const checkboxVisualOcultoClass =
+  'border-zinc-300/90 bg-white opacity-0 group-hover/check:opacity-100 dark:border-zinc-600 dark:bg-zinc-950'
+const checkboxVisualMarcadoClass =
+  'border-[#2383e2] bg-[#2383e2] opacity-100'
 
 const inpClass =
-  'block w-full min-w-0 rounded-md border border-transparent bg-transparent px-3 py-2.5 text-sm text-on-surface shadow-none transition-colors placeholder:text-outline/45 hover:border-outline/25 focus:border-primary-500 focus:bg-surface-container-low/90 focus:outline-none focus:ring-1 focus:ring-primary-500/30 dark:text-dark-on-surface dark:placeholder:text-dark-outline/45 dark:hover:border-dark-outline/30 dark:focus:bg-dark-surface-container-low/90 dark:focus:border-primary-400'
+  'block w-full min-w-0 border-0 bg-transparent px-0 py-0 text-[13px] font-normal leading-snug text-zinc-700 shadow-none outline-none ring-0 placeholder:text-zinc-400 focus:outline-none focus:ring-0 dark:text-zinc-300 dark:placeholder:text-zinc-500'
+
+const inpClassProduto =
+  'block w-full min-w-0 border-0 bg-transparent px-0 py-0 text-[13px] font-semibold leading-snug text-zinc-900 shadow-none outline-none ring-0 placeholder:text-zinc-400 focus:outline-none focus:ring-0 dark:text-zinc-50 dark:placeholder:text-zinc-500'
+
+const trClassBase =
+  'border-b border-zinc-200 transition-all duration-150 hover:bg-zinc-50 dark:border-zinc-700/70 dark:hover:bg-zinc-800/50 odd:bg-white even:bg-zinc-50/40 dark:odd:bg-zinc-950 dark:even:bg-zinc-900/25'
 
 let resizeState: { colId: ColId; startX: number; startW: number } | null = null
 
@@ -132,14 +195,35 @@ onUnmounted(() => {
 
 const props = withDefaults(
   defineProps<{
-    items: ProdutoWorkspaceItem[]
+    /** Só necessário em `modo="rascunho"`; listagem API usa a Pinia. */
+    items?: ProdutoWorkspaceItem[]
     /** Obrigatório para gravar alterações na API. */
     workspaceId?: number | null
+    /** `api` (padrão): edita e salva via endpoints. `rascunho`: edita localmente e emite `atualizado`. */
+    modo?: 'api' | 'rascunho'
+    /** Page size atual da listagem (para o seletor de linhas). */
+    pageSize?: number
+    /** Mostra seletor de Quer exibir quantos produtos na tabela?. */
+    mostrarLimiteLinhas?: boolean
+    /** Mostra coluna de seleção e ações em massa. */
+    mostrarSelecao?: boolean
+    /** Mostra barra e ação de excluir selecionados (só `modo=api`). */
+    mostrarExclusao?: boolean
+    /** Força render da tabela mesmo sem itens (útil para modais/rascunho). */
+    forcarTabelaVazia?: boolean
     pending?: boolean
     error?: string | null
+    /** Total de produtos (toolbar estilo Notion). */
+    total?: number
   }>(),
   {
     workspaceId: null,
+    modo: 'api',
+    pageSize: 10,
+    mostrarLimiteLinhas: true,
+    mostrarSelecao: true,
+    mostrarExclusao: true,
+    forcarTabelaVazia: false,
     pending: false,
     error: null,
     items: () => [],
@@ -151,17 +235,151 @@ const emit = defineEmits<{
   'erro-salvamento': []
   /** Após exclusão em massa bem-sucedida; o pai deve recarregar a listagem. */
   eliminados: []
+  /** Após criar variação; o pai deve recarregar a listagem. */
+  'variacao-criada': []
+  /** Quando o user muda o tamanho da página (10/50/100/1000). */
+  'page-size-changed': [pageSize: number]
 }>()
 
-const salvandoId = ref<number | null>(null)
 const excluindo = ref(false)
+
+type EstadoCelulaSalvamento = 'pending' | 'error'
+/** `${produtoId}:${campo}` — permite editar outras linhas enquanto uma célula grava. */
+const celulaSalvamento = ref<Record<string, EstadoCelulaSalvamento>>({})
+const celulaErroTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function cellKeySalvamento(produtoId: number, campo: string): string {
+  return `${produtoId}:${campo}`
+}
+
+function estadoCelula(produtoId: number, campo: string): EstadoCelulaSalvamento | null {
+  return celulaSalvamento.value[cellKeySalvamento(produtoId, campo)] ?? null
+}
+
+function marcarCelulas(produtoId: number, campos: string[], estado: EstadoCelulaSalvamento | null) {
+  const next = { ...celulaSalvamento.value }
+  for (const campo of campos) {
+    const k = cellKeySalvamento(produtoId, campo)
+    if (estado == null) delete next[k]
+    else next[k] = estado
+  }
+  celulaSalvamento.value = next
+}
+
+function flashErroCelulas(produtoId: number, campos: string[]) {
+  marcarCelulas(produtoId, campos, 'error')
+  for (const campo of campos) {
+    const k = cellKeySalvamento(produtoId, campo)
+    const prev = celulaErroTimers.get(k)
+    if (prev) clearTimeout(prev)
+    celulaErroTimers.set(
+      k,
+      setTimeout(() => {
+        marcarCelulas(produtoId, [campo], null)
+        celulaErroTimers.delete(k)
+      }, 3500),
+    )
+  }
+}
+
+function classesCelula(produtoId: number, campo: string, base: string): string {
+  const st = estadoCelula(produtoId, campo)
+  if (st === 'error') {
+    return `${base} !bg-red-50/80 ring-1 ring-inset ring-red-400/60 dark:!bg-red-950/35 dark:ring-red-500/50`
+  }
+  if (st === 'pending') return `${base} opacity-60`
+  return base
+}
+
+function classesInput(produtoId: number, campo: string, base: string): string {
+  const st = estadoCelula(produtoId, campo)
+  if (st === 'error') {
+    return `${base} text-red-700 dark:text-red-400`
+  }
+  if (st === 'pending') return `${base} opacity-60`
+  return base
+}
+
+function clonarLinhaParaSalvar(row: ProdutoWorkspaceCampos): ProdutoWorkspaceCampos {
+  return {
+    ...row,
+    termos_pesquisa: [...(row.termos_pesquisa ?? [])],
+    imagens: [...(row.imagens ?? [])],
+  }
+}
+
+function patchOtimista(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch): Record<string, unknown> {
+  const extra: Record<string, unknown> = { ...patch }
+  const wid = props.workspaceId
+  if (wid != null && wid >= 1 && patch.categoria_id !== undefined) {
+    if (patch.categoria_id == null) {
+      extra.categoria_nome = null
+    } else {
+      const cat = useProdutoCategoriasStore()
+        .getListaCompletaCopia(wid)
+        .find((c) => c.id === patch.categoria_id)
+      extra.categoria_nome = cat?.nome ?? row.categoria_nome
+    }
+  }
+  if (wid != null && wid >= 1 && patch.termos_pesquisa_ids !== undefined) {
+    const ids = patch.termos_pesquisa_ids ?? []
+    if (!ids.length) {
+      extra.termos_pesquisa = []
+    } else {
+      const lista = useProdutoTermosPesquisaStore().getListaCompletaCopia(wid)
+      extra.termos_pesquisa = ids
+        .map((id) => lista.find((t) => t.id === id))
+        .filter((t): t is NonNullable<typeof t> => t != null)
+    }
+  }
+  return extra
+}
+
+function emitLinhaLocal(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch = {}) {
+  const extra = patchOtimista(row, patch)
+  const pai = itemsPinia.value.find((p) => p.id === row.id)
+  const isVariacao = row.parent_id != null && row.parent_id > 0
+
+  if (props.modo === 'rascunho') {
+    emit('atualizado', { ...row, ...extra, parent_id: null, tem_variacoes: false, variacoes: [] } as ProdutoWorkspaceItem)
+    return
+  }
+
+  if (isVariacao) {
+    emit('atualizado', {
+      ...row,
+      ...extra,
+      parent_id: row.parent_id!,
+      tem_variacoes: false,
+      variacoes: [],
+    } as unknown as ProdutoWorkspaceItem)
+    return
+  }
+
+  emit('atualizado', {
+    ...row,
+    ...extra,
+    parent_id: null,
+    tem_variacoes: pai?.tem_variacoes ?? false,
+    variacoes: pai?.variacoes ?? [],
+  } as ProdutoWorkspaceItem)
+}
+
+function camposDoPatch(patch: ProdutoWorkspacePatch): string[] {
+  return Object.keys(patch) as string[]
+}
+const modalVariacaoAberto = ref(false)
+const paiVariacaoAlvo = ref<ProdutoWorkspaceItem | null>(null)
+const salvandoVariacao = ref(false)
 /** Ids selecionados (podem abranger várias páginas). */
 const selecionadosIds = ref<number[]>([])
 
-const idsNaPagina = computed(() => props.items.map((r) => r.id))
+const idsNaPagina = computed(() => itemsExibicao.value.map((r) => r.id))
 
 const todosDaPaginaSelecionados = computed(
-  () => props.items.length > 0 && props.items.every((r) => selecionadosIds.value.includes(r.id)),
+  () =>
+    itemsExibicao.value.length > 0 &&
+    itemsExibicao.value.every((r) => selecionadosIds.value.includes(r.id)),
 )
 
 const indeterminadoCabecalhoPagina = computed(() => {
@@ -188,6 +406,7 @@ function alternarSelecionarTodosNaPagina(checked: boolean) {
 }
 
 async function excluirSelecionados() {
+  if (props.modo === 'rascunho') return
   const wid = props.workspaceId
   if (wid == null || wid < 1) return
   const ids = [...new Set(selecionadosIds.value)]
@@ -220,43 +439,221 @@ async function excluirSelecionados() {
 }
 
 function podeGravar(): boolean {
+  if (props.modo === 'rascunho') return true
   const w = props.workspaceId
   return w != null && Number.isFinite(w) && w >= 1
+}
+
+const opcoesPageSize = [10, 50, 100, 1000] as const
+
+/** Altura fixa da área rolável ≈ cabeçalho + 10 linhas (independente do page_size). */
+const ALTURA_CABECALHO_TABELA_PX = 36
+const ALTURA_LINHA_ESTIMADA_PX = 44
+const LINHAS_VIEWPORT_SCROLL = 10
+const alturaMaxScrollTabelaPx =
+  ALTURA_CABECALHO_TABELA_PX + LINHAS_VIEWPORT_SCROLL * ALTURA_LINHA_ESTIMADA_PX
+
+function onMudarPageSize(ev: Event) {
+  const raw = (ev.target as HTMLSelectElement).value
+  const n = Number.parseInt(String(raw), 10)
+  if (!Number.isFinite(n) || n < 1) return
+  emit('page-size-changed', n)
 }
 
 watch(
   () => props.workspaceId,
   () => {
     selecionadosIds.value = []
+    expandedParentIds.value = new Set()
   },
 )
 
-async function gravarPatch(row: ProdutoWorkspaceItem, patch: ProdutoWorkspacePatch) {
-  if (!podeGravar()) return
-  const keys = Object.keys(patch) as (keyof ProdutoWorkspacePatch)[]
-  if (!keys.length) return
-  salvandoId.value = row.id
+watch(
+  itemsExibicao,
+  () => {
+    const idsPais = new Set(itemsExibicao.value.map((p) => p.id))
+    const next = new Set<number>()
+    for (const id of expandedParentIds.value) {
+      if (idsPais.has(id)) next.add(id)
+    }
+    expandedParentIds.value = next
+  },
+)
+
+type LinhaTabelaExibicao = {
+  row: ProdutoWorkspaceCampos
+  tipo: 'pai' | 'variacao'
+  pai?: ProdutoWorkspaceItem
+}
+
+const expandedParentIds = ref<Set<number>>(new Set())
+
+function estaExpandido(parentId: number): boolean {
+  return expandedParentIds.value.has(parentId)
+}
+
+function toggleExpandir(parentId: number) {
+  const next = new Set(expandedParentIds.value)
+  if (next.has(parentId)) next.delete(parentId)
+  else next.add(parentId)
+  expandedParentIds.value = next
+}
+
+function expandirPai(parentId: number) {
+  const next = new Set(expandedParentIds.value)
+  next.add(parentId)
+  expandedParentIds.value = next
+}
+
+function abrirModalNovaVariacao(pai: ProdutoWorkspaceItem) {
+  if (props.modo !== 'api' || rowDesabilitada(pai)) return
+  paiVariacaoAlvo.value = pai
+  modalVariacaoAberto.value = true
+}
+
+async function confirmarNovaVariacao(nome: string) {
+  const pai = paiVariacaoAlvo.value
+  const wid = props.workspaceId
+  if (!pai || wid == null || wid < 1) return
+  salvandoVariacao.value = true
   try {
-    const res = await $fetch<ProdutoAtualizarResponse>('/api/produtos/atualizar', {
-      method: 'PATCH',
-      body: {
-        workspace_id: props.workspaceId,
-        id: row.id,
-        patch,
-      },
+    await produtosStore.criarVariacaoProduto({
+      workspaceId: wid,
+      parentId: pai.id,
+      nome,
     })
-    emit('atualizado', res.data)
+    expandirPai(pai.id)
+    modalVariacaoAberto.value = false
+    paiVariacaoAlvo.value = null
+    emit('variacao-criada')
+    toast.success('Variação criada.')
   } catch (err) {
-    toast.error(mensagemErroFetch(err, 'Não foi possível guardar a alteração.'))
-    emit('erro-salvamento')
+    toast.error(mensagemErroFetch(err, 'Não foi possível criar a variação.'))
   } finally {
-    salvandoId.value = null
+    salvandoVariacao.value = false
   }
+}
+
+function paiTemVariacoesVisiveis(pai: ProdutoWorkspaceItem): boolean {
+  return props.modo === 'api' && pai.tem_variacoes && pai.variacoes.length > 0
+}
+
+function montarRefSelecionado(
+  row: ProdutoWorkspaceCampos,
+  tipo: 'pai' | 'variacao',
+  pai?: ProdutoWorkspaceItem,
+): ProdutoSelecionadoRef {
+  const contexto = props.modo === 'rascunho' ? 'rascunho' : 'lista'
+  return {
+    produtoId: row.id,
+    nome: row.nome,
+    contexto,
+    parentId: tipo === 'variacao' ? (pai?.id ?? row.parent_id ?? null) : null,
+    tipo,
+  }
+}
+
+function abrirGaleriaImagens(
+  row: ProdutoWorkspaceCampos,
+  tipo: 'pai' | 'variacao',
+  pai?: ProdutoWorkspaceItem,
+) {
+  if (rowDesabilitada(row) && props.modo === 'api') return
+  let imagens = [...(row.imagens ?? [])]
+  const legado = row.imagem_url?.trim()
+  if (!imagens.length && legado) {
+    imagens = [{ url: legado, ordem: 0, produto_id: row.id }]
+  }
+  produtosStore.abrirModalImagens({
+    ref: montarRefSelecionado(row, tipo, pai),
+    imagens,
+  })
+}
+
+function contagemImagensLinha(row: ProdutoWorkspaceCampos): number {
+  const n = row.imagens?.length ?? 0
+  if (n > 0) return n
+  return row.imagem_url?.trim() ? 1 : 0
+}
+
+function urlImagemLinha(row: ProdutoWorkspaceCampos): string | null {
+  const daGaleria = produtosStore.urlImagemPrincipal(row.imagens ?? [])
+  if (daGaleria) return daGaleria
+  const u = row.imagem_url?.trim()
+  return u ? u : null
+}
+
+function resumoVariacao(row: ProdutoWorkspaceCampos): string {
+  const sku = row.sku?.trim()
+  const attrs = row.atributos
+  if (attrs && typeof attrs === 'object' && !Array.isArray(attrs)) {
+    const partes = Object.entries(attrs)
+      .filter(([, v]) => v != null && String(v).trim() !== '')
+      .slice(0, 4)
+      .map(([k, v]) => `${k}: ${v}`)
+    if (partes.length) return partes.join(' · ')
+  }
+  return sku ? `SKU: ${sku}` : ''
+}
+
+const linhasExibicao = computed<LinhaTabelaExibicao[]>(() => {
+  const out: LinhaTabelaExibicao[] = []
+  for (const pai of itemsExibicao.value) {
+    out.push({ row: pai, tipo: 'pai', pai })
+    if (paiTemVariacoesVisiveis(pai) && estaExpandido(pai.id)) {
+      for (const v of pai.variacoes) {
+        out.push({ row: v, tipo: 'variacao', pai })
+      }
+    }
+  }
+  return out
+})
+
+function gravarPatch(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch) {
+  if (props.modo === 'rascunho') {
+    emitLinhaLocal(row, patch)
+    return
+  }
+  if (!podeGravar()) return
+  const campos = camposDoPatch(patch)
+  if (!campos.length) return
+
+  const rowAntes = clonarLinhaParaSalvar(row)
+  emitLinhaLocal(row, patch)
+  marcarCelulas(row.id, campos, 'pending')
+
+  void $fetch<ProdutoAtualizarResponse>('/api/produtos/atualizar', {
+    method: 'PATCH',
+    body: {
+      workspace_id: props.workspaceId,
+      id: row.id,
+      patch,
+    },
+  })
+    .then((res) => {
+      emitLinhaLocal(res.data, {})
+      marcarCelulas(row.id, campos, null)
+    })
+    .catch((err: unknown) => {
+      emitLinhaLocal(rowAntes, {})
+      flashErroCelulas(row.id, campos)
+      toast.error(mensagemErroFetch(err, 'Não foi possível guardar a alteração.'), { duration: 5000 })
+    })
 }
 
 function blurEnter(el: Event) {
   const t = el.target as HTMLInputElement | HTMLTextAreaElement
   t.blur()
+}
+
+/** Clicar em qualquer área da célula abre o campo para edição (estilo Notion). */
+function focusarInputCelula(ev: MouseEvent) {
+  const el = ev.currentTarget as HTMLElement
+  const input = el.querySelector('input:not(.sr-only), textarea') as HTMLInputElement | null
+  if (!input || input.disabled) return
+  if (document.activeElement === input) return
+  input.focus()
+  input.select()
 }
 
 function fmtPrecoInput(n: number): string {
@@ -272,7 +669,7 @@ function eqNum(a: number | null | undefined, b: number | null | undefined): bool
   return Math.abs(a - b) < 1e-9
 }
 
-function blurNome(row: ProdutoWorkspaceItem, ev: Event) {
+function blurNome(row: ProdutoWorkspaceCampos, ev: Event) {
   const v = (ev.target as HTMLInputElement).value.trim()
   if (!v) {
     toast.error('O nome não pode ser vazio.')
@@ -282,14 +679,37 @@ function blurNome(row: ProdutoWorkspaceItem, ev: Event) {
   void gravarPatch(row, { nome: v })
 }
 
-function blurUnidade(row: ProdutoWorkspaceItem, ev: Event) {
+function blurUnidade(row: ProdutoWorkspaceCampos, ev: Event) {
   const v = (ev.target as HTMLInputElement).value.trim()
   const atual = (row.unidade_venda ?? '').trim()
   if (v === atual) return
   void gravarPatch(row, { unidade_venda: v.length ? v : null })
 }
 
-function blurPreco(row: ProdutoWorkspaceItem, ev: Event) {
+function blurMarca(row: ProdutoWorkspaceCampos, ev: Event) {
+  const v = (ev.target as HTMLInputElement).value.trim()
+  const atual = (row.marca ?? '').trim()
+  if (v === atual) return
+  void gravarPatch(row, { marca: v.length ? v : null })
+}
+
+function blurEstoque(row: ProdutoWorkspaceCampos, ev: Event) {
+  const raw = (ev.target as HTMLInputElement).value.trim()
+  if (!raw.length) {
+    if (row.estoque == null) return
+    void gravarPatch(row, { estoque: null })
+    return
+  }
+  const n = parseDecimalPtBr(raw)
+  if (n == null || n < 0) {
+    toast.error('Estoque inválido.')
+    return
+  }
+  if (eqNum(n, row.estoque)) return
+  void gravarPatch(row, { estoque: n })
+}
+
+function blurPreco(row: ProdutoWorkspaceCampos, ev: Event) {
   const raw = (ev.target as HTMLInputElement).value.trim()
   const n = raw.length === 0 ? 0 : (parseDecimalPtBr(raw) ?? null)
   if (n == null) {
@@ -304,7 +724,18 @@ function blurPreco(row: ProdutoWorkspaceItem, ev: Event) {
   void gravarPatch(row, { preco: n })
 }
 
-function blurPrecoPrazo(row: ProdutoWorkspaceItem, ev: Event) {
+function blurPrecoCusto(row: ProdutoWorkspaceCampos, ev: Event) {
+  const raw = (ev.target as HTMLInputElement).value.trim()
+  const n = raw.length === 0 ? 0 : (parseDecimalPtBr(raw) ?? null)
+  if (n == null || n < 0) {
+    toast.error('Preço de custo inválido.')
+    return
+  }
+  if (eqNum(n, row.preco_custo)) return
+  void gravarPatch(row, { preco_custo: n })
+}
+
+function blurPrecoPrazo(row: ProdutoWorkspaceCampos, ev: Event) {
   const raw = (ev.target as HTMLInputElement).value.trim()
   if (!raw.length) {
     if (row.preco_prazo == null) return
@@ -320,7 +751,23 @@ function blurPrecoPrazo(row: ProdutoWorkspaceItem, ev: Event) {
   void gravarPatch(row, { preco_prazo: n })
 }
 
-function blurPeso(row: ProdutoWorkspaceItem, ev: Event) {
+function blurPrecoPromocional(row: ProdutoWorkspaceCampos, ev: Event) {
+  const raw = (ev.target as HTMLInputElement).value.trim()
+  if (!raw.length) {
+    if (row.preco_promocional == null) return
+    void gravarPatch(row, { preco_promocional: null })
+    return
+  }
+  const n = parseDecimalPtBr(raw)
+  if (n == null || n < 0) {
+    toast.error('Preço promocional inválido.')
+    return
+  }
+  if (eqNum(n, row.preco_promocional)) return
+  void gravarPatch(row, { preco_promocional: n })
+}
+
+function blurPeso(row: ProdutoWorkspaceCampos, ev: Event) {
   const raw = (ev.target as HTMLInputElement).value.trim()
   if (!raw.length) {
     if (row.peso_kg == null) return
@@ -336,7 +783,7 @@ function blurPeso(row: ProdutoWorkspaceItem, ev: Event) {
   void gravarPatch(row, { peso_kg: n })
 }
 
-function blurCodigo(row: ProdutoWorkspaceItem, ev: Event) {
+function blurCodigo(row: ProdutoWorkspaceCampos, ev: Event) {
   const raw = (ev.target as HTMLInputElement).value.trim()
   const n = Number.parseInt(raw, 10)
   if (!Number.isFinite(n) || n < 1) {
@@ -347,42 +794,105 @@ function blurCodigo(row: ProdutoWorkspaceItem, ev: Event) {
   void gravarPatch(row, { codigo: n })
 }
 
-function blurSku(row: ProdutoWorkspaceItem, ev: Event) {
+function blurSku(row: ProdutoWorkspaceCampos, ev: Event) {
   const v = (ev.target as HTMLInputElement).value.trim()
   const atual = (row.sku ?? '').trim()
   if (v === atual) return
   void gravarPatch(row, { sku: v.length ? v : null })
 }
 
-function blurImagem(row: ProdutoWorkspaceItem, ev: Event) {
+function blurCodigoNcm(row: ProdutoWorkspaceCampos, ev: Event) {
   const v = (ev.target as HTMLInputElement).value.trim()
-  const atual = (row.imagem_url ?? '').trim()
+  const atual = (row.codigo_ncm ?? '').trim()
   if (v === atual) return
-  void gravarPatch(row, { imagem_url: v.length ? v : null })
+  void gravarPatch(row, { codigo_ncm: v.length ? v : null })
 }
 
-function alternarStatus(row: ProdutoWorkspaceItem) {
+function blurCodigoBarras(row: ProdutoWorkspaceCampos, ev: Event) {
+  const v = (ev.target as HTMLInputElement).value.trim()
+  const atual = (row.codigo_barras_ean ?? '').trim()
+  if (v === atual) return
+  void gravarPatch(row, { codigo_barras_ean: v.length ? v : null })
+}
+
+function commitCatalogo(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch) {
+  void gravarPatch(row, patch)
+}
+
+function blurDimensao(row: ProdutoWorkspaceCampos, campo: 'largura' | 'altura' | 'comprimento', ev: Event) {
+  const raw = (ev.target as HTMLInputElement).value.trim()
+  const n = raw.length === 0 ? 0 : (parseDecimalPtBr(raw) ?? null)
+  if (n == null || n < 0) {
+    toast.error('Dimensão inválida.')
+    return
+  }
+  const atual = row[campo]
+  if (eqNum(n, atual)) return
+  void gravarPatch(row, { [campo]: n } as any)
+}
+
+function blurInfos(row: ProdutoWorkspaceCampos, ev: Event) {
+  const v = (ev.target as HTMLInputElement).value.trim()
+  const atual = (row.infos_relevantes ?? '').trim()
+  if (v === atual) return
+  void gravarPatch(row, { infos_relevantes: v.length ? v : null })
+}
+
+function alternarStatus(row: ProdutoWorkspaceCampos) {
   void gravarPatch(row, { status: !row.status })
 }
 
-function rowDesabilitada(row: ProdutoWorkspaceItem): boolean {
-  return !podeGravar() || salvandoId.value === row.id || excluindo.value
+function rowDesabilitada(row: ProdutoWorkspaceCampos): boolean {
+  if (props.modo === 'rascunho') return false
+  return !podeGravar() || excluindo.value
 }
+
+onUnmounted(() => {
+  for (const t of celulaErroTimers.values()) clearTimeout(t)
+  celulaErroTimers.clear()
+})
 </script>
 
 <template>
   <div
-    class="w-full min-w-0 overflow-hidden rounded-xl border border-outline/30 bg-surface-container-lowest shadow-sm dark:border-dark-outline/35 dark:bg-dark-surface-container-lowest"
+    class="w-full min-w-0 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
   >
+    <div
+      v-if="mostrarLimiteLinhas"
+      class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950"
+    >
+      <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+        Produtos
+        <span v-if="total != null && total >= 0" class="font-normal text-zinc-500 dark:text-zinc-400">
+          ({{ total.toLocaleString('pt-BR') }})
+        </span>
+      </p>
+      <div class="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+        <span class="hidden sm:inline">Quer exibir quantos produtos na tabela?</span>
+        <select
+          class="rounded-lg border border-zinc-200 bg-transparent px-2.5 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-50 focus:border-zinc-300 focus:outline-none dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+          :value="pageSize"
+          :disabled="pending"
+          aria-label="Selecionar Quer exibir quantos produtos na tabela?"
+          @change="onMudarPageSize"
+        >
+          <option v-for="n in opcoesPageSize" :key="n" :value="n">{{ n }}</option>
+        </select>
+      </div>
+    </div>
+
     <div v-if="error" class="border-b border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
       {{ error }}
     </div>
 
-    <div v-else-if="!pending && items.length === 0" class="m-6 rounded-xl border border-dashed border-outline/40 py-12 text-center text-sm text-on-surface-variant dark:border-dark-outline/40 dark:text-dark-on-surface-variant">
+    <div
+      v-else-if="!pending && itemsExibicao.length === 0 && !forcarTabelaVazia"
+      class="m-6 rounded-xl border border-dashed border-zinc-200 py-12 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
+    >
       Nenhum produto encontrado.
     </div>
 
-    <div v-else class="w-full min-w-0 max-w-full overflow-x-auto">
+    <div v-else class="w-full min-w-0 max-w-full">
       <p
         v-if="!podeGravar()"
         class="border-b border-amber-200/80 bg-amber-50/90 px-4 py-2.5 text-xs text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100"
@@ -391,10 +901,10 @@ function rowDesabilitada(row: ProdutoWorkspaceItem): boolean {
       </p>
 
       <div
-        v-if="selecionadosIds.length > 0 && podeGravar()"
-        class="flex flex-wrap items-center justify-between gap-3 border-b border-outline/30 bg-primary-500/10 px-4 py-3 dark:border-dark-outline/30 dark:bg-primary-500/15"
+        v-if="mostrarSelecao && mostrarExclusao && modo === 'api' && selecionadosIds.length > 0 && podeGravar()"
+        class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/80"
       >
-        <p class="text-sm font-medium text-on-surface dark:text-dark-on-surface">
+        <p class="text-sm font-medium text-zinc-800 dark:text-zinc-200">
           <strong>{{ selecionadosIds.length }}</strong>
           <template v-if="selecionadosIds.length === 1"> produto selecionado</template>
           <template v-else> produtos selecionados</template>
@@ -410,6 +920,10 @@ function rowDesabilitada(row: ProdutoWorkspaceItem): boolean {
         </button>
       </div>
 
+      <div
+        class="w-full min-w-0 max-w-full overflow-auto"
+        :style="modo === 'api' ? { maxHeight: `${alturaMaxScrollTabelaPx}px` } : undefined"
+      >
       <table
         class="table-fixed border-collapse text-left"
         :style="{ width: larguraTabelaPx + 'px' }"
@@ -417,36 +931,112 @@ function rowDesabilitada(row: ProdutoWorkspaceItem): boolean {
         <colgroup>
           <col v-for="c in columns" :key="'cw-' + c.id" :style="{ width: colWidths[c.id] + 'px' }" />
         </colgroup>
-        <thead>
+        <thead class="sticky top-0 z-30 border-b border-zinc-200 dark:border-zinc-800">
           <tr>
             <th
               v-for="col in columns"
               :key="col.id"
-              :class="[thClass, col.id === 'sel' ? 'px-2 text-center' : '']"
+              :class="[thClass, col.id === 'sel' ? thSelClass : '']"
             >
               <template v-if="col.id === 'sel'">
-                <input
-                  type="checkbox"
-                  class="mx-auto block h-4 w-4 rounded border-outline/50 accent-primary-600 focus:ring-2 focus:ring-primary-500/35 dark:border-dark-outline/55"
-                  :checked="todosDaPaginaSelecionados"
-                  :indeterminate="indeterminadoCabecalhoPagina"
-                  :disabled="pending || !items.length || !podeGravar() || excluindo"
-                  aria-label="Selecionar todos os produtos desta página"
-                  @change="alternarSelecionarTodosNaPagina(($event.target as HTMLInputElement).checked)"
+                <label
+                  :class="[
+                    checkboxCelulaLabelHeaderClass,
+                    !mostrarSelecao || pending || !itemsExibicao.length || !podeGravar() || excluindo
+                      ? 'cursor-not-allowed opacity-40'
+                      : '',
+                  ]"
+                >
+                  <span
+                    :class="[
+                      checkboxVisualBaseClass,
+                      todosDaPaginaSelecionados || indeterminadoCabecalhoPagina
+                        ? checkboxVisualMarcadoClass
+                        : checkboxVisualOcultoClass,
+                    ]"
+                    aria-hidden="true"
+                  >
+                    <svg
+                      v-if="indeterminadoCabecalhoPagina && !todosDaPaginaSelecionados"
+                      class="h-3 w-3 text-white"
+                      viewBox="0 0 12 12"
+                      fill="none"
+                    >
+                      <path
+                        d="M2.5 6h7"
+                        stroke="currentColor"
+                        stroke-width="1.75"
+                        stroke-linecap="round"
+                      />
+                    </svg>
+                    <svg
+                      v-else-if="todosDaPaginaSelecionados"
+                      class="h-3 w-3 text-white"
+                      viewBox="0 0 12 12"
+                      fill="none"
+                    >
+                      <path
+                        d="M2.25 6.25L4.75 8.75L9.75 3.25"
+                        stroke="currentColor"
+                        stroke-width="1.75"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </span>
+                  <input
+                    type="checkbox"
+                    class="sr-only"
+                    :checked="todosDaPaginaSelecionados"
+                    :indeterminate="indeterminadoCabecalhoPagina"
+                    :disabled="!mostrarSelecao || pending || !itemsExibicao.length || !podeGravar() || excluindo"
+                    aria-label="Selecionar todos os produtos desta página"
+                    @change="alternarSelecionarTodosNaPagina(($event.target as HTMLInputElement).checked)"
+                  />
+                </label>
+              </template>
+              <template v-else-if="col.id === 'produto'">
+                <div class="flex min-w-0 items-center gap-1.5 pr-3">
+                  <span
+                    class="material-symbols-outlined shrink-0 text-[15px] text-zinc-400 dark:text-zinc-500"
+                    aria-hidden="true"
+                  >
+                    title
+                  </span>
+                  <span class="min-w-0 truncate leading-snug">{{ col.label }}</span>
+                </div>
+                <span
+                  class="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize select-none hover:bg-zinc-300/50 active:bg-zinc-400/50 dark:hover:bg-zinc-600/50"
+                  role="separator"
+                  :title="'Arrastar para ajustar a coluna «' + col.label + '»'"
+                  aria-hidden="true"
+                  @mousedown="iniciarResize(col.id, $event)"
+                />
+              </template>
+              <template v-else-if="col.id === 'categoria'">
+                <div class="flex min-w-0 items-center gap-1.5 pr-3">
+                  <span
+                    class="material-symbols-outlined shrink-0 text-[15px] text-zinc-400 dark:text-zinc-500"
+                    aria-hidden="true"
+                  >
+                    category
+                  </span>
+                  <span class="min-w-0 truncate leading-snug">{{ col.label }}</span>
+                </div>
+                <span
+                  class="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize select-none hover:bg-zinc-300/50 active:bg-zinc-400/50 dark:hover:bg-zinc-600/50"
+                  role="separator"
+                  :title="'Arrastar para ajustar a coluna «' + col.label + '»'"
+                  aria-hidden="true"
+                  @mousedown="iniciarResize(col.id, $event)"
                 />
               </template>
               <template v-else>
-                <div class="flex min-w-0 items-start gap-1.5 pr-4">
-                  <span
-                    class="material-symbols-outlined mt-0.5 shrink-0 rotate-90 text-[15px] leading-none text-on-surface-variant/45 dark:text-dark-on-surface-variant/45"
-                    aria-hidden="true"
-                  >
-                    drag_indicator
-                  </span>
-                  <span class="min-w-0 leading-snug">{{ col.label }}</span>
+                <div class="flex min-w-0 items-center pr-3">
+                  <span class="min-w-0 truncate leading-snug">{{ col.label }}</span>
                 </div>
                 <span
-                  class="absolute inset-y-0 right-0 z-20 w-3 cursor-col-resize select-none hover:bg-primary-500/25 active:bg-primary-500/35"
+                  class="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize select-none hover:bg-zinc-300/50 active:bg-zinc-400/50 dark:hover:bg-zinc-600/50"
                   role="separator"
                   :title="'Arrastar para ajustar a coluna «' + col.label + '»'"
                   aria-hidden="true"
@@ -458,164 +1048,436 @@ function rowDesabilitada(row: ProdutoWorkspaceItem): boolean {
         </thead>
         <tbody>
           <tr v-if="pending">
-            <td :colspan="columns.length" :class="[tdClass, 'py-10 text-center text-sm text-on-surface-variant dark:text-dark-on-surface-variant']">
+            <td :colspan="columns.length" :class="[tdClass, 'py-12 text-center text-sm text-zinc-500 dark:text-zinc-400']">
               Carregando…
             </td>
           </tr>
           <template v-if="!pending">
             <tr
-              v-for="row in items"
-              :key="row.id"
-              class="bg-surface-container-lowest transition-colors hover:bg-surface-container-low/40 dark:bg-dark-surface-container-lowest dark:hover:bg-dark-surface-container-low/35"
-              :class="{ 'pointer-events-none opacity-50': salvandoId === row.id || excluindo }"
+              v-for="{ row, tipo, pai } in linhasExibicao"
+              :key="tipo + '-' + row.id"
+              :class="[
+                trClassBase,
+                tipo === 'variacao'
+                  ? 'border-l-2 border-l-zinc-300 bg-zinc-50/70 dark:border-l-zinc-600 dark:bg-zinc-900/40'
+                  : '',
+                { 'pointer-events-none opacity-50': excluindo },
+              ]"
             >
-              <td :class="[tdClass, 'px-2 text-center align-middle']">
-                <input
-                  type="checkbox"
-                  class="mx-auto block h-4 w-4 rounded border-outline/50 accent-primary-600 focus:ring-2 focus:ring-primary-500/35 dark:border-dark-outline/55"
-                  :checked="selecionadosIds.includes(row.id)"
-                  :disabled="rowDesabilitada(row)"
-                  :aria-label="'Selecionar produto ' + row.nome"
+              <td :class="tdSelClass">
+                <label
+                  :class="[
+                    checkboxCelulaLabelClass,
+                    !mostrarSelecao || rowDesabilitada(row) ? 'cursor-not-allowed opacity-40' : '',
+                  ]"
                   @click.stop
-                  @change="alternarSelecionado(row.id, ($event.target as HTMLInputElement).checked)"
-                />
-              </td>
-              <td v-if="EXIBIR_COLUNA_IMAGEM" :class="tdClass">
-                <div class="flex flex-col gap-2">
-                  <img
-                    v-if="row.imagem_url"
-                    :src="row.imagem_url"
-                    alt=""
-                    class="h-11 w-11 shrink-0 rounded-md border border-outline/35 object-cover dark:border-dark-outline/40"
-                    loading="lazy"
-                  />
+                >
+                  <span
+                    :class="[
+                      checkboxVisualBaseClass,
+                      selecionadosIds.includes(row.id)
+                        ? checkboxVisualMarcadoClass
+                        : checkboxVisualOcultoClass,
+                    ]"
+                    aria-hidden="true"
+                  >
+                    <svg
+                      v-if="selecionadosIds.includes(row.id)"
+                      class="h-3 w-3 text-white"
+                      viewBox="0 0 12 12"
+                      fill="none"
+                    >
+                      <path
+                        d="M2.25 6.25L4.75 8.75L9.75 3.25"
+                        stroke="currentColor"
+                        stroke-width="1.75"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      />
+                    </svg>
+                  </span>
                   <input
-                    type="url"
-                    autocomplete="off"
-                    :class="inpClass"
-                    :value="row.imagem_url ?? ''"
+                    type="checkbox"
+                    class="sr-only"
+                    :checked="selecionadosIds.includes(row.id)"
+                    :disabled="!mostrarSelecao || rowDesabilitada(row)"
+                    :aria-label="'Selecionar produto ' + row.nome"
+                    @change="alternarSelecionado(row.id, ($event.target as HTMLInputElement).checked)"
+                  />
+                </label>
+              </td>
+              <td :class="tdClass">
+                <div
+                  :class="[celulaLinhaClass, 'group/produto cursor-text gap-0.5 px-1 py-2']"
+                  @click="focusarInputCelula"
+                >
+                  <button
+                    v-if="tipo === 'pai' && pai && paiTemVariacoesVisiveis(pai)"
+                    type="button"
+                    class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-200/80 dark:text-zinc-400 dark:hover:bg-zinc-700"
+                    :aria-expanded="estaExpandido(row.id)"
+                    :aria-label="estaExpandido(row.id) ? 'Recolher variações' : 'Expandir variações'"
+                    @click.stop="toggleExpandir(row.id)"
+                  >
+                    <span class="material-symbols-outlined text-[18px]" aria-hidden="true">
+                      {{ estaExpandido(row.id) ? 'expand_more' : 'chevron_right' }}
+                    </span>
+                  </button>
+                  <span
+                    v-else-if="tipo === 'variacao'"
+                    class="material-symbols-outlined w-6 shrink-0 text-center text-[16px] text-zinc-400 dark:text-zinc-500"
+                    aria-hidden="true"
+                  >
+                    subdirectory_arrow_right
+                  </span>
+                  <span v-else class="w-6 shrink-0" aria-hidden="true" />
+                  <button
+                    type="button"
+                    :class="iconImagemProdutoClass"
                     :disabled="rowDesabilitada(row)"
-                    placeholder="https://…"
-                    @keydown.enter.prevent="blurEnter"
-                    @blur="blurImagem(row, $event)"
+                    :aria-label="'Gerir imagens de ' + row.nome"
+                    :title="contagemImagensLinha(row) === 0 ? 'Adicionar imagem' : contagemImagensLinha(row) + ' foto(s)'"
+                    @click.stop="abrirGaleriaImagens(row, tipo, pai)"
+                  >
+                    <img
+                      v-if="urlImagemLinha(row)"
+                      :src="urlImagemLinha(row)!"
+                      alt=""
+                      class="h-full w-full object-cover"
+                      loading="lazy"
+                    />
+                    <span
+                      v-else
+                      class="material-symbols-outlined text-[16px]"
+                      aria-hidden="true"
+                    >
+                      photo
+                    </span>
+                    <span
+                      v-if="contagemImagensLinha(row) > 1"
+                      class="absolute -bottom-0.5 -right-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-zinc-700 px-0.5 text-[7px] font-bold leading-none text-white dark:bg-zinc-300 dark:text-zinc-900"
+                    >
+                      {{ contagemImagensLinha(row) }}
+                    </span>
+                  </button>
+                  <div class="min-w-0 flex flex-1 items-center gap-1 pr-2">
+                    <div class="min-w-0 flex-1">
+                      <p
+                        v-if="tipo === 'variacao' && resumoVariacao(row)"
+                        class="truncate text-[10px] font-medium leading-tight text-zinc-500 dark:text-zinc-400"
+                      >
+                        {{ resumoVariacao(row) }}
+                      </p>
+                      <input
+                        type="text"
+                        autocomplete="off"
+                        :class="classesInput(row.id, 'nome', tipo === 'pai' ? inpClassProduto : inpClass)"
+                        :value="row.nome"
+                        :disabled="rowDesabilitada(row)"
+                        :title="row.nome"
+                        @keydown.enter.prevent="blurEnter"
+                        @blur="blurNome(row, $event)"
+                      />
+                    </div>
+                    <span
+                      v-if="tipo === 'pai' && pai && paiTemVariacoesVisiveis(pai)"
+                      class="shrink-0 text-[10px] tabular-nums text-zinc-400 dark:text-zinc-500"
+                    >
+                      {{ pai.variacoes.length }}
+                    </span>
+                    <button
+                      v-if="tipo === 'pai' && modo === 'api'"
+                      type="button"
+                      class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-400 opacity-0 transition-all hover:bg-emerald-100/90 hover:text-emerald-700 focus-visible:opacity-100 group-hover/produto:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-500 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-400"
+                      :disabled="rowDesabilitada(row) || salvandoVariacao"
+                      title="Adicionar variação"
+                      aria-label="Adicionar variação de produto"
+                      @click.stop="abrirModalNovaVariacao(pai ?? (row as ProdutoWorkspaceItem))"
+                    >
+                      <span class="material-symbols-outlined text-[18px]" aria-hidden="true">add</span>
+                    </button>
+                  </div>
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'categoria_id', 'min-h-[2.75rem] w-full')">
+                  <ProdutosSelecaoUnica
+                    variant="celula"
+                    :workspace-id="workspaceId"
+                    :produto-id="row.id"
+                    :categoria-id="row.categoria_id"
+                    :categoria-nome="row.categoria_nome"
+                    :disabled="rowDesabilitada(row)"
+                    @commit="commitCatalogo(row, $event)"
                   />
                 </div>
               </td>
               <td :class="tdClass">
-                <input
-                  type="text"
-                  autocomplete="off"
-                  :class="[inpClass, 'font-semibold']"
-                  :value="row.nome"
-                  :disabled="rowDesabilitada(row)"
-                  :title="row.nome"
-                  @keydown.enter.prevent="blurEnter"
-                  @blur="blurNome(row, $event)"
-                />
-              </td>
-              <td :class="[tdClass, 'overflow-visible align-top']">
-                <ProdutosItemCategoria
-                  variant="celula"
-                  :workspace-id="workspaceId"
-                  :produto-id="row.id"
-                  :categoria-id="row.categoria_id"
-                  :categoria-nome="row.categoria_nome"
-                  :disabled="rowDesabilitada(row)"
-                  @commit="(patch) => gravarPatch(row, patch)"
-                />
+                <div :class="classesCelula(row.id, 'termos_pesquisa_ids', 'min-h-[2.75rem] w-full')">
+                  <ProdutosSelecaoUnica
+                    catalogo="termos_pesquisa"
+                    variant="celula"
+                    :workspace-id="workspaceId"
+                    :produto-id="row.id"
+                    :termo-id="row.termos_pesquisa?.[0]?.id ?? null"
+                    :termo-nome="row.termos_pesquisa?.[0]?.nome ?? null"
+                    :disabled="rowDesabilitada(row)"
+                    @commit="commitCatalogo(row, $event)"
+                  />
+                </div>
               </td>
               <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'unidade_venda', celulaInnerClass)" @click="focusarInputCelula">
                 <input
                   type="text"
                   autocomplete="off"
-                  :class="inpClass"
+                  :class="classesInput(row.id, 'unidade_venda', inpClass)"
                   :value="row.unidade_venda ?? ''"
                   :disabled="rowDesabilitada(row)"
                   @keydown.enter.prevent="blurEnter"
                   @blur="blurUnidade(row, $event)"
                 />
+                </div>
               </td>
               <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'marca', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'marca', inpClass)"
+                  :value="row.marca ?? ''"
+                  :disabled="rowDesabilitada(row)"
+                  placeholder="Marca"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurMarca(row, $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'preco_custo', celulaInnerClass)" @click="focusarInputCelula">
                 <input
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
-                  :class="[inpClass, 'font-semibold']"
+                  :class="classesInput(row.id, 'preco_custo', inpClass)"
+                  :value="fmtPrecoInput(row.preco_custo)"
+                  :disabled="rowDesabilitada(row)"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurPrecoCusto(row, $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'preco', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'preco', inpClass)"
                   :value="fmtPrecoInput(row.preco)"
                   :disabled="rowDesabilitada(row)"
                   @keydown.enter.prevent="blurEnter"
                   @blur="blurPreco(row, $event)"
                 />
+                </div>
               </td>
               <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'preco_prazo', celulaInnerClass)" @click="focusarInputCelula">
                 <input
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
-                  :class="inpClass"
+                  :class="classesInput(row.id, 'preco_prazo', inpClass)"
                   :value="row.preco_prazo != null ? fmtPrecoInput(row.preco_prazo) : ''"
                   :disabled="rowDesabilitada(row)"
                   placeholder="Opcional"
                   @keydown.enter.prevent="blurEnter"
                   @blur="blurPrecoPrazo(row, $event)"
                 />
+                </div>
               </td>
               <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'preco_promocional', celulaInnerClass)" @click="focusarInputCelula">
                 <input
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
-                  :class="inpClass"
+                  :class="classesInput(row.id, 'preco_promocional', inpClass)"
+                  :value="row.preco_promocional != null ? fmtPrecoInput(row.preco_promocional) : ''"
+                  :disabled="rowDesabilitada(row)"
+                  placeholder="Opcional"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurPrecoPromocional(row, $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'peso_kg', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'peso_kg', inpClass)"
                   :value="row.peso_kg != null ? String(row.peso_kg).replace('.', ',') : ''"
                   :disabled="rowDesabilitada(row)"
                   placeholder="ex.: 1,5"
                   @keydown.enter.prevent="blurEnter"
                   @blur="blurPeso(row, $event)"
                 />
+                </div>
               </td>
               <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'largura', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'largura', inpClass)"
+                  :value="String(row.largura ?? 0).replace('.', ',')"
+                  :disabled="rowDesabilitada(row)"
+                  placeholder="0"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurDimensao(row, 'largura', $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'comprimento', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'comprimento', inpClass)"
+                  :value="String(row.comprimento ?? 0).replace('.', ',')"
+                  :disabled="rowDesabilitada(row)"
+                  placeholder="0"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurDimensao(row, 'comprimento', $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'altura', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'altura', inpClass)"
+                  :value="String(row.altura ?? 0).replace('.', ',')"
+                  :disabled="rowDesabilitada(row)"
+                  placeholder="0"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurDimensao(row, 'altura', $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'sku', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'sku', inpClass)"
+                  :value="row.sku ?? ''"
+                  :disabled="rowDesabilitada(row)"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurSku(row, $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'codigo_ncm', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'codigo_ncm', inpClass)"
+                  :value="row.codigo_ncm ?? ''"
+                  :disabled="rowDesabilitada(row)"
+                  placeholder="NCM"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurCodigoNcm(row, $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'codigo_barras_ean', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'codigo_barras_ean', inpClass)"
+                  :value="row.codigo_barras_ean ?? ''"
+                  :disabled="rowDesabilitada(row)"
+                  placeholder="EAN"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurCodigoBarras(row, $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'infos_relevantes', celulaInnerClass)" @click="focusarInputCelula">
+                <input
+                  type="text"
+                  autocomplete="off"
+                  :class="classesInput(row.id, 'infos_relevantes', inpClass)"
+                  :value="row.infos_relevantes ?? ''"
+                  :disabled="rowDesabilitada(row)"
+                  placeholder="—"
+                  @keydown.enter.prevent="blurEnter"
+                  @blur="blurInfos(row, $event)"
+                />
+                </div>
+              </td>
+              <td :class="tdClass">
+                <div :class="classesCelula(row.id, 'codigo', celulaInnerClass)" @click="focusarInputCelula">
                 <input
                   type="text"
                   inputmode="numeric"
                   autocomplete="off"
-                  :class="inpClass"
+                  :class="classesInput(row.id, 'codigo', inpClass)"
                   :value="row.codigo != null ? String(row.codigo) : ''"
                   :disabled="rowDesabilitada(row)"
                   title="Código no workspace"
                   @keydown.enter.prevent="blurEnter"
                   @blur="blurCodigo(row, $event)"
                 />
-              </td>
-              <td :class="tdClass">
-                <input
-                  type="text"
-                  autocomplete="off"
-                  :class="inpClass"
-                  :value="row.sku ?? ''"
-                  :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="blurEnter"
-                  @blur="blurSku(row, $event)"
-                />
+                </div>
               </td>
               <td :class="tdClass">
                 <button
                   type="button"
-                  class="inline-flex rounded-md px-3 py-2 text-[11px] font-bold transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                  :class="
-                    row.status
-                      ? 'bg-[#e6f4ea] text-[#1e7e34] dark:bg-emerald-950/40 dark:text-emerald-300'
-                      : 'bg-[#fdecea] text-[#d32f2f] dark:bg-red-950/40 dark:text-red-300'
-                  "
+                  :class="[classesCelula(row.id, 'status', celulaInnerClass), 'cursor-pointer']"
                   :disabled="rowDesabilitada(row)"
                   @click="alternarStatus(row)"
                 >
-                  {{ row.status ? 'Ativo' : 'Inativo' }}
+                  <span
+                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+                    :class="
+                      row.status
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
+                        : 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400'
+                    "
+                  >
+                    <span
+                      class="h-1.5 w-1.5 shrink-0 rounded-full"
+                      :class="row.status ? 'bg-emerald-500' : 'bg-red-500'"
+                      aria-hidden="true"
+                    />
+                    {{ row.status ? 'Ativo' : 'Inativo' }}
+                  </span>
                 </button>
               </td>
             </tr>
           </template>
         </tbody>
       </table>
+      </div>
     </div>
+
+    <ProdutosModalImagens />
+    <ProdutosModalNovaVariacao
+      v-model:open="modalVariacaoAberto"
+      :pai-nome="paiVariacaoAlvo?.nome ?? ''"
+      :salvando="salvandoVariacao"
+      @salvar="confirmarNovaVariacao"
+    />
   </div>
 </template>

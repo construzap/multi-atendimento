@@ -13,6 +13,14 @@ export interface UserProfile {
   whatsapp: string | null
 }
 
+/** Enum `public.user_role` no Postgres. */
+export type UserRole = 'ADMIN' | 'MEMBRO'
+
+/** Resposta de `GET /api/admin/verificar`. */
+export interface AdminVerificarResponse {
+  isAdmin: boolean
+}
+
 /** Valores de `vw_perfil_consolidado.status_assinatura`. */
 export type StatusAssinatura = 'trial' | 'pendente' | 'ativo' | 'vencida' | 'cancelado'
 
@@ -29,4 +37,3 @@ export interface PerfilAssinatura {
   canais_criados: number
   status_assinatura: StatusAssinatura | null
 }
-

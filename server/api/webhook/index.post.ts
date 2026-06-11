@@ -87,6 +87,10 @@ export default defineEventHandler(async (event) => {
     return { ok: true, skipped: true, reason: 'message_ignored' }
   }
 
+  if (body.message.mediaType === 'ptt' || body.message.mediaType === 'audio') {
+    normalizada.messagetype = 'audioMessage'
+  }
+
   if (isMediaMessage(body.message)) {
     const isAudio =
       body.message.mediaType === 'ptt' || body.message.mediaType === 'audio'

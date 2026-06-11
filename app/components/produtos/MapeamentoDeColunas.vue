@@ -8,7 +8,7 @@ import { mapeamentoTemNome } from '~/utils/mapearLinhasImportacaoProduto'
 
 defineOptions({ name: 'MAPEAMENTODECOLUNAS' })
 
-/** Categoria por nome (pesquisa/criar no catálogo): `~/components/produtos/ProdutosItemCategoria.vue`. */
+/** Categoria por nome (pesquisa/criar no catálogo): `~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue`. */
 
 const open = defineModel<boolean>('open', { default: false })
 

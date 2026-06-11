@@ -26,16 +26,16 @@ function initials(name: string) {
   return (first + last).toUpperCase().slice(0, 2)
 }
 
-function gradientById(id: number) {
+function gradientById(id: number): string {
   const g = [
     'bg-gradient-to-br from-info to-tertiary shadow-[0_10px_30px_rgba(0,99,154,0.25)]',
     'bg-gradient-to-br from-tertiary to-tertiary-muted shadow-[0_10px_30px_rgba(0,136,212,0.25)]',
     'bg-gradient-to-br from-warning to-secondary-accent shadow-[0_10px_30px_rgba(230,81,0,0.25)]',
     'bg-gradient-to-br from-success to-success shadow-[0_10px_30px_rgba(46,125,50,0.22)]',
     'bg-gradient-to-br from-primary-500 to-primary-700 shadow-[0_10px_30px_rgba(26,123,45,0.25)]', //aquifoimodificadocor
-    'bg-gradient-to-br from-danger to-error shadow-[0_10px_30px_rgba(186,26,26,0.20)]'
-  ]
-  return g[Math.abs(id) % g.length]
+    'bg-gradient-to-br from-danger to-error shadow-[0_10px_30px_rgba(186,26,26,0.20)]',
+  ] as const
+  return g[Math.abs(id) % g.length] ?? g[0]
 }
 
 const filtered = computed(() => {

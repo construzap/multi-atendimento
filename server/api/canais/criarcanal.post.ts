@@ -148,7 +148,7 @@ export default defineEventHandler(async (event) => {
       .from('canais')
       .update({ token, servidor })
       .eq('id', data.id)
-      .select('id, workspace_id, user_id, nome, descricao, created_at, token, servidor')
+      .select('id, workspace_id, user_id, nome, descricao, created_at')
       .single()
 
     if (upErr) {

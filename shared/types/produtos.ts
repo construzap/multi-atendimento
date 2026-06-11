@@ -1,24 +1,97 @@
+/** Imagem agregada de `produto_imagens` (view de listagem). */
+export type ProdutoImagemItem = {
+  id?: number
+  produto_id?: number
+  /** Alias UI; no banco a coluna é `imagem_url`. */
+  url?: string | null
+  imagem_url?: string | null
+  ordem?: number | null
+  workspace_id?: number
+  created_at?: string
+  [key: string]: unknown
+}
+
+/** Resposta de `POST /api/produtos/fotosblackblaze/upload` e `adicionar-url`. */
+export type ProdutosFotosUploadResponse = {
+  inseridas: number
+  data: ProdutoImagemItem[]
+}
+
+/** Resposta de `POST /api/produtos/fotosblackblaze/excluir`. */
+export type ProdutosFotosExcluirResponse = {
+  removidos: number
+  ids: number[]
+}
+
+/** Resposta de `POST /api/produtos/fotosblackblaze/reordenar`. */
+export type ProdutosFotosReordenarResponse = {
+  atualizadas: number
+  data: ProdutoImagemItem[]
+}
+
+/** Onde o produto está listado (`GET /api/produtos/buscar` ou rascunho em massa). */
+export type ProdutoSelecaoContexto = 'lista' | 'rascunho'
+
 /**
- * Linha de `public.produtos_workspace` retornada por
- * `GET /api/produtos/buscar` (subset de colunas + nome da categoria via FK).
+ * Referência a um produto na seleção Pinia (checkboxes, modais, edição em lote, etc.).
+ * Não duplica os dados do produto — só identifica a linha no contexto correto.
  */
-export type ProdutoWorkspaceItem = {
+export type ProdutoSelecionadoRef = {
+  produtoId: number
+  nome: string
+  contexto: ProdutoSelecaoContexto
+  /** Preenchido quando a linha é uma variação na listagem. */
+  parentId: number | null
+  tipo: 'pai' | 'variacao'
+}
+
+/** Campos escalares comuns a pai e variação. */
+export type ProdutoWorkspaceCampos = {
   /** PK da tabela. */
   id: number
   codigo: number | null
   nome: string
   categoria_id: number | null
-  /** `produto_categorias.nome` quando `categoria_id` está preenchido. */
+  /** Nome da categoria (embed ou json `categoria` da view). */
   categoria_nome: string | null
   sku: string | null
   unidade_venda: string | null
   marca: string | null
   preco: number
+  preco_custo: number
+  preco_promocional: number | null
   preco_prazo: number | null
   peso_kg: number | null
+  estoque: number | null
   infos_relevantes: string | null
   imagem_url: string | null
+  descricao: string | null
+  codigo_ncm: string | null
+  /** Termos de pesquisa (multi-select) vinculados ao produto. */
+  termos_pesquisa: ProdutoTermoPesquisaItem[]
+  codigo_barras_ean: string | null
+  largura: number
+  altura: number
+  comprimento: number
   status: boolean
+  parent_id: number | null
+  atributos: Record<string, unknown> | null
+  imagens: ProdutoImagemItem[]
+}
+
+/** Variação filha (`parent_id` preenchido). */
+export type ProdutoVariacaoItem = ProdutoWorkspaceCampos & {
+  parent_id: number
+}
+
+/**
+ * Produto pai retornado por `GET /api/produtos/buscar`
+ * (`view_produtos_com_variacoes`, `parent_id` sempre null).
+ */
+export type ProdutoWorkspaceItem = ProdutoWorkspaceCampos & {
+  parent_id: null
+  tem_variacoes: boolean
+  variacoes: ProdutoVariacaoItem[]
 }
 
 /** Corpo parcial para `PATCH /api/produtos/atualizar` (`patch`). */
@@ -29,10 +102,20 @@ export type ProdutoWorkspacePatch = {
   unidade_venda?: string | null
   marca?: string | null
   preco?: number
+  preco_custo?: number
+  preco_promocional?: number | null
   preco_prazo?: number | null
   peso_kg?: number | null
+  estoque?: number | null
   infos_relevantes?: string | null
   imagem_url?: string | null
+  codigo_ncm?: string | null
+  /** Substitui todos os vínculos de termos do produto. */
+  termos_pesquisa_ids?: number[]
+  codigo_barras_ean?: string | null
+  largura?: number
+  altura?: number
+  comprimento?: number
   status?: boolean
   /** Nome da categoria (resolve para `categoria_id`); vazio remove a categoria. */
   categoria?: string | null
@@ -58,6 +141,64 @@ export type ProdutosExcluirResponse = {
   removidos: number
   /** Ids efetivamente apagados (podem ser menos que os pedidos se algum id não existia). */
   ids: number[]
+}
+
+/** Linha para `POST /api/produtos/criar-em-massa`. */
+export type ProdutoCriarEmMassaLinha = {
+  nome: string
+  sku?: string | null
+  unidade_venda?: string | null
+  marca?: string | null
+  preco?: number
+  preco_custo?: number
+  preco_promocional?: number | null
+  preco_prazo?: number | null
+  peso_kg?: number | null
+  estoque?: number | null
+  imagem_url?: string | null
+  infos_relevantes?: string | null
+  status?: boolean
+  categoria_id?: number | null
+  codigo_ncm?: string | null
+  termos_pesquisa?: string | null
+  codigo_barras_ean?: string | null
+  largura?: number
+  altura?: number
+  comprimento?: number
+  /** Quando preenchido, cria variação filha deste produto pai. */
+  parent_id?: number | null
+}
+
+/** Resposta de `POST /api/produtos/criar-em-massa`. */
+export type ProdutosCriarEmMassaResponse = {
+  inseridos: number
+}
+
+/** Linha de `public.produto_termo_de_pesquisa` (lista / multi-select). */
+export type ProdutoTermoPesquisaItem = {
+  id: number
+  nome: string
+}
+
+/** Resposta de `GET /api/produtos/termos-de-pesquisa`. */
+export type ProdutosTermosPesquisaListaResponse = {
+  data: ProdutoTermoPesquisaItem[]
+}
+
+/** Resposta de `POST /api/produtos/termos-de-pesquisa`. */
+export type ProdutosTermoPesquisaCriarResponse = {
+  data: ProdutoTermoPesquisaItem
+  ja_existia: boolean
+}
+
+/** Resposta de `PATCH /api/produtos/termos-de-pesquisa/:id`. */
+export type ProdutosTermoPesquisaAtualizarResponse = {
+  data: ProdutoTermoPesquisaItem
+}
+
+/** Resposta de `DELETE /api/produtos/termos-de-pesquisa/:id`. */
+export type ProdutosTermoPesquisaEliminarResponse = {
+  ok: true
 }
 
 /** Linha de `public.produto_categorias` (lista / typeahead). */

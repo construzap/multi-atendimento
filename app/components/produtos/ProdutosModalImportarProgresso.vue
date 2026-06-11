@@ -4,7 +4,7 @@ import BaseButton from '~/components/BaseButton.vue'
 import BaseModal from '~/components/BaseModal.vue'
 
 /**
- * Categorias (pesquisar / criar / uma por produto): `~/components/produtos/ProdutosItemCategoria.vue`
+ * Categorias (pesquisar / criar / uma por produto): `~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue`.
  * (usado na tabela de produtos e no modal «Novo produto»). Este modal só mostra o progresso da importação.
  */
 

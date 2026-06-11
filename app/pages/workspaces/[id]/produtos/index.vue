@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import ProdutosBarraAcoes from '~/components/produtos/ProdutosBarraAcoes.vue'
 import ProdutosBuscaInput from '~/components/produtos/ProdutosBuscaInput.vue'
 import FerramentaImportarProduto from '~/components/produtos/FerramentaImportarProduto.vue'
-import ProdutosModalNovoProduto from '~/components/produtos/ProdutosModalNovoProduto.vue'
+import ProdutosModalCriarProdutosEmMassa from '~/components/produtos/ProdutosModalCriarProdutosEmMassa.vue'
 import ProdutosTabela from '~/components/produtos/ProdutosTabela.vue'
 
 definePageMeta({
@@ -14,10 +14,10 @@ definePageMeta({
 const route = useRoute()
 const produtosStore = useProdutosStore()
 
-const { items, listPending, listError, page, totalPages, total } = storeToRefs(produtosStore)
+const { listPending, listError, page, totalPages, total } = storeToRefs(produtosStore)
 
 function parsePositiveInt(raw: unknown): number | null {
-  const s = String(raw ?? '').trim()
+  const s = String(Array.isArray(raw) ? raw[0] : raw ?? '').trim()
   if (!s) return null
   const n = Number.parseInt(s, 10)
   if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return null
@@ -27,7 +27,7 @@ function parsePositiveInt(raw: unknown): number | null {
 
 const workspaceId = computed(() => parsePositiveInt(route.params.id))
 
-const modalNovoAberto = ref(false)
+const modalCriarEmMassaAberto = ref(false)
 
 /** Seletor de ficheiro + modal de mapeamento (`FerramentaImportarProduto`). */
 const ferramentaImportarProdutoRef = ref<{ abrirSeletorImportacao: () => void } | null>(null)
@@ -94,11 +94,18 @@ async function aposEliminados() {
 async function aoProdutoNovoGravado() {
   const wid = workspaceId.value
   if (wid == null) return
+  produtosStore.ultimoSnapshotKey = null
   produtosStore.page = 1
   await produtosStore.fetchPagina(wid, {
     page: 1,
     q: termoPesquisa.value,
   })
+}
+
+function onPageSizeChanged(n: number) {
+  produtosStore.pageSize = n
+  produtosStore.page = 1
+  void carregarLista()
 }
 </script>
 
@@ -115,10 +122,7 @@ async function aoProdutoNovoGravado() {
 
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
       <ProdutosBuscaInput v-model="busca" :termo-aplicado="termoPesquisa" @pesquisar="aoPesquisar" />
-      <ProdutosBarraAcoes
-        @importar="aoClicarImportar"
-        @novo="modalNovoAberto = true"
-      />
+      <ProdutosBarraAcoes @importar="aoClicarImportar" @novo="modalCriarEmMassaAberto = true" />
     </div>
 
     <FerramentaImportarProduto
@@ -126,20 +130,21 @@ async function aoProdutoNovoGravado() {
       :workspace-id="workspaceId"
       :termo-busca="termoPesquisa"
     />
-    <ProdutosModalNovoProduto
-      v-model:open="modalNovoAberto"
-      :workspace-id="workspaceId"
+    <ProdutosModalCriarProdutosEmMassa
+      v-model:open="modalCriarEmMassaAberto"
       @gravado="aoProdutoNovoGravado"
     />
-
     <ProdutosTabela
       :workspace-id="workspaceId ?? undefined"
-      :items="items"
+      :page-size="produtosStore.pageSize"
+      :total="total"
       :pending="listPending"
       :error="listError"
       @atualizado="produtosStore.aplicarLinhaAtualizada($event)"
       @erro-salvamento="void carregarLista()"
       @eliminados="aposEliminados"
+      @variacao-criada="carregarLista"
+      @page-size-changed="onPageSizeChanged"
     />
 
     <div

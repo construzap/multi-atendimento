@@ -1,11 +1,14 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, getQuery } from 'h3'
 import type { ProdutosBuscaResponse } from '#shared/types/produtos'
-import { mapProdutoWorkspaceRow, SELECT_PRODUTO_WORKSPACE_EMBED } from '../../utils/produtoWorkspaceRow'
+import {
+  mapViewProdutoComVariacoesRow,
+  SELECT_VIEW_PRODUTOS_COM_VARIACOES,
+} from '../../utils/produtoWorkspaceRow'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
-const SELECT = SELECT_PRODUTO_WORKSPACE_EMBED
+const SELECT = SELECT_VIEW_PRODUTOS_COM_VARIACOES
 
 function parsePositiveInt(raw: unknown, label: string): number {
   const s = String(raw ?? '').trim()
@@ -31,7 +34,7 @@ function parsePage(raw: unknown, fallback: number): number {
 
 function parsePageSize(raw: unknown, fallback: number): number {
   const n = parsePage(raw, fallback)
-  return Math.min(100, Math.max(1, n))
+  return Math.min(1000, Math.max(1, n))
 }
 
 /** Escapa `%` e `_` para uso em padrões `ilike` do PostgREST. */
@@ -40,10 +43,18 @@ function escapeIlike(value: string): string {
 }
 
 /**
+ * Aspas no valor de filtro PostgREST.
+ * Em `.or()`, vírgulas no texto (ex.: `3,6L`) são interpretadas como separador de condições.
+ */
+function quotePostgrestFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+/**
  * GET /api/produtos/buscar?workspace_id=&page=&page_size=&q=
  *
- * Lista paginada de `produtos_workspace` para o workspace (após `checkWorkspace`).
- * Com `q` não vazio, filtra apenas por **nome** do produto (`ilike`, case-insensitive).
+ * Lista paginada de produtos pai via `view_produtos_com_variacoes` (após `checkWorkspace`).
+ * Com `q` não vazio, filtra por **nome** ou **termos de pesquisa** (`termos_pesquisa_busca`, ilike).
  * Tipos da resposta: `ProdutosBuscaResponse` em `#shared/types/produtos`.
  */
 export default defineEventHandler(async (event): Promise<ProdutosBuscaResponse> => {
@@ -64,28 +75,28 @@ export default defineEventHandler(async (event): Promise<ProdutosBuscaResponse> 
   await checkWorkspace(event, workspaceId, userId)
 
   const page = parsePage(q.page, 1)
-  const page_size = parsePageSize(q.page_size, 20)
+  const page_size = parsePageSize(q.page_size, 10)
   const searchRaw = typeof q.q === 'string' ? q.q.trim() : ''
 
   const admin = serverSupabaseServiceRole<any>(event)
 
   let query = admin
-    .from('produtos_workspace')
+    .from('view_produtos_com_variacoes')
     .select(SELECT, { count: 'exact' })
     .eq('workspace_id', workspaceId)
 
   if (searchRaw.length > 0) {
     const esc = escapeIlike(searchRaw)
-    const p = `%${esc}%`
-    query = query.ilike('nome', p)
+    const p = quotePostgrestFilterValue(`%${esc}%`)
+    query = query.or(`nome.ilike.${p},termos_pesquisa_busca.ilike.${p}`)
   }
 
   const from = (page - 1) * page_size
   const to = from + page_size - 1
 
   const { data, error, count } = await query
-    .order('nome', { ascending: true, nullsFirst: false })
-    .order('id', { ascending: true })
+    .order('updated_at', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: false })
     .range(from, to)
 
   if (error) {
@@ -95,7 +106,7 @@ export default defineEventHandler(async (event): Promise<ProdutosBuscaResponse> 
   const total = typeof count === 'number' && Number.isFinite(count) ? count : 0
   const total_pages = total === 0 ? 1 : Math.ceil(total / page_size)
 
-  const rows = (data ?? []).map((r: Record<string, unknown>) => mapProdutoWorkspaceRow(r))
+  const rows = (data ?? []).map((r: Record<string, unknown>) => mapViewProdutoComVariacoesRow(r))
 
   return {
     data: rows,

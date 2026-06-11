@@ -41,7 +41,7 @@ export default defineEventHandler(async (event): Promise<Canal[]> => {
 
   const { data, error } = await admin
     .from('canais')
-    .select('id, nome, descricao, token, servidor, provedor, created_at')
+    .select('id, nome, descricao, provedor, created_at')
     .eq('workspace_id', workspaceId)
     .is('deleted_at', null)
     .is('deleted_by', null)

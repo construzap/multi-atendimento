@@ -22,6 +22,8 @@ export default defineNuxtConfig({
     b2BucketName: '',
     /** Bucket B2 para mídia de agendamento (default no código: multiatendimentoconstruzap). */
     b2AgendamentoBucketName: '',
+    /** Bucket B2 para fotos de produtos (default no código: produtosconstruzap). */
+    b2ProdutosBucketName: '',
 
     // --- Pusher — só servidor (override: NUXT_PUSHER_SECRET) ---
     pusherSecret: '',

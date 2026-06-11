@@ -31,7 +31,7 @@ type Body = {
   conversa_sessao?: string
 
   /** Envio de mídia (Uazapi `send/media`). */
-  media_type?: 'image' | 'video' | 'document' | 'audio'
+  media_type?: 'image' | 'video' | 'document' | 'audio' | 'ptt'
   /** URL pública do arquivo (ex.: B2 público). */
   media_file?: string
 }
@@ -364,7 +364,7 @@ export default defineEventHandler(async (event) => {
           ? ('imageMessage' as const)
           : mediaType === 'video'
             ? ('videoMessage' as const)
-            : mediaType === 'audio'
+            : mediaType === 'audio' || mediaType === 'ptt'
               ? ('audioMessage' as const)
               : ('documentMessage' as const)
 

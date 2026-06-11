@@ -3,6 +3,7 @@ import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutoAtualizarResponse } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
 import { mapProdutoWorkspaceRow, SELECT_PRODUTO_WORKSPACE_EMBED } from '../../utils/produtoWorkspaceRow'
+import { syncProdutoTermosPesquisa, termosDoProduto } from '../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -137,10 +138,19 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
     'unidade_venda',
     'marca',
     'preco',
+    'preco_custo',
+    'preco_promocional',
     'preco_prazo',
     'peso_kg',
+    'estoque',
     'infos_relevantes',
     'imagem_url',
+    'codigo_ncm',
+    'termos_pesquisa_ids',
+    'codigo_barras_ean',
+    'largura',
+    'altura',
+    'comprimento',
     'status',
     'categoria',
     'categoria_id',
@@ -218,6 +228,19 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
     update.preco = preco
   }
 
+  if (p.preco_custo !== undefined) {
+    const v = numOrNull(p.preco_custo)
+    if (v == null || v < 0) {
+      throw createError({ statusCode: 400, statusMessage: 'Preço de custo inválido.' })
+    }
+    update.preco_custo = v
+  }
+
+  if (p.preco_promocional !== undefined) {
+    const v = numOrNull(p.preco_promocional)
+    update.preco_promocional = v != null && v >= 0 ? v : null
+  }
+
   if (p.preco_prazo !== undefined) {
     const v = numOrNull(p.preco_prazo)
     update.preco_prazo = v != null && v >= 0 ? v : null
@@ -226,6 +249,40 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
   if (p.peso_kg !== undefined) {
     const v = numOrNull(p.peso_kg)
     update.peso_kg = v != null && v >= 0 ? v : null
+  }
+
+  if (p.estoque !== undefined) {
+    const v = numOrNull(p.estoque)
+    update.estoque = v != null && v >= 0 ? v : null
+  }
+
+  if (p.codigo_ncm !== undefined) update.codigo_ncm = strOrNull(p.codigo_ncm)
+  if (p.codigo_barras_ean !== undefined) update.codigo_barras_ean = strOrNull(p.codigo_barras_ean)
+
+  let termosIdsPatch: number[] | undefined
+  if (p.termos_pesquisa_ids !== undefined) {
+    if (!Array.isArray(p.termos_pesquisa_ids)) {
+      throw createError({ statusCode: 400, statusMessage: 'termos_pesquisa_ids deve ser um array.' })
+    }
+    termosIdsPatch = p.termos_pesquisa_ids
+      .map((x) => (typeof x === 'number' ? Math.trunc(x) : Number.parseInt(String(x), 10)))
+      .filter((n) => Number.isFinite(n) && n >= 1)
+  }
+
+  if (p.largura !== undefined) {
+    const v = numOrNull(p.largura)
+    if (v == null || v < 0) throw createError({ statusCode: 400, statusMessage: 'Largura inválida.' })
+    update.largura = v
+  }
+  if (p.altura !== undefined) {
+    const v = numOrNull(p.altura)
+    if (v == null || v < 0) throw createError({ statusCode: 400, statusMessage: 'Altura inválida.' })
+    update.altura = v
+  }
+  if (p.comprimento !== undefined) {
+    const v = numOrNull(p.comprimento)
+    if (v == null || v < 0) throw createError({ statusCode: 400, statusMessage: 'Comprimento inválido.' })
+    update.comprimento = v
   }
 
   if (p.status !== undefined) {
@@ -274,26 +331,60 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
     }
   }
 
-  if (Object.keys(update).length === 0) {
+  if (Object.keys(update).length === 0 && termosIdsPatch === undefined) {
     throw createError({ statusCode: 400, statusMessage: 'Nenhum campo válido para atualizar.' })
   }
 
-  const { data: updated, error: upErr } = await admin
-    .from('produtos_workspace')
-    .update(update)
-    .eq('id', produtoId)
-    .eq('workspace_id', workspaceId)
-    .select(SELECT_PRODUTO_WORKSPACE_EMBED)
-    .single()
+  if (termosIdsPatch !== undefined) {
+    try {
+      await syncProdutoTermosPesquisa(admin, workspaceId, produtoId, termosIdsPatch)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'termos_pesquisa_ids inválido.'
+      throw createError({ statusCode: 400, statusMessage: msg })
+    }
+  }
 
-  if (upErr) {
-    throw createError({ statusCode: 500, statusMessage: upErr.message })
+  let updated: Record<string, unknown> | null = null
+
+  if (Object.keys(update).length > 0) {
+    // DEFAULT now() só no INSERT; em UPDATE é preciso definir explicitamente.
+    update.updated_at = new Date().toISOString()
+
+    const { data: upData, error: upErr } = await admin
+      .from('produtos_workspace')
+      .update(update)
+      .eq('id', produtoId)
+      .eq('workspace_id', workspaceId)
+      .select(SELECT_PRODUTO_WORKSPACE_EMBED)
+      .single()
+
+    if (upErr) {
+      throw createError({ statusCode: 500, statusMessage: upErr.message })
+    }
+    if (!upData || typeof upData !== 'object') {
+      throw createError({ statusCode: 500, statusMessage: 'Resposta inválida ao atualizar produto.' })
+    }
+    updated = upData as Record<string, unknown>
+  } else {
+    const { data: cur, error: curErr } = await admin
+      .from('produtos_workspace')
+      .select(SELECT_PRODUTO_WORKSPACE_EMBED)
+      .eq('id', produtoId)
+      .eq('workspace_id', workspaceId)
+      .single()
+    if (curErr) {
+      throw createError({ statusCode: 500, statusMessage: curErr.message })
+    }
+    if (!cur || typeof cur !== 'object') {
+      throw createError({ statusCode: 404, statusMessage: 'Produto não encontrado.' })
+    }
+    updated = cur as Record<string, unknown>
   }
-  if (!updated || typeof updated !== 'object') {
-    throw createError({ statusCode: 500, statusMessage: 'Resposta inválida ao atualizar produto.' })
-  }
+
+  const mapped = mapProdutoWorkspaceRow(updated)
+  mapped.termos_pesquisa = await termosDoProduto(admin, workspaceId, produtoId)
 
   return {
-    data: mapProdutoWorkspaceRow(updated as Record<string, unknown>),
+    data: mapped,
   }
 })

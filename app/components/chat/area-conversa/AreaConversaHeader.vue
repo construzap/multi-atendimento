@@ -11,7 +11,9 @@ import ModalQrCode from '~/components/chat/area-conversa/ModalQrCode.vue'
 import DropdownConfig from '~/components/chat/area-conversa/DropdownConfig.vue'
 import ModalAddCanal from '~/components/workspaces/canais/ModalAddCanal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
-import { mensagemErroFetch } from '~/stores/canais'
+import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
+import { useWorkspacesStore } from '~/stores/workspaces'
+import { useConversasStore } from '~/stores/conversas'
 import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
 
 const pesquisa = ref('')

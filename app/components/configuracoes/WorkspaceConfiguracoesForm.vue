@@ -1,34 +1,58 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import WorkspaceDescricaoRichText from '~/components/configuracoes/WorkspaceDescricaoRichText.vue'
+import { useConfiguracoesStore } from '~/stores/configuracoes'
 
 const route = useRoute()
 const workspaces = useWorkspacesStore()
+const configuracoes = useConfiguracoesStore()
 
-const workspaceId = computed(() => workspaces.currentWorkspaceId ?? String(route.params.id ?? ''))
-
-const workspace = computed(() => {
-  const idNum = Number(workspaceId.value)
-  if (!Number.isFinite(idNum)) return null
-  return workspaces.items.find((w) => w.id === idNum) ?? null
+const workspaceId = computed(() => {
+  const raw = workspaces.currentWorkspaceId ?? String(route.params.id ?? '')
+  const n = Number.parseInt(String(raw).trim(), 10)
+  return Number.isFinite(n) && n > 0 ? n : null
 })
 
-const nome = ref('')
-const descricao = ref('')
+const workspace = computed(() => {
+  const id = workspaceId.value
+  if (!id) return null
+  return workspaces.items.find((w) => w.id === id) ?? null
+})
+
 const modalExcluirAberto = ref(false)
 
-watch(
-  () => workspace.value,
-  (w) => {
-    nome.value = w?.nome ?? ''
-    descricao.value = w?.descricao ?? ''
+const carregando = computed(() => {
+  const id = workspaceId.value
+  return id != null && configuracoes.carregando(id)
+})
+
+const desabilitado = computed(() => carregando.value || configuracoes.salvando)
+
+const nome = computed({
+  get: () => {
+    const id = workspaceId.value
+    return id != null ? configuracoes.doWorkspace(id)?.nome ?? '' : ''
   },
-  { immediate: true }
-)
+  set: (v: string) => {
+    const id = workspaceId.value
+    if (id != null) configuracoes.atualizarCampo(id, 'nome', v)
+  },
+})
+
+const descricao = computed({
+  get: () => {
+    const id = workspaceId.value
+    return id != null ? configuracoes.doWorkspace(id)?.descricao ?? '' : ''
+  },
+  set: (v: string) => {
+    const id = workspaceId.value
+    if (id != null) configuracoes.atualizarCampo(id, 'descricao', v)
+  },
+})
 
 const createdAtLabel = computed(() => {
   const raw = workspace.value?.created_at
@@ -37,40 +61,6 @@ const createdAtLabel = computed(() => {
   if (Number.isNaN(d.getTime())) return raw
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' }).format(d)
 })
-
-/** HTML vazio do editor → null para a API */
-function descricaoParaApi(html: string): string | null {
-  const texto = html
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return texto.length ? html.trim() : null
-}
-
-async function onSalvar() {
-  const w = workspace.value
-  if (!w) {
-    toast.error('Workspace não encontrado.')
-    return
-  }
-
-  const nomeTrim = nome.value.trim()
-  if (!nomeTrim) {
-    toast.warning('Informe o nome.')
-    return
-  }
-
-  try {
-    await workspaces.updateWorkspace(w.id, {
-      nome: nomeTrim,
-      descricao: descricaoParaApi(descricao.value)
-    })
-    toast.success('Workspace atualizado com sucesso.')
-  } catch (err) {
-    toast.error(err instanceof Error ? err.message : 'Falha ao salvar.')
-  }
-}
 
 function abrirModalExcluir() {
   if (!workspace.value) {
@@ -119,7 +109,7 @@ async function confirmarExclusaoWorkspace() {
               id="btn-ws-config-deletar"
               type="button"
               variant="secondary"
-              :disabled="workspaces.pending || !workspace"
+              :disabled="workspaces.pending || desabilitado || !workspace"
               @click="abrirModalExcluir"
             >
               Deletar
@@ -131,13 +121,17 @@ async function confirmarExclusaoWorkspace() {
 
     <div class="p-6">
       <div
-        v-if="!workspace"
+        v-if="!workspaceId"
         class="rounded-xl border border-outline/40 bg-surface-container-low p-4 text-sm text-on-surface-variant dark:border-dark-outline/40 dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant"
       >
         Workspace não encontrado no estado atual.
       </div>
 
-      <form v-else class="space-y-5" @submit.prevent="onSalvar">
+      <div
+        v-else
+        class="space-y-5"
+        :class="{ 'pointer-events-none opacity-60': desabilitado }"
+      >
         <div>
           <label class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface" for="ws-config-nome">
             Nome
@@ -185,13 +179,7 @@ async function confirmarExclusaoWorkspace() {
             </template>
           </BaseInput>
         </div>
-
-        <div class="pt-2">
-          <BaseButton id="btn-ws-config-salvar" type="submit" :disabled="workspaces.pending">
-            {{ workspaces.pending ? 'Salvando...' : 'Salvar alterações' }}
-          </BaseButton>
-        </div>
-      </form>
+      </div>
     </div>
 
     <ModalAlerta

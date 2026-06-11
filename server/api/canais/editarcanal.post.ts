@@ -116,7 +116,7 @@ export default defineEventHandler(async (event) => {
     .eq('workspace_id', workspaceId)
     .is('deleted_at', null)
     .is('deleted_by', null)
-    .select('id, nome, descricao, token, servidor, provedor, created_at')
+    .select('id, nome, descricao, provedor, created_at')
     .maybeSingle()
 
   if (error) {

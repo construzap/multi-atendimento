@@ -1,9 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
+import { useColorMode } from '~/composables/useColorMode'
 
 /** Recolhida por padrão; expande enquanto o ponteiro estiver sobre a sidebar. */
 const sidebarHovered = ref(false)
 const mobileSidebarOpen = ref(false)
+
+const { isDark, toggle: toggleTheme } = useColorMode()
+
+const temaLabel = computed(() => (isDark.value ? 'Modo claro' : 'Modo escuro'))
 
 type NavItem = {
   label: string
@@ -40,7 +45,7 @@ const items = computed<NavItem[]>(() => [
 
 function isActive(to: string) {
   const path = route.path
-  if (to.endsWith('/chat')) {
+  if (to.endsWith('/chat') || to.endsWith('/produtos')) {
     return path === to || path.startsWith(`${to}/`)
   }
   return path === to
@@ -178,6 +183,16 @@ function closeMobileSidebar() {
                 Online
               </p>
             </div>
+            <button
+              type="button"
+              class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+              :aria-label="temaLabel"
+              @click="toggleTheme"
+            >
+              <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
+                {{ isDark ? 'light_mode' : 'dark_mode' }}
+              </span>
+            </button>
             <NuxtLink
               to="/"
               class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
@@ -316,22 +331,50 @@ function closeMobileSidebar() {
               Online
             </p>
           </div>
-          <NuxtLink
-            to="/"
-            class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
-            :title="sidebarCollapsed ? 'Voltar ao início' : undefined"
-            aria-label="Voltar ao início"
+          <div
+            class="flex shrink-0 items-center"
+            :class="sidebarCollapsed ? 'flex-col gap-1' : 'gap-0.5'"
           >
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M10 17l-5-5 5-5" stroke-linecap="round" stroke-linejoin="round" />
-              <path d="M5 12h14" stroke-linecap="round" />
-            </svg>
-          </NuxtLink>
+            <button
+              type="button"
+              class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+              :title="temaLabel"
+              :aria-label="temaLabel"
+              @click="toggleTheme"
+            >
+              <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
+                {{ isDark ? 'light_mode' : 'dark_mode' }}
+              </span>
+            </button>
+            <NuxtLink
+              to="/"
+              class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+              :title="sidebarCollapsed ? 'Voltar ao início' : undefined"
+              aria-label="Voltar ao início"
+            >
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 17l-5-5 5-5" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M5 12h14" stroke-linecap="round" />
+              </svg>
+            </NuxtLink>
+          </div>
         </div>
       </div>
     </aside>
 
-    <main class="min-w-0 flex-1 overflow-y-auto bg-background transition-colors dark:bg-dark-background">
+    <main class="relative min-w-0 flex-1 overflow-y-auto bg-background transition-colors dark:bg-dark-background">
+      <button
+        type="button"
+        class="fixed right-3 top-3 z-40 inline-flex items-center gap-2 rounded-xl border border-outline/40 bg-surface-container-lowest/95 px-3 py-2 text-sm font-medium text-on-surface shadow-sm backdrop-blur transition-colors hover:bg-surface-container-low dark:border-dark-outline/40 dark:bg-dark-surface-container-low/95 dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high md:right-5 md:top-4"
+        :aria-label="temaLabel"
+        @click="toggleTheme"
+      >
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
+          {{ isDark ? 'light_mode' : 'dark_mode' }}
+        </span>
+        <span class="hidden sm:inline">{{ temaLabel }}</span>
+      </button>
+
       <slot />
     </main>
   </div>

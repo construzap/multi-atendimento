@@ -1,9 +1,60 @@
 <script setup lang="ts">
+import { computed, watch } from 'vue'
+import { toast } from 'vue-sonner'
+import BaseButton from '~/components/BaseButton.vue'
 import WorkspaceConfiguracoesForm from '~/components/configuracoes/WorkspaceConfiguracoesForm.vue'
+import WorkspaceConfiguracoesIa from '~/components/configuracoes/WorkspaceConfiguracoesIa.vue'
+import WorkspaceConfiguracoesNotificacoes from '~/components/configuracoes/WorkspaceConfiguracoesNotificacoes.vue'
+import { useConfiguracoesStore } from '~/stores/configuracoes'
 
 definePageMeta({
-  layout: 'workspace'
+  layout: 'workspace',
 })
+
+const route = useRoute()
+const workspaces = useWorkspacesStore()
+const configuracoes = useConfiguracoesStore()
+
+const workspaceId = computed(() => {
+  const raw = workspaces.currentWorkspaceId ?? String(route.params.id ?? '')
+  const n = Number.parseInt(String(raw).trim(), 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+})
+
+const carregando = computed(() => {
+  const id = workspaceId.value
+  return id != null && configuracoes.carregando(id)
+})
+
+watch(
+  workspaceId,
+  async (id) => {
+    configuracoes.limparErro()
+    if (!id) return
+    if (configuracoes.porWorkspace[id] !== undefined) return
+
+    const ok = await configuracoes.fetchSeNecessario(id)
+    if (!ok && configuracoes.fetchError) {
+      toast.error(configuracoes.fetchError)
+    }
+  },
+  { immediate: true },
+)
+
+async function onSalvarTudo() {
+  const id = workspaceId.value
+  if (!id) {
+    toast.error('Workspace não encontrado.')
+    return
+  }
+
+  try {
+    await configuracoes.salvar(id)
+    toast.success('Configurações salvas com sucesso.')
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Falha ao salvar configurações.')
+  }
+}
 </script>
 
 <template>
@@ -18,6 +69,20 @@ definePageMeta({
     </header>
 
     <WorkspaceConfiguracoesForm />
+
+    <WorkspaceConfiguracoesNotificacoes />
+
+    <WorkspaceConfiguracoesIa />
+
+    <div v-if="workspaceId" class="pt-2">
+      <BaseButton
+        id="btn-ws-config-salvar-tudo"
+        type="button"
+        :disabled="carregando || configuracoes.salvando"
+        @click="onSalvarTudo"
+      >
+        {{ configuracoes.salvando ? 'Salvando...' : carregando ? 'Carregando...' : 'Salvar alterações' }}
+      </BaseButton>
+    </div>
   </div>
 </template>
-

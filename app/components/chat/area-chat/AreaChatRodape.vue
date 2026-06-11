@@ -335,7 +335,7 @@ async function sendRecordedAudio() {
         conteudo: '',
         temp_id: tempId,
         conversa_sessao: conversaKey,
-        media_type: 'audio',
+        media_type: 'ptt',
         media_file: url,
       },
     })

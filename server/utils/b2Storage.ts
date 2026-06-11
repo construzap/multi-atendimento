@@ -1,4 +1,4 @@
-import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 
 let s3Client: S3Client | null = null
 let cachedCredsSig = ''
@@ -90,4 +90,26 @@ export async function uploadToB2(
   const region = String(config.b2Region)
   const pathEncoded = key.split('/').map((p) => encodeURIComponent(p)).join('/')
   return `https://${bucket}.s3.${region}.backblazeb2.com/${pathEncoded}`
+}
+
+/** Remove objeto do bucket B2 (ignora erro se a chave já não existir). */
+export async function deleteFromB2(key: string, bucketOverride?: string): Promise<void> {
+  const config = useRuntimeConfig()
+  const bucket = String((bucketOverride ?? config.b2BucketName) ?? '').trim()
+  if (!bucket) {
+    throw new Error('Bucket B2 não configurado (NUXT_B2_BUCKET_NAME ou override).')
+  }
+  const k = String(key ?? '').trim().replace(/^\/+/, '')
+  if (!k) return
+  const client = getB2Client()
+  try {
+    await client.send(
+      new DeleteObjectCommand({
+        Bucket: bucket,
+        Key: k,
+      }),
+    )
+  } catch {
+    /* objeto pode já ter sido removido */
+  }
 }

@@ -6,7 +6,7 @@ import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import BaseTextarea from '~/components/BaseTextarea.vue'
-import ProdutosItemCategoria from '~/components/produtos/ProdutosItemCategoria.vue'
+import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
 import { mensagemErroFetch } from '~/stores/canais'
 import { parseDecimalPtBr } from '~/utils/mapearLinhasImportacaoProduto'
 
@@ -148,7 +148,7 @@ function fechar() {
         <label for="produto-novo-categoria" class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface">
           Categoria
         </label>
-        <ProdutosItemCategoria
+        <ProdutosSelecaoUnica
           variant="form"
           :workspace-id="workspaceId"
           :ativo="open"
