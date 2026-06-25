@@ -1,5 +1,14 @@
 services:
   multi-atendimento:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SUPABASE_URL: ${SUPABASE_URL}
+        SUPABASE_KEY: ${SUPABASE_KEY}
+        NUXT_PUBLIC_PUSHER_APP_ID: ${NUXT_PUBLIC_PUSHER_APP_ID}
+        NUXT_PUBLIC_PUSHER_KEY: ${NUXT_PUBLIC_PUSHER_KEY}
+        NUXT_PUBLIC_PUSHER_CLUSTER: ${NUXT_PUBLIC_PUSHER_CLUSTER}
     image: multi-atendimento:latest
     ports:
       - "3001:3000"
@@ -35,7 +44,4 @@ services:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3000
-    deploy:
-      replicas: 1
-      restart_policy:
-        condition: any
+    restart: unless-stopped
