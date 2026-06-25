@@ -1,8 +1,9 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutosExcluirResponse } from '#shared/types/produtos'
-import { checkWorkspace } from '../../utils/checkWorkspace'
-import { getAuthUserId } from '../../utils/getAuthUserId'
+import { checkWorkspace } from '../../../utils/checkWorkspace'
+import { deleteByCodigo } from '../../../utils/enviarParaIa/documentsVectorStore'
+import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 const MAX_IDS = 500
 
@@ -47,9 +48,9 @@ function parseIds(raw: unknown): number[] {
 }
 
 /**
- * POST /api/produtos/excluir
+ * POST /api/produtos/enviar-para-ia/excluir
  *
- * Body: `{ workspace_id, ids }` — remove linhas de `produtos_workspace` desse workspace.
+ * Body: `{ workspace_id, ids }` — remove produtos do banco e da vector store.
  */
 export default defineEventHandler(async (event): Promise<ProdutosExcluirResponse> => {
   assertMethod(event, 'POST')
@@ -79,12 +80,27 @@ export default defineEventHandler(async (event): Promise<ProdutosExcluirResponse
     .delete()
     .eq('workspace_id', workspaceId)
     .in('id', ids)
-    .select('id')
+    .select('id, codigo')
 
   if (error) {
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
 
+  for (const row of data ?? []) {
+    const codigo = row.codigo != null ? String(row.codigo).trim() : ''
+    if (!codigo) continue
+    try {
+      await deleteByCodigo(event, workspaceId, codigo)
+    } catch {
+      // Não bloqueia exclusão no banco se a vector store falhar
+    }
+  }
+
   const removidos = Array.isArray(data) ? data.length : 0
-  return { removidos, ids: (data ?? []).map((r: { id?: unknown }) => (typeof r.id === 'number' ? r.id : Number(r.id))).filter((n: number) => Number.isFinite(n)) }
+  return {
+    removidos,
+    ids: (data ?? [])
+      .map((r: { id?: unknown }) => (typeof r.id === 'number' ? r.id : Number(r.id)))
+      .filter((n: number) => Number.isFinite(n)),
+  }
 })

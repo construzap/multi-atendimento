@@ -83,7 +83,7 @@ export default defineEventHandler(async (event): Promise<Conversa> => {
   const { data: existing, error: selErr } = await admin
     .from('conversas')
     .select(
-      'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url'
+      'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group'
     )
     .eq('id_canal', canalId)
     .eq('phone', normalized)
@@ -114,6 +114,7 @@ export default defineEventHandler(async (event): Promise<Conversa> => {
     connect_phone: null,
     from_me: null,
     media_url: null,
+    conversa_aberta: true,
     created_at: nowIso,
     updated_at: nowIso,
   }
@@ -122,7 +123,7 @@ export default defineEventHandler(async (event): Promise<Conversa> => {
     .from('conversas')
     .insert(row)
     .select(
-      'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url'
+      'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group'
     )
     .single()
 

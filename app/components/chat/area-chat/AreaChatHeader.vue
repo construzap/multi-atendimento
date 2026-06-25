@@ -44,11 +44,26 @@ const conversaSelecionada = computed<Conversa | null>(() => {
 })
 
 const avatarUrl = computed<string | undefined>(() => conversaSelecionada.value?.photo ?? undefined)
-const nome = computed(() => firstNonEmpty(conversaSelecionada.value?.name, conversaSelecionada.value?.phone, conversaAtual.value))
-const telefone = computed(() => firstNonEmpty(conversaSelecionada.value?.phone, conversaAtual.value))
+const nome = computed(() => {
+  const c = conversaSelecionada.value
+  if (!c) return conversaAtual.value ?? ''
+  return firstNonEmpty(c.name, c.phone, c.lid, conversaAtual.value)
+})
+const telefone = computed(() => {
+  const c = conversaSelecionada.value
+  if (!c) return conversaAtual.value ?? ''
+  if (c.is_group) return firstNonEmpty(c.phone, 'Grupo')
+  return firstNonEmpty(c.phone, conversaAtual.value)
+})
 
 function fecharConversa() {
-  conversasStore.setConversaAtual(null)
+  const key = conversaAtual.value
+  if (!key) return
+  conversasStore
+    .fecharConversa(key)
+    .catch((err: unknown) => {
+      toast.error(erroExclusaoFetch(err), { duration: 8000 })
+    })
 }
 
 const modalExcluirAberto = ref(false)

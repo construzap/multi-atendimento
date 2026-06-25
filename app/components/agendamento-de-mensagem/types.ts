@@ -29,9 +29,11 @@ export type AgendamentoTipoForm = 'texto' | 'imagem' | 'audio'
 export type DestinatarioModo = 'numeros' | 'contatos'
 
 export type ContatoDestinoUi = {
-  id: number
+  /** `conversas.key` (ou chave sintética ao editar agendamento antigo). */
+  key: string
   nomecliente: string | null
   telefone: string | null
+  photo?: string | null
 }
 
 /** `unico` = não recorrente; caso contrário, repetição a partir da data/hora do agendamento. */
@@ -40,7 +42,6 @@ export type AgendamentoRecorrenciaUi = 'unico' | 'diaria' | 'semanal' | 'mensal'
 /** Payload apenas para UI — o pai decide persistência (não implementada nos componentes). */
 export type CriarAgendamentoPayloadUi = {
   tipo: AgendamentoTipoForm
-  titulo: string
   mensagem: string
   dataIso: string
   hora: string

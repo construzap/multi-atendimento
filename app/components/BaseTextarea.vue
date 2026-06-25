@@ -83,6 +83,12 @@ function syncHeight() {
   if (root.value) adjustHeight(root.value)
 }
 
+function focus() {
+  root.value?.focus()
+}
+
+defineExpose({ focus })
+
 watch(
   () => props.modelValue,
   () => {

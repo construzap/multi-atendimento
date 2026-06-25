@@ -158,6 +158,20 @@ function aoCriadoAgendamento(row: AgendamentoMensagemRow) {
   }
 }
 
+function aoExcluidoAgendamento(item: AgendamentoDiaItem) {
+  if (agStore.agendamentoSelecionado?.id === item.id) {
+    agStore.limparAgendamentoSelecionado()
+    modalAberto.value = false
+  }
+  const wid = workspaceId.value
+  const y = new Date(item.data_agendada).getFullYear()
+  const m = new Date(item.data_agendada).getMonth() + 1
+  agStore.invalidarMes(y, m)
+  if (wid != null) {
+    void agStore.carregarMesSeNecessario(wid, y, m)
+  }
+}
+
 function aoAtualizadoAgendamento(row: AgendamentoMensagemRow) {
   const old = agStore.agendamentoSelecionado
   agStore.limparAgendamentoSelecionado()
@@ -228,9 +242,11 @@ function aoAtualizadoAgendamento(row: AgendamentoMensagemRow) {
           :day="diaSelecionado"
           :month-date="mesAtual"
           :items="itensDiaSelecionado"
+          :workspace-id="workspaceId"
           @close="diaSelecionado = null"
           @create-click="abrirCriar"
           @edit-click="abrirEditar"
+          @excluido="aoExcluidoAgendamento"
         />
       </div>
     </div>

@@ -7,15 +7,39 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 const PER_PAGE = 20
 
 const SELECT =
-  'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url'
+  'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group, nao_lidas'
+
+function parseConversaAbertaFilter(raw: unknown): boolean | null | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const s = String(raw).trim().toLowerCase()
+  if (s === 'true' || s === '1') return true
+  if (s === 'false' || s === '0') return false
+  throw createError({
+    statusCode: 400,
+    statusMessage: 'conversa_aberta inválido (use true ou false).'
+  })
+}
+
+function parseIsGroupFilter(raw: unknown): boolean | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const s = String(raw).trim().toLowerCase()
+  if (s === 'false' || s === '0') return false
+  if (s === 'true' || s === '1') return true
+  throw createError({
+    statusCode: 400,
+    statusMessage: 'is_group inválido (use true ou false).'
+  })
+}
 
 /**
- * GET /api/conversas?id_canal=&page=
+ * GET /api/conversas?id_canal=&page=&conversa_aberta=&is_group=
  * Lista mensagens/conversas do canal, paginadas (20 por página), apenas para o dono do canal.
  *
  * Query:
  * - `id_canal` (obrigatório): id do canal em `canais.id`
  * - `page` (opcional, padrão 1): página 1-based
+ * - `conversa_aberta` (opcional): `true` = só abertas (inclui null legado); `false` = só fechadas; omitido = todas
+ * - `is_group` (opcional): `false` = só 1:1 (inclui null legado); omitido = todas (inclui grupos)
  */
 export default defineEventHandler(async (event): Promise<ConversasListResponse> => {
   const client = await serverSupabaseClient(event)
@@ -73,15 +97,34 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
     })
   }
 
+  const conversaAbertaFilter = parseConversaAbertaFilter(q.conversa_aberta)
+  const isGroupFilter = parseIsGroupFilter(q.is_group)
+
   const from = (page - 1) * PER_PAGE
   const to = from + PER_PAGE - 1
 
   const admin = serverSupabaseServiceRole<any>(event)
-  const { data, error, count } = await admin
+  let query = admin
     .from('conversas')
     .select(SELECT, { count: 'exact' })
     .eq('id_canal', canalId)
     .is('deleted_at', null)
+
+  if (conversaAbertaFilter === true) {
+    // Registros legados com null continuam visíveis na lista de abertas.
+    query = query.or('conversa_aberta.is.null,conversa_aberta.eq.true')
+  } else if (conversaAbertaFilter === false) {
+    query = query.eq('conversa_aberta', false)
+  }
+
+  if (isGroupFilter === false) {
+    // Registros legados com null continuam visíveis como conversas 1:1.
+    query = query.or('is_group.is.null,is_group.eq.false')
+  } else if (isGroupFilter === true) {
+    query = query.eq('is_group', true)
+  }
+
+  const { data, error, count } = await query
     // Mais recentes primeiro: conversa atualiza por `updated_at` (não por `created_at`)
     .order('updated_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })

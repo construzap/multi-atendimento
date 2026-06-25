@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import type { Mensagem } from '#shared/types/mensagem'
 import type { MessageType } from '#shared/types/messageType'
+import IaMensagemSelo from '~/components/chat/area-chat/BalaoMensagens/IaMensagemSelo.vue'
 import MessageAudio from '~/components/chat/area-chat/BalaoMensagens/MessageAudio.vue'
 import MessageDocument from '~/components/chat/area-chat/BalaoMensagens/MessageDocument.vue'
 import MessageImage from '~/components/chat/area-chat/BalaoMensagens/MessageImage.vue'
@@ -10,7 +12,9 @@ import MessageText from '~/components/chat/area-chat/BalaoMensagens/MessageText.
 import MessageUnsupported from '~/components/chat/area-chat/BalaoMensagens/MessageUnsupported.vue'
 import MessageVideo from '~/components/chat/area-chat/BalaoMensagens/MessageVideo.vue'
 
-const props = defineProps<{ mensagem: Mensagem }>()
+const props = withDefaults(defineProps<{ mensagem: Mensagem; ehGrupo?: boolean }>(), {
+  ehGrupo: false,
+})
 
 const AUDIO_EXTS = new Set(['webm', 'ogg', 'mp3', 'm4a', 'aac', 'wav', 'opus'])
 
@@ -53,10 +57,15 @@ const isSticker = computed(() => t.value === 'stickerMessage' || t.value === 'lo
 const isLocation = computed(
   () => t.value === 'locationMessage' || t.value === 'liveLocationMessage'
 )
+
+const ehIaEnvio = computed(() => Boolean(props.mensagem.from_ia && props.mensagem.from_me))
 </script>
 
 <template>
-  <MessageText v-if="isText" :mensagem="mensagem" />
+  <div v-if="ehIaEnvio" class="mb-1 ml-auto flex max-w-[70%] justify-end self-end">
+    <IaMensagemSelo />
+  </div>
+  <MessageText v-if="isText" :mensagem="mensagem" :eh-grupo="props.ehGrupo" />
   <MessageLocation v-else-if="isLocation" :mensagem="mensagem" />
   <MessageImage v-else-if="isImage" :mensagem="mensagem" />
   <MessageVideo v-else-if="isVideo" :mensagem="mensagem" />

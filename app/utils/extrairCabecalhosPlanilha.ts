@@ -96,8 +96,12 @@ export async function extrairCabecalhosPlanilha(file: File): Promise<string[]> {
 /**
  * Todas as linhas da 1.ª folha (inclui cabeçalho na posição 0).
  * Cada linha é um array de células alinhado ao comprimento da primeira linha (cabeçalhos).
+ * `raw: true` preserva números (telefone / id_canal no Excel); padrão `false` mantém texto formatado.
  */
-export async function lerTodasLinhasPlanilha(file: File): Promise<unknown[][]> {
+export async function lerTodasLinhasPlanilha(
+  file: File,
+  options?: { raw?: boolean },
+): Promise<unknown[][]> {
   const buf = await file.arrayBuffer()
   const wb = readWorkbookFromBuffer(buf, file.name)
   const sheetName = wb.SheetNames[0]
@@ -107,7 +111,7 @@ export async function lerTodasLinhasPlanilha(file: File): Promise<unknown[][]> {
   const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
     header: 1,
     defval: '',
-    raw: false,
+    raw: options?.raw === true,
   }) as unknown[][]
   if (!rows.length) return []
   const primeira = Array.isArray(rows[0]) ? (rows[0] as unknown[]) : []

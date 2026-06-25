@@ -9,8 +9,8 @@ export interface UazapiWebhookPayload {
   instanceName: string
   owner: string
   token: string
-  chatSource: string
-  chat: UazapiChat
+  chatSource?: string
+  chat?: UazapiChat
   message: UazapiMessage
 }
 
@@ -57,6 +57,7 @@ export interface UazapiMessage {
   quoted: string
   reaction: string
   edited: string
+  track_id?: string
   [key: string]: unknown
 }
 
@@ -78,8 +79,16 @@ export interface MensagemNormalizada {
   caption: string | null
   filename: string | null
 
-  /** Resolvida em persistência (lookup por canal + lid/phone). */
+  /** Contato (1:1) ou remetente (grupo) — também vai para `mensagens.name`. */
   name: string | null
   photo: string | null
   message_timestamp: number
+  /** `true` quando a mensagem veio de um grupo WhatsApp. */
+  is_group: boolean
+  /** ID do grupo (`…@g.us`) — gravado em `conversas.phone` / `conversas.lid`. */
+  id_group: string | null
+  /** Nome do grupo — gravado em `conversas.name`. */
+  name_group: string | null
+  /** `true` quando `message.track_id === "ia"` (resposta automatizada). */
+  from_ia: boolean
 }

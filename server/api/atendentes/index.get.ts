@@ -7,7 +7,7 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 /**
  * GET /api/atendentes?workspace_id=
  *
- * Lista atendentes via `view_atendentes` (id, nome, e-mail, atendente_user_id).
+ * Lista atendentes via `view_atendentes` (id, nome, e-mail).
  * Inclui `sou_dono_workspace` para a UI saber se pode excluir/atribuir gestão.
  */
 export default defineEventHandler(async (event): Promise<AtendentesListResponse> => {
@@ -72,22 +72,28 @@ export default defineEventHandler(async (event): Promise<AtendentesListResponse>
     email?: unknown
   }>
 
-  const mapped = rows.map((r) => {
-    const idNum = typeof r.id === 'number' ? r.id : Number(r.id)
-    const uidRaw = r.atendente_user_id
-    const atendenteUserId =
-      typeof uidRaw === 'string' ? uidRaw : uidRaw != null ? String(uidRaw) : ''
+  const mapped = rows
+    .map((r) => {
+      const idNum = typeof r.id === 'number' ? r.id : Number(r.id)
+      const uidRaw = r.atendente_user_id
+      const atendenteUserId =
+        typeof uidRaw === 'string' ? uidRaw : uidRaw != null ? String(uidRaw) : ''
 
-    return {
-      id: Number.isFinite(idNum) && Number.isInteger(idNum) ? idNum : 0,
-      nome: r.full_name != null ? String(r.full_name).trim() || null : null,
-      email: r.email != null ? String(r.email).trim() || null : null,
-      atendente_user_id: atendenteUserId,
-    }
-  })
+      if (!Number.isFinite(idNum) || !Number.isInteger(idNum) || idNum < 1 || !atendenteUserId) {
+        return null
+      }
+
+      return {
+        id: idNum,
+        nome: r.full_name != null ? String(r.full_name).trim() || null : null,
+        email: r.email != null ? String(r.email).trim() || null : null,
+        sou_eu: atendenteUserId === userId,
+      }
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null)
 
   return {
     sou_dono_workspace: souDonoWorkspace,
-    data: mapped.filter((x) => x.id > 0 && x.atendente_user_id.length > 0),
+    data: mapped,
   }
 })

@@ -27,6 +27,7 @@ export function mensagemFromNormalizada(n: MensagemNormalizada, conversa_key: st
     caption: n.caption,
     filename: n.filename,
     name: n.name,
-    photo: n.photo,
+    photo: n.is_group ? null : n.photo,
+    ...(n.from_ia ? { from_ia: true } : {}),
   }
 }

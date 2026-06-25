@@ -1,12 +1,23 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
+import { toast } from 'vue-sonner'
+import ModalAlerta from '~/components/ModalAlerta.vue'
 import type { AgendamentoDiaItem } from '~/components/agendamento-de-mensagem/types'
 import { intervaloRecorrenciaLabelPt } from '#shared/utils/agendamentoIntervaloPt'
+import { mensagemErroFetch } from '~/stores/canais'
 
 const props = defineProps<{
   item: AgendamentoDiaItem
+  workspaceId: number
   onEdit?: (item: AgendamentoDiaItem) => void
 }>()
+
+const emit = defineEmits<{
+  excluido: [item: AgendamentoDiaItem]
+}>()
+
+const modalExcluir = ref(false)
+const excluindo = ref(false)
 
 const tz = computed(() => props.item.iana_timezone?.trim() || 'America/Sao_Paulo')
 
@@ -51,6 +62,37 @@ const mostrarTexto = computed(() => {
   const txt = (props.item.mensagem_texto ?? '').trim()
   return txt.length > 0 && (t === 'texto' || t === '' || t === 'imagem' || t === 'audio')
 })
+
+const textoConfirmarExclusao = computed(() => {
+  const hora = formatTimePtBr(props.item.data_agendada)
+  const dest = nome.value || telefone.value || 'este agendamento'
+  return `Excluir o agendamento das ${hora} para ${dest}? Esta ação não pode ser desfeita.`
+})
+
+function abrirExcluir() {
+  modalExcluir.value = true
+}
+
+async function confirmarExcluir() {
+  if (props.item.id < 1 || props.workspaceId < 1) {
+    modalExcluir.value = false
+    return
+  }
+  excluindo.value = true
+  try {
+    await $fetch(`/api/agendamento-de-mensagem/${props.item.id}`, {
+      method: 'DELETE',
+      query: { workspace_id: props.workspaceId },
+    })
+    toast.success('Agendamento excluído.')
+    modalExcluir.value = false
+    emit('excluido', props.item)
+  } catch (err: unknown) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível excluir o agendamento.'))
+  } finally {
+    excluindo.value = false
+  }
+}
 </script>
 
 <template>
@@ -143,18 +185,41 @@ const mostrarTexto = computed(() => {
         </a>
       </div>
 
-      <button
-        v-if="onEdit"
-        type="button"
-        class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-outline/50 bg-surface-container-high px-2.5 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-on-surface dark:border-dark-outline/50 dark:bg-dark-surface-container dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-highest dark:hover:text-dark-on-surface"
-        @click="onEdit(item)"
-      >
-        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-        </svg>
-        Editar
-      </button>
+      <div class="flex shrink-0 flex-col gap-1.5">
+        <button
+          v-if="onEdit"
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-outline/50 bg-surface-container-high px-2.5 py-1.5 text-xs font-medium text-on-surface-variant transition-colors hover:bg-surface-container-highest hover:text-on-surface dark:border-dark-outline/50 dark:bg-dark-surface-container dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-highest dark:hover:text-dark-on-surface"
+          @click="onEdit(item)"
+        >
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+          </svg>
+          Editar
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-danger/30 bg-danger-container/20 px-2.5 py-1.5 text-xs font-medium text-danger transition-colors hover:bg-danger-container/40 dark:border-danger/40 dark:bg-danger-container/15 dark:text-danger dark:hover:bg-danger-container/30"
+          @click="abrirExcluir"
+        >
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+            <path d="M10 11v6M14 11v6" />
+          </svg>
+          Excluir
+        </button>
+      </div>
     </div>
+
+    <ModalAlerta
+      v-model:open="modalExcluir"
+      title="Excluir agendamento"
+      :texto="textoConfirmarExclusao"
+      variante="perigo"
+      texto-confirmar="Excluir"
+      :confirmar-desabilitado="excluindo"
+      @confirmar="confirmarExcluir"
+    />
   </div>
 </template>

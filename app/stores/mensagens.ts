@@ -32,6 +32,9 @@ export function mensagensBucketKey(conversaKey: string): MensagensBucketKey {
 
 const MAX_CACHE_KEYS = 5
 
+/** Evita GET duplicado quando `ensureLoaded` é chamado em paralelo (ex.: plugin + componente). */
+const ensureLoadedInflight = new Map<string, Promise<void>>()
+
 type KeyMensagensState = {
   /** Canal usado no último GET (paginação “carregar mais”). */
   id_canal: number | null
@@ -351,9 +354,32 @@ export const useMensagensStore = defineStore('mensagens', {
     async ensureLoaded(idCanal: number, conversaKey: string, page: number = 1) {
       const key = mensagensBucketKey(conversaKey)
       this.setActiveKey(key)
-      const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
-      if (bucket.loadedAt != null) return
-      await this.fetchPage(idCanal, conversaKey, page)
+      let bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
+
+      const cacheValido =
+        bucket.loadedAt != null &&
+        bucket.items.length > 0 &&
+        (bucket.id_canal == null || bucket.id_canal === idCanal)
+
+      if (cacheValido) return
+
+      const inflightKey = `${idCanal}:${key}:${page}`
+      const inflight = ensureLoadedInflight.get(inflightKey)
+      if (inflight) return inflight
+
+      if (bucket.id_canal != null && bucket.id_canal !== idCanal) {
+        bucket = emptyKeyState()
+        this.byKey[key] = bucket
+      }
+
+      const promise = this.fetchPage(idCanal, conversaKey, page)
+        .then(() => undefined)
+        .finally(() => {
+          ensureLoadedInflight.delete(inflightKey)
+        })
+
+      ensureLoadedInflight.set(inflightKey, promise)
+      return promise
     },
 
     async fetchNextPage() {

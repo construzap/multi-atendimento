@@ -14,7 +14,6 @@ const props = defineProps<{
   avatarSrc?: string | null
   /** PK em `atendentes` (para rodapé e exclusão). */
   registroId: number
-  atendenteUserId: string
   workspaceId: number
   /** Dono do workspace e não é o próprio cartão. */
   podeExcluir: boolean

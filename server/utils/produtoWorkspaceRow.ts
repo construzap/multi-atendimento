@@ -20,7 +20,7 @@ import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCate
 
 export const SELECT_PRODUTO_WORKSPACE_EMBED =
 
-  'id, codigo, nome, categoria_id, sku, unidade_venda, marca, preco, preco_custo, preco_promocional, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, codigo_ncm, termos_pesquisa, codigo_barras_ean, largura, altura, comprimento, status, produto_categorias(nome)'
+  'id, codigo, nome, categoria_id, sku, unidade_venda, marca, preco, preco_custo, preco_promocional, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, codigo_ncm, termo_pesquisa, codigo_barras_ean, largura, altura, comprimento, status, produto_categorias(nome)'
 
 
 
@@ -28,7 +28,7 @@ export const SELECT_PRODUTO_WORKSPACE_EMBED =
 
 export const SELECT_VIEW_PRODUTOS_COM_VARIACOES =
 
-  'id, workspace_id, nome, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, imagem_url, infos_relevantes, status, created_at, updated_at, codigo, categoria_id, descricao, codigo_ncm, termos_pesquisa, preco_custo, preco_promocional, codigo_barras_ean, largura, altura, comprimento, parent_id, tem_variacoes, atributos, categoria, imagens, variacoes'
+  'id, workspace_id, nome, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, imagem_url, infos_relevantes, status, created_at, updated_at, codigo, categoria_id, descricao, codigo_ncm, termos_pesquisa, termos_pesquisa_busca, preco_custo, preco_promocional, codigo_barras_ean, largura, altura, comprimento, parent_id, tem_variacoes, atributos, categoria, imagens, variacoes'
 
 
 
@@ -167,20 +167,35 @@ function parseNumOrNull(raw: unknown): number | null {
 
 
 
+function parseTermoPesquisaItem(rec: Record<string, unknown>): ProdutoTermoPesquisaItem | null {
+  const id = typeof rec.id === 'number' ? rec.id : Number(rec.id)
+  const nome = String(rec.nome ?? '').trim()
+  if (!Number.isFinite(id) || id < 1 || !nome.length) return null
+  return { id, nome: nome.toLocaleUpperCase('pt-BR') }
+}
+
 function parseTermosPesquisa(raw: unknown): ProdutoTermoPesquisaItem[] {
   if (raw == null) return []
-  if (!Array.isArray(raw)) return []
-  const out: ProdutoTermoPesquisaItem[] = []
-  for (const item of raw) {
-    if (item == null || typeof item !== 'object') continue
-    const rec = item as Record<string, unknown>
-    const id = typeof rec.id === 'number' ? rec.id : Number(rec.id)
-    const nome = String(rec.nome ?? '').trim()
-    if (!Number.isFinite(id) || id < 1 || !nome.length) continue
-    out.push({ id, nome: nome.toLocaleUpperCase('pt-BR') })
+  if (typeof raw === 'string') {
+    const texto = raw.trim()
+    if (!texto.length) return []
+    return [{ id: 0, nome: texto.toLocaleUpperCase('pt-BR') }]
   }
-  out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
-  return out
+  if (Array.isArray(raw)) {
+    const out: ProdutoTermoPesquisaItem[] = []
+    for (const item of raw) {
+      if (item == null || typeof item !== 'object') continue
+      const t = parseTermoPesquisaItem(item as Record<string, unknown>)
+      if (t) out.push(t)
+    }
+    out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
+    return out
+  }
+  if (typeof raw === 'object') {
+    const t = parseTermoPesquisaItem(raw as Record<string, unknown>)
+    return t ? [t] : []
+  }
+  return []
 }
 
 
@@ -264,6 +279,8 @@ function mapCamposProduto(r: Record<string, unknown>): ProdutoWorkspaceCampos {
     descricao: r.descricao == null ? null : String(r.descricao),
 
     codigo_ncm: r.codigo_ncm == null ? null : String(r.codigo_ncm),
+
+    termos_pesquisa_busca: r.termos_pesquisa_busca == null ? null : String(r.termos_pesquisa_busca),
 
     termos_pesquisa: parseTermosPesquisa(r.termos_pesquisa),
 

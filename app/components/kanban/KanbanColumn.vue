@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { KanbanColumn } from '#shared/types/kanban'
+import type { KanbanCard as KanbanCardModel, KanbanColumn } from '#shared/types/kanban'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 import KanbanCard from './KanbanCard.vue'
 
@@ -11,6 +11,7 @@ const props = defineProps<{
   podeMoverEsquerda?: boolean
   podeMoverDireita?: boolean
   reordenando?: boolean
+  carregandoMais?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -22,6 +23,8 @@ const emit = defineEmits<{
   columnEdit: [column: KanbanColumn]
   columnDelete: [column: KanbanColumn]
   columnReorder: [payload: { columnId: number; direcao: 'esquerda' | 'direita' }]
+  loadMore: [columnId: number]
+  cardOpen: [card: KanbanCardModel]
 }>()
 
 function onEditar(close: () => void) {
@@ -57,6 +60,16 @@ const columnSurfaceStyle = computed(() => {
 
 const isDragOver = computed(
   () => props.dragOverColumnId != null && String(props.dragOverColumnId) === String(props.column.id),
+)
+
+/** Mais recente primeiro; desempate por `conversa_key` (igual à API). */
+const cardsOrdenados = computed(() =>
+  [...props.column.cards].sort((a, b) => {
+    const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0
+    const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0
+    if (tb !== ta) return tb - ta
+    return a.conversa_key.localeCompare(b.conversa_key)
+  }),
 )
 
 function onDragOver(e: DragEvent) {
@@ -143,7 +156,7 @@ function onDrop(e: DragEvent) {
         <span
           class="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-sm dark:bg-slate-800/70 dark:text-slate-200"
         >
-          {{ column.cards.length }}
+          {{ column.total_cards ?? column.cards.length }}
         </span>
 
         <div class="shrink-0" @click.stop @mousedown.stop>
@@ -209,13 +222,14 @@ function onDrop(e: DragEvent) {
       @drop="onDrop"
     >
       <KanbanCard
-        v-for="c in column.cards"
+        v-for="c in cardsOrdenados"
         :key="c.conversa_key"
         :card="c"
         :column-id="column.id"
         :dragging-id="draggingId ?? null"
         @card-drag-start="emit('cardDragStart', $event)"
         @card-drag-end="emit('cardDragEnd')"
+        @card-open="emit('cardOpen', $event)"
       />
 
       <div
@@ -228,5 +242,22 @@ function onDrop(e: DragEvent) {
         Solte um card aqui
       </div>
     </div>
+
+    <button
+      v-if="column.has_more"
+      type="button"
+      class="mt-3 w-full rounded-xl border border-outline/30 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-outline/30 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800"
+      :disabled="carregandoMais"
+      @click="emit('loadMore', column.id)"
+    >
+      <span v-if="carregandoMais" class="inline-flex items-center justify-center gap-2">
+        <span
+          class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary border-t-transparent"
+          aria-hidden="true"
+        />
+        Carregando…
+      </span>
+      <span v-else>Carregar mais</span>
+    </button>
   </section>
 </template>

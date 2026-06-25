@@ -1,7 +1,9 @@
 import type { MessageType } from '#shared/types/messageType'
 
 /**
- * Linha de mensagem na API: base em `public.mensagens` + `name`/`photo` da conversa (contato).
+ * Linha de mensagem na API: base em `public.mensagens`.
+ * `name`/`photo`: coluna `mensagens.name` quando preenchida (ex.: remetente em grupo);
+ * fallback opcional para dados da conversa no GET.
  */
 export interface Mensagem {
   /** Igual a `public.conversas.key` / `mensagens.key_conversa`. */
@@ -23,6 +25,8 @@ export interface Mensagem {
   filename: string | null
   name: string | null
   photo: string | null
+  /** Indica resposta enviada pela I.A (`track_id === "ia"` no webhook). */
+  from_ia?: boolean
 }
 
 /**
@@ -43,5 +47,11 @@ export interface PusherNovaMensagemPayload {
   /** `conversas.key` — qual conversa dentro do canal. */
   conversa_key: string
   mensagem: Mensagem
+  /** Metadados do grupo (quando `is_group`). */
+  is_group?: boolean
+  id_group?: string | null
+  name_group?: string | null
+  /** Foto do grupo (`conversas.photo`) — não confundir com `mensagem.photo`. */
+  conversa_photo?: string | null
 }
 

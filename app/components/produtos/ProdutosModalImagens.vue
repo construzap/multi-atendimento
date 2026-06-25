@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed, ref } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 
 import { storeToRefs } from 'pinia'
 
@@ -43,10 +43,13 @@ const {
 
 
 const novaUrl = ref('')
-
 const inputArquivoRef = ref<HTMLInputElement | null>(null)
-
+const enviandoImagem = ref(false)
+const arrastandoArquivo = ref(false)
 let abortFotos: AbortController | null = null
+let arrastandoDepth = 0
+
+const uploadDesabilitado = computed(() => salvandoImagens.value || enviandoImagem.value)
 
 
 
@@ -54,14 +57,10 @@ const tituloProduto = computed(() => selecionadoAtivo.value?.nome?.trim() || 'Pr
 
 
 
-function fecharSemSalvar() {
-
-  if (salvandoImagens.value) return
-
-  produtosStore.fecharModalImagens(false)
-
+async function fecharSemSalvar() {
+  if (salvandoImagens.value || enviandoImagem.value) return
+  await produtosStore.fecharModalImagens(false)
   novaUrl.value = ''
-
 }
 
 
@@ -85,7 +84,6 @@ async function concluir() {
     }
 
     toast.success('Imagens atualizadas.')
-
     novaUrl.value = ''
 
   } catch (err) {
@@ -110,34 +108,122 @@ function cancelarProgresso() {
 
 
 
-function adicionarUrl() {
-
+async function adicionarUrl() {
   const u = novaUrl.value.trim()
-
-  if (!u) return
-
-  produtosStore.adicionarImagemEdicaoPorUrl(u)
-
-  novaUrl.value = ''
-
+  if (!u || enviandoImagem.value || salvandoImagens.value) return
+  enviandoImagem.value = true
+  try {
+    if (produtosStore.podeSalvarImagensNaApi()) {
+      await produtosStore.enviarUrlImagemEdicaoApi(u)
+    } else {
+      produtosStore.adicionarImagemEdicaoPorUrl(u)
+    }
+    novaUrl.value = ''
+  } catch (err) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível adicionar a URL da imagem.'))
+  } finally {
+    enviandoImagem.value = false
+  }
 }
 
+async function processarArquivosImagem(files: File[]) {
+  if (salvandoImagens.value || enviandoImagem.value) return
 
+  const imagens = files.filter((f) => f.type.startsWith('image/'))
+  if (!imagens.length) {
+    toast.error('Nenhuma imagem válida encontrada.')
+    return
+  }
 
-function onEscolherArquivo(ev: Event) {
+  const usaApi = produtosStore.podeSalvarImagensNaApi()
+  if (usaApi) enviandoImagem.value = true
 
+  try {
+    for (const file of imagens) {
+      if (salvandoImagens.value) break
+      if (usaApi) {
+        await produtosStore.enviarArquivoImagemEdicaoApi(file)
+      } else {
+        produtosStore.adicionarImagemEdicaoPorArquivo(file)
+      }
+    }
+  } catch (err) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível enviar a imagem.'))
+  } finally {
+    if (usaApi) enviandoImagem.value = false
+  }
+}
+
+function arquivosImagemDoClipboard(items: DataTransferItemList | null | undefined): File[] {
+  if (!items) return []
+  const files: File[] = []
+  for (const item of items) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (file) files.push(file)
+  }
+  return files
+}
+
+function onPasteImagem(ev: ClipboardEvent) {
+  if (!modalImagensAberto.value || uploadDesabilitado.value) return
+
+  const files = arquivosImagemDoClipboard(ev.clipboardData?.items)
+  if (!files.length) return
+
+  ev.preventDefault()
+  void processarArquivosImagem(files)
+}
+
+function onDragEnterZona(ev: DragEvent) {
+  ev.preventDefault()
+  if (uploadDesabilitado.value) return
+  arrastandoDepth += 1
+  arrastandoArquivo.value = true
+}
+
+function onDragOverZona(ev: DragEvent) {
+  ev.preventDefault()
+  if (uploadDesabilitado.value) return
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy'
+}
+
+function onDragLeaveZona(ev: DragEvent) {
+  ev.preventDefault()
+  arrastandoDepth = Math.max(0, arrastandoDepth - 1)
+  if (arrastandoDepth === 0) arrastandoArquivo.value = false
+}
+
+function onDropZona(ev: DragEvent) {
+  ev.preventDefault()
+  arrastandoDepth = 0
+  arrastandoArquivo.value = false
+  if (uploadDesabilitado.value) return
+
+  const files = Array.from(ev.dataTransfer?.files ?? [])
+  void processarArquivosImagem(files)
+}
+
+watch(modalImagensAberto, (aberto) => {
+  if (aberto) {
+    document.addEventListener('paste', onPasteImagem)
+    return
+  }
+  document.removeEventListener('paste', onPasteImagem)
+  arrastandoDepth = 0
+  arrastandoArquivo.value = false
+})
+
+onUnmounted(() => {
+  document.removeEventListener('paste', onPasteImagem)
+})
+
+async function onEscolherArquivo(ev: Event) {
   const input = ev.target as HTMLInputElement
-
-  const file = input.files?.[0]
-
-  if (!file) return
-
-  if (!file.type.startsWith('image/')) return
-
-  produtosStore.adicionarImagemEdicaoPorArquivo(file)
-
+  const files = Array.from(input.files ?? [])
   input.value = ''
-
+  if (!files.length) return
+  await processarArquivosImagem(files)
 }
 
 
@@ -150,10 +236,16 @@ function abrirSeletorArquivo() {
 
 
 
-function urlExibicao(img: { url?: string | null; imagem_url?: string | null }): string {
-
+function urlPreview(img: { url?: string | null; imagem_url?: string | null }): string {
   return String(img.imagem_url ?? img.url ?? '').trim()
+}
 
+/** Texto auxiliar na lista (não expõe blob cru). */
+function urlRotulo(img: { url?: string | null; imagem_url?: string | null }): string {
+  const u = urlPreview(img)
+  if (!u) return 'Sem URL'
+  if (u.startsWith('blob:')) return 'Pré-visualização local'
+  return u
 }
 
 </script>
@@ -170,7 +262,7 @@ function urlExibicao(img: { url?: string | null; imagem_url?: string | null }): 
 
     panel-class="w-full max-w-2xl"
 
-    :close-on-backdrop="!salvandoImagens"
+    :close-on-backdrop="!salvandoImagens && !enviandoImagem"
 
     @update:open="(v) => { if (!v) fecharSemSalvar() }"
 
@@ -206,7 +298,7 @@ function urlExibicao(img: { url?: string | null; imagem_url?: string | null }): 
 
       >
 
-        Nenhuma imagem ainda. Adicione por URL ou ficheiro abaixo.
+        Nenhuma imagem ainda. Arraste, cole com Ctrl+V ou adicione por URL abaixo.
 
       </div>
 
@@ -238,11 +330,13 @@ function urlExibicao(img: { url?: string | null; imagem_url?: string | null }): 
 
           <img
 
-            v-if="urlExibicao(img)"
+            v-if="urlPreview(img)"
 
-            :src="urlExibicao(img)"
+            :src="urlPreview(img)"
 
             alt=""
+
+            referrerpolicy="no-referrer"
 
             class="h-16 w-16 shrink-0 rounded-lg border border-outline/30 object-cover dark:border-dark-outline/35"
 
@@ -262,9 +356,9 @@ function urlExibicao(img: { url?: string | null; imagem_url?: string | null }): 
 
           <div class="min-w-0 flex-1">
 
-            <p class="truncate text-xs text-on-surface-variant dark:text-dark-on-surface-variant" :title="urlExibicao(img)">
+            <p class="truncate text-xs text-on-surface-variant dark:text-dark-on-surface-variant" :title="urlRotulo(img)">
 
-              {{ urlExibicao(img) || 'Sem URL' }}
+              {{ urlRotulo(img) }}
 
             </p>
 
@@ -374,44 +468,53 @@ function urlExibicao(img: { url?: string | null; imagem_url?: string | null }): 
 
           </div>
 
-          <BaseButton type="button" variant="secondary" :block="false" :disabled="salvandoImagens" @click="adicionarUrl">
-
-            Adicionar URL
-
+          <BaseButton type="button" variant="secondary" :block="false" :disabled="salvandoImagens || enviandoImagem" @click="adicionarUrl">
+            {{ enviandoImagem ? 'Enviando…' : 'Adicionar URL' }}
           </BaseButton>
 
         </div>
 
-        <div class="mt-4 flex flex-wrap items-center gap-3 border-t border-outline/20 pt-4 dark:border-dark-outline/25">
-
+        <div
+          class="mt-4 rounded-xl border-2 border-dashed p-6 text-center transition-colors"
+          :class="
+            arrastandoArquivo
+              ? 'border-primary-500 bg-primary-500/8 dark:border-primary-400 dark:bg-primary-500/12'
+              : 'border-outline/40 bg-surface-container-lowest/60 hover:border-outline/55 dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest/50 dark:hover:border-dark-outline/55'
+          "
+          role="button"
+          tabindex="0"
+          :aria-disabled="uploadDesabilitado"
+          @dragenter="onDragEnterZona"
+          @dragover="onDragOverZona"
+          @dragleave="onDragLeaveZona"
+          @drop="onDropZona"
+          @click="!uploadDesabilitado && abrirSeletorArquivo()"
+          @keydown.enter.prevent="!uploadDesabilitado && abrirSeletorArquivo()"
+          @keydown.space.prevent="!uploadDesabilitado && abrirSeletorArquivo()"
+        >
           <input
-
             ref="inputArquivoRef"
-
             type="file"
-
             accept="image/*"
-
+            multiple
             class="sr-only"
-
-            :disabled="salvandoImagens"
-
+            :disabled="uploadDesabilitado"
             @change="onEscolherArquivo"
-
           />
 
-          <BaseButton type="button" variant="primary" :block="false" :disabled="salvandoImagens" @click="abrirSeletorArquivo">
+          <span
+            class="material-symbols-outlined mx-auto mb-2 block text-[36px] text-primary-600 dark:text-primary-400"
+            aria-hidden="true"
+          >
+            {{ arrastandoArquivo ? 'download' : 'cloud_upload' }}
+          </span>
 
-            <span class="inline-flex items-center gap-2">
-
-              <span class="material-symbols-outlined text-[20px]" aria-hidden="true">upload</span>
-
-              Escolher ficheiro
-
-            </span>
-
-          </BaseButton>
-
+          <p class="text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+            {{ enviandoImagem ? 'Enviando imagem…' : 'Arraste imagens para aqui' }}
+          </p>
+          <p class="mt-1 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+            ou clique para escolher · Ctrl+V para colar do clipboard
+          </p>
         </div>
 
       </div>
@@ -422,16 +525,11 @@ function urlExibicao(img: { url?: string | null; imagem_url?: string | null }): 
 
     <template #footer>
 
-      <BaseButton type="button" variant="secondary" :block="false" :disabled="salvandoImagens" @click="fecharSemSalvar">
-
+      <BaseButton type="button" variant="secondary" :block="false" :disabled="salvandoImagens || enviandoImagem" @click="fecharSemSalvar">
         Cancelar
-
       </BaseButton>
-
-      <BaseButton type="button" variant="primary" :block="false" :disabled="salvandoImagens" @click="concluir">
-
+      <BaseButton type="button" variant="primary" :block="false" :disabled="salvandoImagens || enviandoImagem" @click="concluir">
         {{ salvandoImagens ? 'Salvando…' : 'Concluir' }}
-
       </BaseButton>
 
     </template>

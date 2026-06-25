@@ -585,6 +585,9 @@ const itemSugestaoClass = (idx: number) =>
           <span class="material-symbols-outlined text-[14px] leading-none" aria-hidden="true">close</span>
         </button>
       </span>
+      <span v-else-if="itemIdProps().nome" class="text-[13px] font-medium text-zinc-700 dark:text-zinc-200">
+        {{ itemIdProps().nome }}
+      </span>
       <span v-else class="text-[13px] text-zinc-400 dark:text-zinc-500">{{ config.placeholderCelula }}</span>
     </div>
 

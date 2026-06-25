@@ -22,11 +22,24 @@ export default defineNuxtConfig({
     b2BucketName: '',
     /** Bucket B2 para mídia de agendamento (default no código: multiatendimentoconstruzap). */
     b2AgendamentoBucketName: '',
+    /** Bucket B2 para mídia de disparo em massa (default no código: multiatendimentoconstruzap). */
+    b2DisparoEmMassaBucketName: '',
     /** Bucket B2 para fotos de produtos (default no código: produtosconstruzap). */
     b2ProdutosBucketName: '',
 
     // --- Pusher — só servidor (override: NUXT_PUSHER_SECRET) ---
     pusherSecret: '',
+
+    // --- OpenAI — embeddings (override: NUXT_OPENAI_*) ---
+    openaiApiKey: '',
+    openaiEmbeddingModel: 'text-embedding-3-small',
+
+    // --- Supabase Vector — 2º banco pgvector (override: NUXT_VECTOR_*) ---
+    vectorSupabaseUrl: '',
+    vectorSupabaseSecretKey: '',
+    vectorDocumentsTable: 'documentsconstruzapmulti',
+    /** Chave para POST /api/public/buscar-produtos (integrações externas). */
+    vectorSearchApiKey: '',
 
     public: {
       // --- Pusher — browser + SSR (override: NUXT_PUBLIC_PUSHER_*) ---
@@ -56,7 +69,7 @@ export default defineNuxtConfig({
     redirectOptions: {
       login: '/login',
       callback: '/confirm',
-      exclude: ['/esqueci-senha', '/redefinir-senha']
+      exclude: ['/esqueci-senha', '/redefinir-senha', '/api/public/**']
     }
   }
 })

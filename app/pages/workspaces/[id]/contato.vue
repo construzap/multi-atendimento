@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
-import type { Contato, ContatosListResponse } from '#shared/types/contato'
-import BaseInput from '~/components/BaseInput.vue'
-import BaseButton from '~/components/BaseButton.vue'
 import ContatosTabela from '~/components/contatos/ContatosTabela.vue'
+import BotoesAcaoContatos from '~/components/contatos/BotoesAcaoContatos.vue'
+import FerramentaImportarContato from '~/components/contatos/FerramentaImportarContato.vue'
 import { mensagemErroFetch } from '~/stores/canais'
+import { useContatosStore } from '~/stores/contatos'
 
 definePageMeta({
   layout: 'workspace'
 })
 
 const route = useRoute()
+const contatosStore = useContatosStore()
 
 function parsePositiveInt(raw: unknown): number | null {
   const s = String(raw ?? '').trim()
@@ -24,40 +25,31 @@ function parsePositiveInt(raw: unknown): number | null {
 
 const workspaceId = computed(() => parsePositiveInt(route.params.id))
 
-const pending = ref(false)
-const error = ref<string | null>(null)
-const all = ref<Contato[]>([])
-const filtro = ref('')
+const ferramentaImportarContatoRef = ref<{ abrirSeletorImportacao: () => void } | null>(null)
 
-const filtered = computed(() => {
-  const q = filtro.value.trim().toLowerCase()
-  if (!q) return all.value
-  return all.value.filter((c) => {
-    const hay = `${c.name ?? ''} ${c.phone ?? ''} ${c.lid ?? ''} ${c.key ?? ''} ${c.id_canal ?? ''}`.toLowerCase()
-    return hay.includes(q)
-  })
-})
+function aoClicarImportar() {
+  ferramentaImportarContatoRef.value?.abrirSeletorImportacao()
+}
 
 async function fetchContatos() {
   const wid = workspaceId.value
   if (wid == null) return
 
-  pending.value = true
-  error.value = null
   try {
-    const res = await $fetch<ContatosListResponse>('/api/contatos', {
-      method: 'GET',
-      query: { workspace_id: wid },
-    })
-    all.value = res.data ?? []
+    await contatosStore.fetchPagina(wid)
   } catch (err: unknown) {
-    const msg = mensagemErroFetch(err, 'Não foi possível carregar os contatos.')
-    error.value = msg
-    toast.error(msg, { duration: 8000 })
-  } finally {
-    pending.value = false
+    toast.error(mensagemErroFetch(err, 'Não foi possível carregar os contatos.'), { duration: 8000 })
   }
 }
+
+watch(workspaceId, (wid, prev) => {
+  if (prev !== undefined && wid !== prev) {
+    contatosStore.reset()
+    if (wid != null) {
+      void fetchContatos()
+    }
+  }
+})
 
 onMounted(() => {
   fetchContatos().catch(() => {})
@@ -74,31 +66,11 @@ onMounted(() => {
         </p>
       </div>
 
-      <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end">
-        <BaseInput
-          id="contatos-busca"
-          v-model="filtro"
-          type="search"
-          name="contatos-busca"
-          placeholder="Buscar por nome, telefone, LID…"
-          autocomplete="off"
-          class="sm:w-80"
-        />
-        <BaseButton
-          type="button"
-          variant="secondary"
-          size="sm"
-          :block="false"
-          :loading="pending"
-          :disabled="pending"
-          @click="fetchContatos"
-        >
-          Atualizar
-        </BaseButton>
-      </div>
+      <BotoesAcaoContatos @importar="aoClicarImportar" />
     </header>
 
-    <ContatosTabela :items="filtered" :pending="pending" :error="error" />
+    <FerramentaImportarContato ref="ferramentaImportarContatoRef" :workspace-id="workspaceId" />
+
+    <ContatosTabela />
   </div>
 </template>
-

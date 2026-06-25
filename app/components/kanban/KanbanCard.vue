@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import BaseAvatar from '~/components/BaseAvatar.vue'
 import type { KanbanCard as KanbanCardModel } from '#shared/types/kanban'
 
@@ -12,7 +12,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   cardDragStart: [payload: { cardId: string; fromColumnId: string }]
   cardDragEnd: []
+  cardOpen: [card: KanbanCardModel]
 }>()
+
+let lastDragEndAt = 0
 
 const titleDisplay = computed(() => {
   const n = props.card.name?.trim()
@@ -37,7 +40,13 @@ function onDragOverCard(e: DragEvent) {
 }
 
 function onDragEnd() {
+  lastDragEndAt = Date.now()
   emit('cardDragEnd')
+}
+
+function onCardClick() {
+  if (Date.now() - lastDragEndAt < 250) return
+  emit('cardOpen', props.card)
 }
 
 function initials(name: string): string {
@@ -79,6 +88,14 @@ function priorityUi(p: number | null): { dot: string; text: string; pill: string
 
 const canalNomeBadge = computed(() => props.card.canal_nome?.trim() ?? '')
 
+const temNaoLidas = computed(() => (props.card.nao_lidas ?? 0) >= 1)
+
+const naoLidasLabel = computed(() => {
+  const n = props.card.nao_lidas ?? 0
+  if (n < 1) return ''
+  return n > 99 ? '99+' : String(n)
+})
+
 const timeLabel = computed(() => {
   const iso = props.card.updated_at
   if (!iso) return ''
@@ -103,9 +120,15 @@ const timeLabel = computed(() => {
 
 <template>
   <article
-    class="group rounded-2xl border border-outline/40 bg-white p-4 shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+    class="group cursor-pointer rounded-2xl border border-outline/40 bg-white p-4 shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
     :class="draggingId === card.conversa_key ? 'opacity-60 ring-2 ring-primary/25' : ''"
     draggable="true"
+    role="button"
+    tabindex="0"
+    :aria-label="`Ver informações de ${titleDisplay}`"
+    @click="onCardClick"
+    @keydown.enter.prevent="onCardClick"
+    @keydown.space.prevent="onCardClick"
     @dragstart="onDragStart"
     @dragover="onDragOverCard"
     @dragend="onDragEnd"
@@ -141,8 +164,19 @@ const timeLabel = computed(() => {
       </div>
     </div>
 
-    <p v-if="card.preview" class="mt-3 line-clamp-2 text-xs text-slate-600 dark:text-dark-on-surface-variant">
-      {{ card.preview }}
+    <p
+      v-if="card.preview || temNaoLidas"
+      class="mt-3 flex items-center gap-2 text-xs text-slate-600 dark:text-dark-on-surface-variant"
+    >
+      <span v-if="card.preview" class="min-w-0 flex-1 line-clamp-2">{{ card.preview }}</span>
+      <span
+        v-if="temNaoLidas"
+        class="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#25D366] px-1.5 text-[11px] font-semibold leading-none text-white shadow-sm"
+        :class="card.preview ? '' : 'ml-auto'"
+        :aria-label="`${naoLidasLabel} mensagem${(card.nao_lidas ?? 0) === 1 ? '' : 's'} não lida${(card.nao_lidas ?? 0) === 1 ? '' : 's'}`"
+      >
+        {{ naoLidasLabel }}
+      </span>
     </p>
 
     <div class="mt-4 flex items-center justify-between gap-2">

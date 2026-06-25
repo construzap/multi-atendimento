@@ -64,15 +64,6 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaEl
     throw createError({ statusCode: 404, statusMessage: 'Termo não encontrado neste workspace.' })
   }
 
-  const { error: delVincErr } = await admin
-    .from('produto_termo_de_pesquisa_vinculo')
-    .delete()
-    .eq('termo_id', termoId)
-
-  if (delVincErr) {
-    throw createError({ statusCode: 500, statusMessage: delVincErr.message })
-  }
-
   const { error: delErr } = await admin
     .from('produto_termo_de_pesquisa')
     .delete()

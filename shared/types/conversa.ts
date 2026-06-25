@@ -18,6 +18,11 @@ export interface Conversa {
   photo: string | null
   from_me: boolean | null
   media_url: string | null
+  conversa_aberta: boolean | null
+  is_group: boolean | null
+  id_group: string | null
+  name_group: string | null
+  nao_lidas: number
 }
 
 /**

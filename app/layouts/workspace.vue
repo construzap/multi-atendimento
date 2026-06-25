@@ -19,6 +19,8 @@ type NavItem = {
     | 'contato'
     | 'canais'
     | 'produtos'
+    | 'vectorStore'
+    | 'buscarProdutosIa'
     | 'atendentes'
     | 'frete'
     | 'agendamento'
@@ -30,6 +32,7 @@ const workspaces = useWorkspacesStore()
 
 const workspaceId = computed(() => workspaces.currentWorkspaceId ?? String(route.params.id ?? ''))
 const base = computed(() => `/workspaces/${workspaceId.value}`)
+const enviarIaBase = computed(() => `${base.value}/produtos/enviar-para-ia`)
 
 const items = computed<NavItem[]>(() => [
   { label: 'Kanban', to: `${base.value}/kanban`, icon: 'dashboard' },
@@ -37,6 +40,7 @@ const items = computed<NavItem[]>(() => [
   { label: 'Contato', to: `${base.value}/contato`, icon: 'contato' },
   { label: 'Canais', to: `${base.value}/canais`, icon: 'canais' },
   { label: 'Produtos', to: `${base.value}/produtos`, icon: 'produtos' },
+  { label: 'Vector Store (IA)', to: `${enviarIaBase.value}/vector-store`, icon: 'vectorStore' },
   { label: 'Atendentes', to: `${base.value}/atendentes`, icon: 'atendentes' },
   { label: 'Frete', to: `${base.value}/frete`, icon: 'frete' },
   { label: 'Agendamento de mensagens', to: `${base.value}/agendamento-mensagens`, icon: 'agendamento' },
@@ -45,7 +49,13 @@ const items = computed<NavItem[]>(() => [
 
 function isActive(to: string) {
   const path = route.path
+  if (to.includes('/enviar-para-ia/')) {
+    return path === to || path.startsWith(`${to}/`)
+  }
   if (to.endsWith('/chat') || to.endsWith('/produtos')) {
+    if (to.endsWith('/produtos') && path.includes('/produtos/enviar-para-ia/')) {
+      return false
+    }
     return path === to || path.startsWith(`${to}/`)
   }
   return path === to
@@ -145,6 +155,16 @@ function closeMobileSidebar() {
               <svg v-else-if="it.icon === 'produtos'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round" />
                 <path d="M3.27 6.96 12 12.01 20.73 6.96M12 22.08V12" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <svg v-else-if="it.icon === 'vectorStore'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3" />
+                <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
+                <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6" />
+              </svg>
+              <svg v-else-if="it.icon === 'buscarProdutosIa'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+                <path d="M8 11h6M11 8v6" />
               </svg>
               <svg v-else-if="it.icon === 'atendentes'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -282,6 +302,16 @@ function closeMobileSidebar() {
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round" />
               <path d="M3.27 6.96 12 12.01 20.73 6.96M12 22.08V12" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
+            <svg v-else-if="it.icon === 'vectorStore'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3" />
+              <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
+              <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6" />
+            </svg>
+            <svg v-else-if="it.icon === 'buscarProdutosIa'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.3-4.3" />
+              <path d="M8 11h6M11 8v6" />
+            </svg>
             <svg v-else-if="it.icon === 'atendentes'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
               <circle cx="9" cy="7" r="4" />
@@ -363,18 +393,6 @@ function closeMobileSidebar() {
     </aside>
 
     <main class="relative min-w-0 flex-1 overflow-y-auto bg-background transition-colors dark:bg-dark-background">
-      <button
-        type="button"
-        class="fixed right-3 top-3 z-40 inline-flex items-center gap-2 rounded-xl border border-outline/40 bg-surface-container-lowest/95 px-3 py-2 text-sm font-medium text-on-surface shadow-sm backdrop-blur transition-colors hover:bg-surface-container-low dark:border-dark-outline/40 dark:bg-dark-surface-container-low/95 dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high md:right-5 md:top-4"
-        :aria-label="temaLabel"
-        @click="toggleTheme"
-      >
-        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
-          {{ isDark ? 'light_mode' : 'dark_mode' }}
-        </span>
-        <span class="hidden sm:inline">{{ temaLabel }}</span>
-      </button>
-
       <slot />
     </main>
   </div>

@@ -83,7 +83,7 @@ export default defineEventHandler(async (event) => {
   const normalizada = normalizarMensagem(body, canal.id, workspaceId)
 
   if (!normalizada) {
-    console.log('[webhook] skip: mensagem ignorada (grupo ou filtro interno)')
+    console.log('[webhook] skip: mensagem ignorada (sem identificador ou filtro interno)')
     return { ok: true, skipped: true, reason: 'message_ignored' }
   }
 
@@ -136,6 +136,14 @@ export default defineEventHandler(async (event) => {
   const payloadPusher: PusherNovaMensagemPayload = {
     conversa_key: saved.conversa_key,
     mensagem: mensagemFromNormalizada(normalizada, saved.conversa_key),
+    ...(normalizada.is_group
+      ? {
+          is_group: true,
+          id_group: normalizada.id_group,
+          name_group: normalizada.name_group,
+          conversa_photo: normalizada.photo,
+        }
+      : {}),
   }
   await triggerNovaMensagem(event, normalizada.id_canal, payloadPusher)
 

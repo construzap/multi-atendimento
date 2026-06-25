@@ -34,17 +34,10 @@ const props = withDefaults(
     tituloModal?: string
     /** Pré-preenche data (yyyy-mm-dd) ao abrir */
     prefillDate?: string | null
-    /** Lista estática para demonstrar a aba “Contatos” sem backend */
-    contatosDemonstracao?: ContatoDestinoUi[]
   }>(),
   {
     tituloModal: 'Criar agendamento',
     prefillDate: null,
-    contatosDemonstracao: () => [
-      { id: 1, nomecliente: 'Maria Silva', telefone: '+55 11 99999-0001' },
-      { id: 2, nomecliente: 'João Souza', telefone: '+55 21 98888-1234' },
-      { id: 3, nomecliente: 'Cliente', telefone: '+55 47 97777-8899' },
-    ],
   },
 )
 
@@ -60,12 +53,11 @@ const emit = defineEmits<{
 const workspacesStore = useWorkspacesStore()
 const canaisStore = useCanaisStore()
 const agendamentosMensagensStore = useAgendamentosMensagensStore()
-const { agendamentoSelecionado } = storeToRefs(agendamentosMensagensStore)
+const { agendamentoSelecionado, destinatarios, destinatariosHasMore } = storeToRefs(agendamentosMensagensStore)
 const route = useRoute()
 const submitPending = ref(false)
 
 const tipo = ref<AgendamentoTipoForm>('texto')
-const titulo = ref('')
 const mensagem = ref('')
 const dataCampo = ref('')
 const horaCampo = ref('')
@@ -248,6 +240,7 @@ watch(tipo, (t) => {
 })
 
 onUnmounted(() => {
+  limparDebounceBuscaContato()
   abortarMidiaTemporariaNavegador()
   if (audioObjectUrl.value) {
     globalThis.URL.revokeObjectURL(audioObjectUrl.value)
@@ -258,7 +251,6 @@ onUnmounted(() => {
 function resetFormularioVazio() {
   abortarMidiaTemporariaNavegador()
   tipo.value = 'texto'
-  titulo.value = ''
   mensagem.value = ''
   dataCampo.value = ''
   horaCampo.value = ''
@@ -317,9 +309,7 @@ watch(
       const t = (item.mensagem_type ?? 'texto').trim()
       tipo.value = t === 'imagem' ? 'imagem' : t === 'audio' ? 'audio' : 'texto'
       const texto = item.mensagem_texto ?? ''
-      const parts = texto.split('\n\n')
-      titulo.value = tipo.value === 'texto' ? (parts[0] ?? '') : ''
-      mensagem.value = tipo.value === 'texto' ? parts.slice(1).join('\n\n') : texto
+      mensagem.value = texto
       imagemNome.value = null
       audioNome.value = null
       imagemArquivo.value = null
@@ -327,7 +317,7 @@ watch(
       if (item.usuario_empresa_id != null) {
         destMode.value = 'contatos'
         contatoSelecionado.value = {
-          id: item.usuario_empresa_id,
+          key: `agendamento:${item.id}`,
           nomecliente: item.nomecliente,
           telefone: item.telefone,
         }
@@ -373,22 +363,64 @@ watch(
   },
 )
 
-const contatosFiltrados = ref<ContatoDestinoUi[]>([])
+let debounceBuscaContato: ReturnType<typeof setTimeout> | null = null
+
+function limparDebounceBuscaContato() {
+  if (debounceBuscaContato) {
+    clearTimeout(debounceBuscaContato)
+    debounceBuscaContato = null
+  }
+}
+
+async function carregarDestinatariosPagina1() {
+  if (!props.open || destMode.value !== 'contatos' || contatoSelecionado.value) return
+
+  const wid = workspaceIdAtual()
+  const idCanal = idCanalSelecionado.value
+  if (wid == null || idCanal == null) {
+    agendamentosMensagensStore.resetDestinatarios()
+    return
+  }
+
+  try {
+    await agendamentosMensagensStore.buscarDestinatariosSeNecessario({
+      workspaceId: wid,
+      idCanal,
+      q: buscaContato.value,
+    })
+  } catch {
+    /* erro já em destinatarios.error */
+  }
+}
 
 watch(
-  () => [props.open, destMode.value, buscaContato.value, props.contatosDemonstracao] as const,
-  () => {
-    if (!props.open || destMode.value !== 'contatos' || contatoSelecionado.value) return
-    const q = buscaContato.value.trim().toLowerCase()
-    contatosFiltrados.value = props.contatosDemonstracao.filter((c) => {
-      if (!q) return true
-      const n = (c.nomecliente ?? '').toLowerCase()
-      const t = (c.telefone ?? '').toLowerCase()
-      return n.includes(q) || t.includes(q)
-    })
+  () =>
+    [props.open, destMode.value, idCanalSelecionado.value, contatoSelecionado.value] as const,
+  ([open, mode, , selecionado]) => {
+    limparDebounceBuscaContato()
+    if (!open || mode !== 'contatos') return
+    if (selecionado) return
+    void carregarDestinatariosPagina1()
   },
   { immediate: true },
 )
+
+watch(buscaContato, () => {
+  if (!props.open || destMode.value !== 'contatos' || contatoSelecionado.value) return
+  limparDebounceBuscaContato()
+  debounceBuscaContato = setTimeout(() => {
+    debounceBuscaContato = null
+    void carregarDestinatariosPagina1()
+  }, 350)
+})
+
+async function carregarMaisContatos() {
+  try {
+    await agendamentosMensagensStore.carregarMaisDestinatarios()
+  } catch {
+    /* erro já em destinatarios.error */
+  }
+}
 
 function onImagemChange(e: Event) {
   const input = e.target as HTMLInputElement
@@ -428,6 +460,9 @@ function removerImagemAnexada() {
 function onIdCanalSelectChange(e: Event) {
   const el = e.target as HTMLSelectElement
   idCanalSelecionado.value = el.value === '' ? null : Number.parseInt(el.value, 10)
+  if (destMode.value === 'contatos' && !contatoSelecionado.value) {
+    void carregarDestinatariosPagina1()
+  }
 }
 
 function fechar() {
@@ -442,7 +477,6 @@ function montarPayload(): CriarAgendamentoPayloadUi {
     : 'unico'
   return {
     tipo: tipo.value,
-    titulo: titulo.value,
     mensagem: mensagem.value,
     dataIso: dataCampo.value,
     hora: horaCampo.value,
@@ -459,10 +493,6 @@ function montarPayload(): CriarAgendamentoPayloadUi {
 }
 
 function mensagemTextoParaApi(p: CriarAgendamentoPayloadUi): string | null {
-  if (p.tipo === 'texto') {
-    const partes = [p.titulo.trim(), p.mensagem.trim()].filter(Boolean)
-    return partes.length ? partes.join('\n\n') : null
-  }
   const cap = p.mensagem.trim()
   return cap.length ? cap : null
 }
@@ -523,7 +553,7 @@ function validarAntesDeEnviar(p: CriarAgendamentoPayloadUi): string | null {
     return 'O contato selecionado não tem telefone válido para envio.'
   }
   if (gravandoUi.value) return 'Finalize a gravação (pare o microfone) antes de criar o agendamento.'
-  if (p.tipo === 'texto' && !p.titulo.trim() && !p.mensagem.trim()) return 'Preencha título ou mensagem.'
+  if (p.tipo === 'texto' && !p.mensagem.trim()) return 'Preencha a mensagem.'
   if (p.tipo === 'imagem' && !imagemArquivo.value) {
     const temMidiaExistente = Boolean(String(agendamentoSelecionado.value?.midia_url ?? '').trim())
     if (!temMidiaExistente) return 'Anexe uma imagem.'
@@ -742,16 +772,6 @@ const modalTitulo = () => (agendamentoSelecionado.value?.id != null ? 'Editar ag
             {{ t.label }}
           </button>
         </div>
-      </div>
-
-      <div v-if="tipo === 'texto'" class="space-y-2">
-        <label class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">Título (opcional)</label>
-        <input
-          v-model="titulo"
-          type="text"
-          placeholder="Insira aqui o título"
-          class="w-full rounded-lg border border-outline/40 bg-surface-container-low px-3 py-2 text-sm text-on-surface placeholder:text-on-surface-variant/60 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-outline/40 dark:bg-dark-surface-container dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant/50 dark:focus:border-dark-primary dark:focus:ring-dark-primary"
-        />
       </div>
 
       <div
@@ -1118,35 +1138,66 @@ const modalTitulo = () => (agendamentoSelecionado.value?.id != null ? 'Editar ag
             </div>
           </template>
           <template v-else>
-            <input
-              v-model="buscaContato"
-              type="search"
-              placeholder="Filtrar por nome ou telefone..."
-              class="w-full rounded-lg border border-outline/40 bg-surface-container-low px-3 py-2 text-sm dark:border-dark-outline/40 dark:bg-dark-surface-container dark:text-dark-on-surface"
-            />
-            <div
-              class="max-h-40 overflow-y-auto rounded-lg border border-outline/40 bg-surface-container-low dark:border-dark-outline/40 dark:bg-dark-surface-container"
+            <p
+              v-if="idCanalSelecionado == null"
+              class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
             >
-              <button
-                v-for="c in contatosFiltrados"
-                :key="c.id"
-                type="button"
-                class="flex w-full items-center justify-between gap-3 border-b border-outline/20 px-3 py-2 text-left last:border-b-0 hover:bg-surface-container-high dark:border-dark-outline/20 dark:hover:bg-dark-surface-container-high"
-                @click="contatoSelecionado = c"
-              >
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm text-on-surface dark:text-dark-on-surface">{{ c.nomecliente?.trim() || 'Cliente' }}</p>
-                  <p class="truncate text-xs text-on-surface-variant dark:text-dark-on-surface-variant">{{ c.telefone }}</p>
-                </div>
-                <span class="shrink-0 text-[11px] font-semibold text-tertiary-accent dark:text-dark-tertiary">Escolher</span>
-              </button>
-              <div v-if="contatosFiltrados.length === 0" class="px-3 py-6 text-center text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
-                Nenhum contato na lista de demonstração.
-              </div>
-            </div>
-            <p class="text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
-              Lista estática para layout — substitua por dados reais quando integrar.
+              Selecione um canal de envio acima para listar os contatos.
             </p>
+            <template v-else>
+              <input
+                v-model="buscaContato"
+                type="search"
+                placeholder="Buscar por nome ou telefone..."
+                class="w-full rounded-lg border border-outline/40 bg-surface-container-low px-3 py-2 text-sm dark:border-dark-outline/40 dark:bg-dark-surface-container dark:text-dark-on-surface"
+              />
+              <div
+                class="max-h-40 overflow-y-auto rounded-lg border border-outline/40 bg-surface-container-low dark:border-dark-outline/40 dark:bg-dark-surface-container"
+              >
+                <div
+                  v-if="destinatarios.loading && destinatarios.items.length === 0"
+                  class="px-3 py-6 text-center text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+                >
+                  Carregando contatos…
+                </div>
+                <div
+                  v-else-if="destinatarios.error"
+                  class="px-3 py-6 text-center text-xs text-error dark:text-dark-error"
+                >
+                  {{ destinatarios.error }}
+                </div>
+                <template v-else>
+                  <button
+                    v-for="c in destinatarios.items"
+                    :key="c.key"
+                    type="button"
+                    class="flex w-full items-center justify-between gap-3 border-b border-outline/20 px-3 py-2 text-left last:border-b-0 hover:bg-surface-container-high dark:border-dark-outline/20 dark:hover:bg-dark-surface-container-high"
+                    @click="contatoSelecionado = c"
+                  >
+                    <div class="min-w-0 flex-1">
+                      <p class="truncate text-sm text-on-surface dark:text-dark-on-surface">{{ c.nomecliente?.trim() || 'Cliente' }}</p>
+                      <p class="truncate text-xs text-on-surface-variant dark:text-dark-on-surface-variant">{{ c.telefone?.trim() || 'Sem telefone' }}</p>
+                    </div>
+                    <span class="shrink-0 text-[11px] font-semibold text-tertiary-accent dark:text-dark-tertiary">Escolher</span>
+                  </button>
+                  <div
+                    v-if="destinatarios.items.length === 0"
+                    class="px-3 py-6 text-center text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+                  >
+                    Nenhum contato encontrado.
+                  </div>
+                </template>
+              </div>
+              <button
+                v-if="destinatariosHasMore && !destinatarios.loading"
+                type="button"
+                class="w-full rounded-lg border border-outline/40 bg-surface-container-high px-3 py-2 text-xs font-medium text-on-surface hover:bg-surface-container dark:border-dark-outline/40 dark:bg-dark-surface-container dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                :disabled="destinatarios.loadingMore"
+                @click="carregarMaisContatos()"
+              >
+                {{ destinatarios.loadingMore ? 'Carregando…' : 'Carregar mais contatos' }}
+              </button>
+            </template>
           </template>
         </div>
       </div>

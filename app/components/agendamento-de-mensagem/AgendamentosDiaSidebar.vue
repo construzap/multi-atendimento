@@ -8,12 +8,14 @@ defineProps<{
   day: number | null
   monthDate: Date
   items: AgendamentoDiaItem[]
+  workspaceId: number | null
 }>()
 
 const emit = defineEmits<{
   close: []
   createClick: []
   editClick: [item: AgendamentoDiaItem]
+  excluido: [item: AgendamentoDiaItem]
 }>()
 
 function formatDayLabel(day: number, monthDate: Date) {
@@ -82,7 +84,9 @@ function formatDayLabel(day: number, monthDate: Date) {
               v-for="it in items"
               :key="it.id"
               :item="it"
+              :workspace-id="workspaceId ?? 0"
               :on-edit="(row) => emit('editClick', row)"
+              @excluido="(row) => emit('excluido', row)"
             />
           </template>
         </div>

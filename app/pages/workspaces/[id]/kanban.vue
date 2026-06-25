@@ -27,6 +27,7 @@ watch(
   (id) => {
     if (!import.meta.client || !id) return
     void kanban.fetchBoard(id)
+    void useCanaisStore().fetchCanais(id).catch(() => {})
   },
   { immediate: true },
 )

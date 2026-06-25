@@ -2,9 +2,8 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutosTermoPesquisaCriarResponse } from '#shared/types/produtos'
 import {
-  escapeIlikeLiteral,
-  mapTermoPesquisaRow,
   normalizarNomeTermoPesquisa,
+  obterOuCriarTermoPesquisa,
 } from '../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
@@ -58,47 +57,11 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaCr
 
   const admin = serverSupabaseServiceRole<any>(event)
 
-  const literal = escapeIlikeLiteral(nome)
-  const { data: existente, error: selErr } = await admin
-    .from('produto_termo_de_pesquisa')
-    .select('id, nome')
-    .eq('workspace_id', workspaceId)
-    .ilike('nome', literal)
-    .limit(1)
-    .maybeSingle()
-
-  if (selErr) {
-    throw createError({ statusCode: 500, statusMessage: selErr.message })
-  }
-
-  if (existente) {
-    const rec = existente as Record<string, unknown>
-    const id = typeof rec.id === 'number' ? rec.id : Number(rec.id)
-    const nomeDb = String(rec.nome ?? '').trim()
-    if (nomeDb.toLocaleUpperCase('pt-BR') !== nome) {
-      const { error: upErr } = await admin.from('produto_termo_de_pesquisa').update({ nome }).eq('id', id)
-      if (upErr) {
-        throw createError({ statusCode: 500, statusMessage: upErr.message })
-      }
-    }
-    return {
-      data: mapTermoPesquisaRow({ ...rec, nome }),
-      ja_existia: true,
-    }
-  }
-
-  const { data: inserted, error: insErr } = await admin
-    .from('produto_termo_de_pesquisa')
-    .insert({ workspace_id: workspaceId, nome })
-    .select('id, nome')
-    .single()
-
-  if (insErr) {
-    throw createError({ statusCode: 500, statusMessage: insErr.message })
-  }
-
-  return {
-    data: mapTermoPesquisaRow(inserted as Record<string, unknown>),
-    ja_existia: false,
+  try {
+    const { data, ja_existia } = await obterOuCriarTermoPesquisa(admin, workspaceId, nome)
+    return { data, ja_existia }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Erro ao criar termo.'
+    throw createError({ statusCode: 500, statusMessage: msg })
   }
 })

@@ -31,6 +31,7 @@ const modalCriarEmMassaAberto = ref(false)
 
 /** Seletor de ficheiro + modal de mapeamento (`FerramentaImportarProduto`). */
 const ferramentaImportarProdutoRef = ref<{ abrirSeletorImportacao: () => void } | null>(null)
+const produtosTabelaRef = ref<{ resetarEstadoPosImportacao: () => void } | null>(null)
 
 function aoClicarImportar() {
   ferramentaImportarProdutoRef.value?.abrirSeletorImportacao()
@@ -107,6 +108,10 @@ function onPageSizeChanged(n: number) {
   produtosStore.page = 1
   void carregarLista()
 }
+
+function aposImportacao() {
+  produtosTabelaRef.value?.resetarEstadoPosImportacao()
+}
 </script>
 
 <template>
@@ -129,12 +134,14 @@ function onPageSizeChanged(n: number) {
       ref="ferramentaImportarProdutoRef"
       :workspace-id="workspaceId"
       :termo-busca="termoPesquisa"
+      @importado="aposImportacao"
     />
     <ProdutosModalCriarProdutosEmMassa
       v-model:open="modalCriarEmMassaAberto"
       @gravado="aoProdutoNovoGravado"
     />
     <ProdutosTabela
+      ref="produtosTabelaRef"
       :workspace-id="workspaceId ?? undefined"
       :page-size="produtosStore.pageSize"
       :total="total"

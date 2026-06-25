@@ -24,6 +24,25 @@ function idImagemPersistido(id: unknown): id is number {
   return typeof id === 'number' && Number.isFinite(id) && id >= 1
 }
 
+function urlImagemPersistivel(img: ProdutoImagemItem): string {
+  const u = urlDaImagemItem(img)
+  if (!u || u.startsWith('blob:')) return ''
+  return u
+}
+
+function sanitizarImagensParaPinia(imagens: ProdutoImagemItem[]): ProdutoImagemItem[] {
+  return imagens
+    .filter((img) => urlImagemPersistivel(img).length > 0 || idImagemPersistido(img.id))
+    .map((img) => {
+      const u = urlImagemPersistivel(img)
+      return {
+        ...img,
+        imagem_url: u || img.imagem_url,
+        url: u || img.url,
+      }
+    })
+}
+
 async function arquivoParaBase64(file: File): Promise<string> {
   const buf = await file.arrayBuffer()
   const bytes = new Uint8Array(buf)
@@ -93,7 +112,7 @@ function linhaParaPayload(row: ProdutoWorkspaceItem): ProdutoCriarEmMassaLinha {
     status: row.status,
     categoria_id: row.categoria_id,
     codigo_ncm: row.codigo_ncm,
-    termos_pesquisa: row.termos_pesquisa,
+    termo_pesquisa: (row.termos_pesquisa ?? [])[0]?.id ?? null,
     codigo_barras_ean: row.codigo_barras_ean,
     largura: row.largura,
     altura: row.altura,
@@ -392,12 +411,45 @@ export const useProdutosStore = defineStore('produtos', {
       this.modalImagensAberto = true
     },
 
-    fecharModalImagens(aplicar = false) {
+    async fecharModalImagens(aplicar = false) {
       if (!aplicar) {
+        await this.reverterUploadsImagensSessao()
         this.limparEstadoEdicaoImagens()
       }
       this.modalImagensAberto = false
       if (!aplicar) this.limparSelecionados()
+    },
+
+    /** Remove do servidor imagens enviadas nesta sessão se o modal for cancelado. */
+    async reverterUploadsImagensSessao() {
+      const ref = this.selecionadoAtivo
+      if (!ref || !this.podeSalvarImagensNaApi()) return
+
+      const workspaceId = parseWorkspaceIdFromPinia()
+      if (workspaceId == null) return
+
+      const baselineIds = new Set(
+        this.imagensEdicaoBaseline
+          .filter((x) => idImagemPersistido(x.id))
+          .map((x) => x.id as number),
+      )
+      const paraExcluir = this.imagensEdicaoRascunho
+        .filter((x) => idImagemPersistido(x.id) && !baselineIds.has(x.id as number))
+        .map((x) => x.id as number)
+
+      if (!paraExcluir.length) return
+
+      try {
+        for (let i = 0; i < paraExcluir.length; i += CHUNK_FOTOS_PRODUTO) {
+          const chunk = paraExcluir.slice(i, i + CHUNK_FOTOS_PRODUTO)
+          await $fetch<ProdutosFotosExcluirResponse>('/api/produtos/fotosblackblaze/excluir', {
+            method: 'POST',
+            body: { workspace_id: workspaceId, produto_id: ref.produtoId, ids: chunk },
+          })
+        }
+      } catch {
+        /* cancelamento best-effort */
+      }
     },
 
     adicionarImagemEdicaoPorUrl(url: string) {
@@ -418,21 +470,84 @@ export const useProdutosStore = defineStore('produtos', {
       ]
     },
 
+    async enviarUrlImagemEdicaoApi(url: string) {
+      const ref = this.selecionadoAtivo
+      const workspaceId = parseWorkspaceIdFromPinia()
+      if (!ref || workspaceId == null) {
+        throw new Error('Produto ou workspace inválido.')
+      }
+
+      const ordem = this.imagensEdicaoRascunho.length
+      const res = await $fetch<ProdutosFotosUploadResponse>('/api/produtos/fotosblackblaze/adicionar-url', {
+        method: 'POST',
+        body: {
+          workspace_id: workspaceId,
+          produto_id: ref.produtoId,
+          itens: [{ imagem_url: url, ordem }],
+        },
+      })
+
+      const inserida = res.data?.[0]
+      if (!inserida) {
+        throw new Error('Não foi possível guardar a URL da imagem.')
+      }
+
+      this.imagensEdicaoRascunho = [
+        ...this.imagensEdicaoRascunho,
+        { ...inserida, ordem, produto_id: ref.produtoId },
+      ]
+    },
+
     adicionarImagemEdicaoPorArquivo(file: File) {
       const sel = this.selecionadoAtivo
       const id = this.imagensEdicaoNextTempId
       this.imagensEdicaoNextTempId -= 1
       this.arquivosImagemPorTempId = { ...this.arquivosImagemPorTempId, [id]: file }
-      const url = URL.createObjectURL(file)
+      const blobUrl = URL.createObjectURL(file)
       this.imagensEdicaoRascunho = [
         ...this.imagensEdicaoRascunho,
         {
           id,
           produto_id: sel?.produtoId,
-          url,
-          imagem_url: url,
+          url: blobUrl,
+          imagem_url: blobUrl,
           ordem: this.imagensEdicaoRascunho.length,
         },
+      ]
+    },
+
+    async enviarArquivoImagemEdicaoApi(file: File) {
+      const ref = this.selecionadoAtivo
+      const workspaceId = parseWorkspaceIdFromPinia()
+      if (!ref || workspaceId == null) {
+        throw new Error('Produto ou workspace inválido.')
+      }
+
+      const ordem = this.imagensEdicaoRascunho.length
+      const res = await $fetch<ProdutosFotosUploadResponse>('/api/produtos/fotosblackblaze/upload', {
+        method: 'POST',
+        body: {
+          workspace_id: workspaceId,
+          produto_id: ref.produtoId,
+          itens: [
+            {
+              mime: file.type || 'image/jpeg',
+              data_base64: await arquivoParaBase64(file),
+              ordem,
+              filename: file.name,
+            },
+          ],
+        },
+      })
+
+      const inserida = res.data?.[0]
+      if (!inserida) {
+        throw new Error('Não foi possível enviar a imagem.')
+      }
+
+      this.imagensEdicaoRascunho = [
+        ...this.imagensEdicaoRascunho,
+        { ...inserida, ordem, produto_id: ref.produtoId },
       ]
     },
 
@@ -474,7 +589,7 @@ export const useProdutosStore = defineStore('produtos', {
       const ref = this.selecionadoAtivo
       if (!ref) return
       this.normalizarOrdensImagensEdicao()
-      const imagens = this.imagensEdicaoRascunho.map((img) => ({ ...img }))
+      const imagens = sanitizarImagensParaPinia(this.imagensEdicaoRascunho.map((img) => ({ ...img })))
       const imagem_url = this.urlImagemPrincipal(imagens)
       this.aplicarEmProdutoSelecionado(ref, { imagens, imagem_url })
       this.limparEstadoEdicaoImagens()
@@ -661,7 +776,10 @@ export const useProdutosStore = defineStore('produtos', {
         this.progressoFotosEnviados = step
 
         const imagem_url = this.urlImagemPrincipal(imagensFinais)
-        this.aplicarEmProdutoSelecionado(ref, { imagens: imagensFinais, imagem_url })
+        this.aplicarEmProdutoSelecionado(ref, {
+          imagens: sanitizarImagensParaPinia(imagensFinais),
+          imagem_url,
+        })
         this.ultimoSnapshotKey = null
         this.limparEstadoEdicaoImagens()
         this.limparSelecionados()

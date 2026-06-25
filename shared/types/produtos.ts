@@ -67,7 +67,9 @@ export type ProdutoWorkspaceCampos = {
   imagem_url: string | null
   descricao: string | null
   codigo_ncm: string | null
-  /** Termos de pesquisa (multi-select) vinculados ao produto. */
+  /** Texto do termo (para busca); vem da view como `termos_pesquisa_busca`. */
+  termos_pesquisa_busca?: string | null
+  /** Termo de pesquisa único (0 ou 1 item; nome espelhado de `produtos_workspace.termos_pesquisa`). */
   termos_pesquisa: ProdutoTermoPesquisaItem[]
   codigo_barras_ean: string | null
   largura: number
@@ -110,7 +112,7 @@ export type ProdutoWorkspacePatch = {
   infos_relevantes?: string | null
   imagem_url?: string | null
   codigo_ncm?: string | null
-  /** Substitui todos os vínculos de termos do produto. */
+  /** Id do termo no catálogo (0 ou 1 elemento; grava `nome` em `produtos_workspace.termos_pesquisa`). */
   termos_pesquisa_ids?: number[]
   codigo_barras_ean?: string | null
   largura?: number
@@ -136,7 +138,7 @@ export type ProdutosBuscaResponse = {
   total_pages: number
 }
 
-/** Resposta de `POST /api/produtos/excluir`. */
+/** Resposta de `POST /api/produtos/enviar-para-ia/excluir`. */
 export type ProdutosExcluirResponse = {
   removidos: number
   /** Ids efetivamente apagados (podem ser menos que os pedidos se algum id não existia). */
@@ -160,7 +162,7 @@ export type ProdutoCriarEmMassaLinha = {
   status?: boolean
   categoria_id?: number | null
   codigo_ncm?: string | null
-  termos_pesquisa?: string | null
+  termo_pesquisa?: number | null
   codigo_barras_ean?: string | null
   largura?: number
   altura?: number
@@ -252,6 +254,8 @@ export type ProdutoImportarLinha = {
   imagem_url?: string | null
   infos_relevantes?: string | null
   status?: boolean
+  /** Texto integral da célula (um termo por produto); servidor cria no catálogo e salva o ID. */
+  termos_pesquisa?: string | null
 }
 
 /** Resposta de um lote `POST /api/produtos/importar`. */

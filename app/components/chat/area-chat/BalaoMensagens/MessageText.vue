@@ -2,9 +2,14 @@
 import { computed } from 'vue'
 import type { Mensagem } from '#shared/types/mensagem'
 
-const props = defineProps<{
-  mensagem: Mensagem
-}>()
+const props = withDefaults(
+  defineProps<{
+    mensagem: Mensagem
+    /** Só em conversas de grupo: exibe o remetente acima do balão. */
+    ehGrupo?: boolean
+  }>(),
+  { ehGrupo: false },
+)
 
 const isFromMe = computed(() => Boolean(props.mensagem.from_me))
 const isSending = computed(() => Boolean(props.mensagem.temp_id))
@@ -17,11 +22,21 @@ function formatHora(iso: string): string {
 
 const hora = computed(() => formatHora(props.mensagem.created_at))
 const texto = computed(() => (props.mensagem.message ?? '').trim())
+const nomeRemetente = computed(() => {
+  if (!props.ehGrupo || isFromMe.value) return ''
+  return (props.mensagem.name ?? '').trim()
+})
 </script>
 
 <template>
   <!-- Recebida -->
   <div v-if="!isFromMe" class="mb-4 flex max-w-[70%] flex-col items-start">
+    <p
+      v-if="nomeRemetente"
+      class="mb-1 px-1 text-[11px] font-semibold text-primary dark:text-primary-300"
+    >
+      {{ nomeRemetente }}
+    </p>
     <div class="rounded-xl rounded-tl-none bg-surface-container-highest p-4 shadow-sm dark:bg-slate-800">
       <p class="font-body text-sm text-on-surface dark:text-slate-200">
         {{ texto }}
@@ -49,4 +64,3 @@ const texto = computed(() => (props.mensagem.message ?? '').trim())
     </div>
   </div>
 </template>
-

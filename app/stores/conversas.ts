@@ -38,6 +38,12 @@ type ConversasState = {
   activeCanalId: number | null
   /** Cache por canal. */
   byCanal: Record<number, CanalConversasState>
+  /** Quando true, a lista inclui conversas com `conversa_aberta = false`. */
+  mostrarConversasFechadas: boolean
+  /** Quando true, a lista inclui conversas de grupo (`is_group = true`). */
+  mostrarGrupos: boolean
+  /** Termo de busca aplicado na lista lateral (Enter no input). */
+  termoPesquisa: string
 }
 
 function emptyCanalState(): CanalConversasState {
@@ -56,12 +62,19 @@ function emptyCanalState(): CanalConversasState {
 type FetchOptions = {
   /** Se true, adiciona ao final (paginação / carregar mais). */
   append?: boolean
+  /** Filtro opcional repassado à API (`conversa_aberta`). */
+  conversaAberta?: boolean
+  /** Quando false, API retorna só conversas 1:1 (`is_group` null/false). */
+  isGroup?: boolean
 }
 
 export const useConversasStore = defineStore('conversas', {
   state: (): ConversasState => ({
     activeCanalId: null,
-    byCanal: {}
+    byCanal: {},
+    mostrarConversasFechadas: false,
+    mostrarGrupos: false,
+    termoPesquisa: ''
   }),
   getters: {
     active(state): CanalConversasState | null {
@@ -109,9 +122,50 @@ export const useConversasStore = defineStore('conversas', {
     conversaAtual(state): string | null {
       if (state.activeCanalId == null) return null
       return state.byCanal[state.activeCanalId]?.conversaAtual ?? null
-    }
+    },
+
+    /** Busca conversa em qualquer canal já carregado no cache. */
+    findConversaByKey(state): (conversaKey: string) => Conversa | null {
+      return (conversaKey: string) => {
+        const k = conversaKey.trim()
+        if (!k) return null
+        for (const bucket of Object.values(state.byCanal)) {
+          const found = bucket.items.find((c) => c.key === k)
+          if (found) return found
+        }
+        return null
+      }
+    },
   },
   actions: {
+    /** Opções de fetch da lista lateral (abertas/fechadas e 1:1/grupos). */
+    listFetchOptions(append = false): FetchOptions {
+      const opts: FetchOptions = { append }
+      if (!this.mostrarConversasFechadas) opts.conversaAberta = true
+      if (!this.mostrarGrupos) opts.isGroup = false
+      return opts
+    },
+
+    async setMostrarConversasFechadas(value: boolean) {
+      if (this.mostrarConversasFechadas === value) return
+      this.mostrarConversasFechadas = value
+
+      const idCanal = this.activeCanalId
+      if (idCanal == null) return
+
+      await this.fetchPage(1, idCanal, this.listFetchOptions())
+    },
+
+    async setMostrarGrupos(value: boolean) {
+      if (this.mostrarGrupos === value) return
+      this.mostrarGrupos = value
+
+      const idCanal = this.activeCanalId
+      if (idCanal == null) return
+
+      await this.fetchPage(1, idCanal, this.listFetchOptions())
+    },
+
     createTempKey(seed?: string): string {
       const base = seed?.trim() ? seed.trim() : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
       return `temp:${base}`
@@ -171,6 +225,11 @@ export const useConversasStore = defineStore('conversas', {
         photo: null,
         from_me: null,
         media_url: null,
+        conversa_aberta: true,
+        is_group: null,
+        id_group: null,
+        name_group: null,
+        nao_lidas: 0,
       }
 
       this.addOrUpdateLocalConversa(temp, idCanal)
@@ -189,9 +248,26 @@ export const useConversasStore = defineStore('conversas', {
 
     /** Troca o canal ativo (não apaga cache). */
     setActiveCanalId(id: number | null) {
+      if (id !== this.activeCanalId) {
+        this.termoPesquisa = ''
+      }
       this.activeCanalId = id
       if (id == null) return
       if (!this.byCanal[id]) this.byCanal[id] = emptyCanalState()
+    },
+
+    aplicarPesquisa(termo: string) {
+      this.termoPesquisa = termo.trim()
+    },
+
+    limparPesquisa() {
+      this.termoPesquisa = ''
+    },
+
+    async atualizarLista() {
+      const idCanal = this.activeCanalId
+      if (idCanal == null) return
+      await this.fetchPage(1, idCanal, this.listFetchOptions())
     },
 
     /** Limpa apenas o canal ativo (mantém cache de outros canais). */
@@ -225,12 +301,17 @@ export const useConversasStore = defineStore('conversas', {
       bucket.pending = true
       bucket.error = null
       try {
+        const query: Record<string, string | number | boolean> = {
+          id_canal: idCanal,
+          page
+        }
+        if (options.conversaAberta === true) query.conversa_aberta = true
+        else if (options.conversaAberta === false) query.conversa_aberta = false
+        if (options.isGroup === false) query.is_group = false
+
         const res = await $fetch<ConversasListResponse>('/api/conversas', {
           method: 'GET',
-          query: {
-            id_canal: idCanal,
-            page
-          }
+          query
         })
         if (options.append) {
           // Dedup por `key` para evitar repetições em caso de re-fetch.
@@ -267,7 +348,7 @@ export const useConversasStore = defineStore('conversas', {
       this.setActiveCanalId(canalId)
       const bucket = this.byCanal[canalId] ?? (this.byCanal[canalId] = emptyCanalState())
       if (bucket.loadedAt != null) return
-      await this.fetchPage(page, canalId)
+      await this.fetchPage(page, canalId, this.listFetchOptions())
     },
 
     /**
@@ -285,10 +366,63 @@ export const useConversasStore = defineStore('conversas', {
       if (!(bucket.page * bucket.perPage < bucket.total)) return
 
       const nextPage = bucket.page + 1
-      await this.fetchPage(nextPage, idCanal, { append: true })
+      await this.fetchPage(nextPage, idCanal, this.listFetchOptions(true))
     }
 
     ,
+    /**
+     * Marca a conversa como fechada no banco e remove da lista local (só abertas).
+     */
+    async fecharConversa(conversaKey?: string) {
+      const key = (conversaKey ?? this.conversaAtual)?.trim()
+      if (!key) return
+
+      await $fetch('/api/conversas/fechar', {
+        method: 'POST',
+        body: { key }
+      })
+
+      if (this.mostrarConversasFechadas) {
+        const idCanal = this.activeCanalId
+        if (idCanal != null) {
+          const bucket = this.byCanal[idCanal]
+          if (bucket) {
+            const idx = bucket.items.findIndex((c) => c.key === key)
+            if (idx !== -1) {
+              bucket.items[idx] = { ...bucket.items[idx]!, conversa_aberta: false }
+            }
+          }
+        }
+      } else {
+        this.removeLocalConversaByKey(key)
+      }
+      this.setConversaAtual(null)
+    },
+
+    /**
+     * Zera `nao_lidas` no banco e no cache local ao abrir a conversa.
+     */
+    async marcarComoLida(conversaKey?: string) {
+      const key = (conversaKey ?? this.conversaAtual)?.trim()
+      if (!key || key.startsWith('temp:')) return
+
+      const idCanal = this.activeCanalId
+      if (idCanal == null) return
+
+      const bucket = this.byCanal[idCanal]
+      if (bucket) {
+        const idx = bucket.items.findIndex((c) => c.key === key)
+        if (idx !== -1 && (bucket.items[idx]!.nao_lidas ?? 0) > 0) {
+          bucket.items[idx] = { ...bucket.items[idx]!, nao_lidas: 0 }
+        }
+      }
+
+      await $fetch('/api/conversas/marcar-lidas', {
+        method: 'POST',
+        body: { key },
+      })
+    },
+
     /**
      * Define a conversa selecionada dentro do canal (`conversas.key`).
      */
@@ -306,6 +440,7 @@ export const useConversasStore = defineStore('conversas', {
     mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
       const conversaKey = payload.conversa_key?.trim()
       if (!conversaKey) return
+      if (!this.mostrarGrupos && payload.is_group) return
 
       const bucket = this.byCanal[canalId] ?? (this.byCanal[canalId] = emptyCanalState())
       const msg = payload.mensagem
@@ -331,7 +466,23 @@ export const useConversasStore = defineStore('conversas', {
           photo: msg.photo ?? null,
           from_me: msg.from_me ?? null,
           media_url: msg.media_url ?? null,
+          conversa_aberta: msg.from_me === false ? true : null,
+          is_group: null,
+          id_group: null,
+          name_group: null,
+          nao_lidas: msg.from_me === false ? 1 : 0,
         }
+
+        if (payload.is_group) {
+          row.is_group = true
+          row.name = payload.name_group ?? null
+          row.phone = payload.id_group ?? null
+          row.lid = payload.id_group ?? null
+          row.photo = payload.conversa_photo ?? null
+          row.id_group = payload.id_group ?? null
+          row.name_group = payload.name_group ?? null
+        }
+
         bucket.items = [row, ...bucket.items]
         bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
         return
@@ -345,8 +496,25 @@ export const useConversasStore = defineStore('conversas', {
         from_me: msg.from_me ?? current.from_me,
         media_url: msg.media_url ?? current.media_url,
         updated_at: createdAt ?? current.updated_at,
-        name: msg.name ?? current.name,
-        photo: msg.photo ?? current.photo,
+        ...(msg.from_me === false
+          ? {
+              conversa_aberta: true,
+              nao_lidas: (current.nao_lidas ?? 0) + 1,
+            }
+          : {}),
+      }
+
+      if (payload.is_group) {
+        merged.is_group = true
+        merged.name = payload.name_group ?? current.name
+        merged.phone = payload.id_group ?? current.phone
+        merged.lid = payload.id_group ?? current.lid
+        merged.photo = payload.conversa_photo ?? current.photo
+        merged.id_group = payload.id_group ?? current.id_group
+        merged.name_group = payload.name_group ?? current.name_group
+      } else {
+        merged.name = msg.name ?? current.name
+        merged.photo = msg.photo ?? current.photo
       }
 
       bucket.items = [merged, ...bucket.items.filter((_, i) => i !== idx)]

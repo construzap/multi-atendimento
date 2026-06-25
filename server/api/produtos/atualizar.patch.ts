@@ -3,7 +3,7 @@ import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutoAtualizarResponse } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
 import { mapProdutoWorkspaceRow, SELECT_PRODUTO_WORKSPACE_EMBED } from '../../utils/produtoWorkspaceRow'
-import { syncProdutoTermosPesquisa, termosDoProduto } from '../../utils/produtoTermosPesquisa'
+import { conjuntoIdsTermoValidos, termosDoProduto } from '../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -218,7 +218,16 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
   if (p.unidade_venda !== undefined) update.unidade_venda = strOrNull(p.unidade_venda)
   if (p.marca !== undefined) update.marca = strOrNull(p.marca)
   if (p.infos_relevantes !== undefined) update.infos_relevantes = strOrNull(p.infos_relevantes)
-  if (p.imagem_url !== undefined) update.imagem_url = strOrNull(p.imagem_url)
+  if (p.imagem_url !== undefined) {
+    const url = strOrNull(p.imagem_url)
+    if (url?.startsWith('blob:')) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Use o modal de imagens para enviar ficheiros (upload para o armazenamento).',
+      })
+    }
+    update.imagem_url = url
+  }
 
   if (p.preco !== undefined) {
     const preco = numOrNull(p.preco)
@@ -267,6 +276,12 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
     termosIdsPatch = p.termos_pesquisa_ids
       .map((x) => (typeof x === 'number' ? Math.trunc(x) : Number.parseInt(String(x), 10)))
       .filter((n) => Number.isFinite(n) && n >= 1)
+    if (termosIdsPatch.length > 1) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Cada produto pode ter no máximo um termo de pesquisa.',
+      })
+    }
   }
 
   if (p.largura !== undefined) {
@@ -336,11 +351,15 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
   }
 
   if (termosIdsPatch !== undefined) {
-    try {
-      await syncProdutoTermosPesquisa(admin, workspaceId, produtoId, termosIdsPatch)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'termos_pesquisa_ids inválido.'
-      throw createError({ statusCode: 400, statusMessage: msg })
+    if (termosIdsPatch.length === 0) {
+      update.termo_pesquisa = null
+    } else {
+      const tid = termosIdsPatch[0]!
+      const ok = await conjuntoIdsTermoValidos(admin, workspaceId, [tid])
+      if (!ok.has(tid)) {
+        throw createError({ statusCode: 400, statusMessage: 'termos_pesquisa_ids inválido ou não pertence a este workspace.' })
+      }
+      update.termo_pesquisa = tid
     }
   }
 

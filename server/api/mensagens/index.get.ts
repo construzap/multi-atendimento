@@ -7,7 +7,7 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 const PER_PAGE = 30
 
 const SELECT =
-  'message_id, created_at, from_me, message, phone, lid, connected_phone, messagetype, from_api, id_canal, media_url, caption, filename, key_conversa'
+  'message_id, created_at, from_me, message, phone, lid, connected_phone, messagetype, from_api, id_canal, media_url, caption, filename, key_conversa, name'
 
 function pickQueryStr(...vals: unknown[]): string {
   for (const v of vals) {
@@ -91,11 +91,12 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
 
   let contactName: string | null = null
   let contactPhoto: string | null = null
+  let conversaIsGroup = false
 
   if (conversaKey) {
     const { data: convRow, error: convErr } = await admin
       .from('conversas')
-      .select('key, name, photo')
+      .select('key, name, photo, is_group')
       .eq('id_canal', canalId)
       .eq('key', conversaKey)
       .maybeSingle()
@@ -111,6 +112,7 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
     }
     contactName = convRow.name ?? null
     contactPhoto = convRow.photo ?? null
+    conversaIsGroup = convRow.is_group === true
   } else if (lidLegacy) {
     const { data: convByLid } = await admin
       .from('conversas')
@@ -140,12 +142,16 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
 
-  const rows = (data ?? []) as Omit<Mensagem, 'name' | 'photo'>[]
-  const enriched: Mensagem[] = rows.map((row) => ({
-    ...row,
-    name: contactName,
-    photo: contactPhoto,
-  }))
+  const rows = (data ?? []) as Array<Omit<Mensagem, 'photo'> & { name?: string | null }>
+  const enriched: Mensagem[] = rows.map((row) => {
+    const rowName = typeof row.name === 'string' && row.name.trim() ? row.name.trim() : null
+    return {
+      ...row,
+      // Grupo: remetente vem só de mensagens.name; conversas.name é o nome do grupo.
+      name: conversaIsGroup ? rowName : contactName,
+      photo: conversaIsGroup ? null : contactPhoto,
+    }
+  })
 
   return {
     data: enriched,

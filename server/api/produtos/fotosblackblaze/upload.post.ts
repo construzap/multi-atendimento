@@ -16,6 +16,7 @@ import {
   mapProdutoImagemRow,
   parseProdutoId,
   parseWorkspaceId,
+  sincronizarImagemUrlCapaProduto,
 } from '../../../utils/produtoImagensDb'
 
 type ItemUpload = {
@@ -132,6 +133,8 @@ export default defineEventHandler(async (event): Promise<ProdutosFotosUploadResp
     }
     inseridas.push(mapProdutoImagemRow(row as Record<string, unknown>))
   }
+
+  await sincronizarImagemUrlCapaProduto(admin, workspaceId, produtoId)
 
   return { inseridas: inseridas.length, data: inseridas }
 })

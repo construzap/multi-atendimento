@@ -22,8 +22,8 @@ function resolveChatIdentifiers(payload: UazapiWebhookPayload): { chatid: string
   const chat = payload.chat
   const msg = payload.message
 
-  const waCid = typeof chat.wa_chatid === 'string' ? chat.wa_chatid.trim() : ''
-  const waLid = typeof chat.wa_chatlid === 'string' ? chat.wa_chatlid.trim() : ''
+  const waCid = chat && typeof chat.wa_chatid === 'string' ? chat.wa_chatid.trim() : ''
+  const waLid = chat && typeof chat.wa_chatlid === 'string' ? chat.wa_chatlid.trim() : ''
   const mCid = typeof msg.chatid === 'string' ? msg.chatid.trim() : ''
   const mLid = typeof msg.chatlid === 'string' ? msg.chatlid.trim() : ''
 
@@ -31,6 +31,16 @@ function resolveChatIdentifiers(payload: UazapiWebhookPayload): { chatid: string
     chatid: waCid || mCid,
     chatlid: waLid || mLid,
   }
+}
+
+/** ID do grupo WhatsApp (ex.: `120363393291103874@g.us`). */
+function extractGroupId(...ids: Array<string | undefined | null>): string | null {
+  for (const raw of ids) {
+    const id = String(raw ?? '').trim()
+    if (!id) continue
+    if (id.endsWith('@g.us')) return id
+  }
+  return null
 }
 
 /**
@@ -81,12 +91,55 @@ function firstNonEmpty(...parts: Array<string | undefined | null>): string | nul
  */
 function resolveContactName(payload: UazapiWebhookPayload): string | null {
   const chat = payload.chat
+  if (!chat) {
+    return firstNonEmpty(payload.message.senderName)
+  }
   return firstNonEmpty(
     chat.wa_name,
     chat.wa_contactName,
     chat.name,
     payload.message.senderName,
   )
+}
+
+/** Nome do grupo (`groupName` / metadados do chat). */
+function resolveGroupName(payload: UazapiWebhookPayload): string | null {
+  const chat = payload.chat
+  return firstNonEmpty(
+    payload.message.groupName,
+    chat?.wa_name,
+    chat?.name,
+  )
+}
+
+function resolveContactPhoto(payload: UazapiWebhookPayload): string | null {
+  const chat = payload.chat
+  return firstNonEmpty(chat?.imagePreview, chat?.image)
+}
+
+function resolveGroupPhoto(payload: UazapiWebhookPayload): string | null {
+  const chat = payload.chat
+  return firstNonEmpty(chat?.imagePreview, chat?.image)
+}
+
+function isMensagemIa(msg: UazapiMessage): boolean {
+  const trackId = typeof msg.track_id === 'string' ? msg.track_id.trim().toLowerCase() : ''
+  return trackId === 'ia'
+}
+
+/** Foto do remetente em mensagem de grupo (se a API enviar). */
+function resolveSenderPhoto(msg: UazapiMessage): string | null {
+  const raw = msg as Record<string, unknown>
+  return firstNonEmpty(
+    typeof raw.senderPhoto === 'string' ? raw.senderPhoto : null,
+    typeof raw.sender_photo === 'string' ? raw.sender_photo : null,
+    typeof raw.profilePic === 'string' ? raw.profilePic : null,
+  )
+}
+
+/** Nome do remetente em mensagem de grupo. */
+function resolveSenderName(msg: UazapiMessage): string | null {
+  return firstNonEmpty(msg.senderName)
 }
 
 /**
@@ -126,9 +179,9 @@ function normalizeMessageType(raw: string): MessageType {
 /**
  * Normaliza o payload bruto da uazapi para um objeto padronizado.
  *
- * Retorna `null` nos seguintes casos (evento deve ser ignorado):
- *   - EventType !== 'messages'
- *   - isGroup === true
+ * Retorna `null` quando `EventType !== 'messages'` ou quando não há identificador de chat/grupo.
+ *
+ * **Grupos (`isGroup`):** `id_group` / `name_group` alimentam `conversas`; `name` / `phone` / `lid` = remetente (só `mensagens`).
  *
  * @param payload  Body bruto recebido no webhook
  * @param idCanal  ID do canal buscado no banco via `payload.token`
@@ -144,21 +197,36 @@ export function normalizarMensagem(
 
   const msg = payload.message
 
-  // 2. Ignora grupos por enquanto
-  if (msg.isGroup) return null
-
-  // 3. Phone e LID (prioriza chat.wa_chatid / wa_chatlid)
+  // 2. Phone, LID e nome (grupo vs contato individual)
   const { chatid: resolvedChatid, chatlid: resolvedChatlid } = resolveChatIdentifiers(payload)
-  const { phone, lid } = extractPhoneLid(resolvedChatid, resolvedChatlid)
 
-  // 4. Tipo de mensagem normalizado
+  let phone: string | null
+  let lid: string | null
+  let name: string | null
+  let photo: string | null
+  let id_group: string | null = null
+  let name_group: string | null = null
+
+  if (msg.isGroup) {
+    id_group = extractGroupId(resolvedChatid, msg.chatid)
+    if (!id_group) return null
+
+    name_group = resolveGroupName(payload)
+
+    const sender = extractPhoneLid(msg.sender_pn, msg.sender_lid ?? msg.sender)
+    phone = sender.phone
+    lid = sender.lid
+    name = msg.fromMe ? null : resolveSenderName(msg)
+    photo = msg.fromMe ? null : resolveGroupPhoto(payload)
+  } else {
+    const extracted = extractPhoneLid(resolvedChatid, resolvedChatlid)
+    phone = extracted.phone
+    lid = extracted.lid
+    name = msg.fromMe ? null : resolveContactName(payload)
+    photo = msg.fromMe ? null : resolveContactPhoto(payload)
+  }
+
   const messagetype = normalizeMessageType(msg.messageType)
-
-  // 5. Nome / foto para Pusher e merge na UI (somente mensagens recebidas do contato)
-  const name =
-    msg.fromMe ? null : resolveContactName(payload)
-  const photo =
-    msg.fromMe ? null : (payload.chat.imagePreview || null)
 
   return {
     // ── mensagens ──────────────────────────────────────────────────────────
@@ -180,5 +248,9 @@ export function normalizarMensagem(
     name,
     photo,
     message_timestamp: msg.messageTimestamp,
+    is_group: Boolean(msg.isGroup),
+    id_group,
+    name_group,
+    from_ia: isMensagemIa(msg),
   }
 }

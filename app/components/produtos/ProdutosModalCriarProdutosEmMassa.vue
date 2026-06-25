@@ -95,9 +95,8 @@ function garantirWorkspaceRascunho() {
 
 
 function adicionarProduto() {
-
+  if (salvando.value) return
   produtosStore.adicionarLinhaCriarEmMassa()
-
 }
 
 
@@ -322,6 +321,10 @@ watch(open, (isOpen) => {
 
       :mostrar-exclusao="false"
 
+      :mostrar-imagens="false"
+
+      :enter-adiciona-linha="!salvando"
+
       :mostrar-linha-criar-rapido="false"
 
       :pending="false"
@@ -329,6 +332,8 @@ watch(open, (isOpen) => {
       :error="null"
 
       @atualizado="aplicarAtualizado"
+
+      @adicionar-linha="adicionarProduto"
 
     />
 

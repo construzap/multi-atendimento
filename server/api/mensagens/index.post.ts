@@ -385,6 +385,9 @@ export default defineEventHandler(async (event) => {
       name: null,
       photo: photoExisting,
       message_timestamp: tsMs,
+      is_group: false,
+      id_group: null,
+      name_group: null,
     }
 
     const saved = await persistWebhookMensagem(admin, normalizada)

@@ -1,6 +1,7 @@
 import { watch } from 'vue'
 import { useCanaisStore } from '~/stores/canais'
 import { useConversasStore } from '~/stores/conversas'
+import { useKanbanStore } from '~/stores/kanban'
 
 /**
  * Quando o canal atual (store `canais`) muda, recarrega a primeira página de conversas.
@@ -9,10 +10,13 @@ import { useConversasStore } from '~/stores/conversas'
 export default defineNuxtPlugin(() => {
   const canais = useCanaisStore()
   const conversas = useConversasStore()
+  const kanban = useKanbanStore()
 
   watch(
     () => canais.currentCanalId,
     async (id) => {
+      if (kanban.infoContatoConversaKey != null) return
+
       if (id == null) {
         conversas.setActiveCanalId(null)
         canais.instanciaStatus = null
@@ -25,7 +29,7 @@ export default defineNuxtPlugin(() => {
       })
       // Sempre refaz a 1ª página ao abrir o canal, para não ficar “preso” em cache antigo.
       conversas.resetActive()
-      await conversas.fetchPage(1, id).catch(() => {
+      await conversas.fetchPage(1, id, conversas.listFetchOptions()).catch(() => {
         /* erro permanece em conversas.error */
       })
     },

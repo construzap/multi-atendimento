@@ -9,6 +9,7 @@ import {
   mapProdutoImagemRow,
   parseProdutoId,
   parseWorkspaceId,
+  sincronizarImagemUrlCapaProduto,
 } from '../../../utils/produtoImagensDb'
 
 type ItemOrdem = {
@@ -94,6 +95,8 @@ export default defineEventHandler(async (event): Promise<ProdutosFotosReordenarR
       atualizadas.push(mapProdutoImagemRow(row as Record<string, unknown>))
     }
   }
+
+  await sincronizarImagemUrlCapaProduto(admin, workspaceId, produtoId)
 
   return { atualizadas: atualizadas.length, data: atualizadas }
 })

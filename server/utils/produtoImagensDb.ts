@@ -59,3 +59,41 @@ export function parseProdutoId(raw: unknown): number {
   }
   return n
 }
+
+/** Atualiza `produtos_workspace.imagem_url` com a primeira imagem de `produto_imagens` (por ordem). */
+export async function sincronizarImagemUrlCapaProduto(
+  admin: ReturnType<typeof import('#supabase/server').serverSupabaseServiceRole<any>>,
+  workspaceId: number,
+  produtoId: number,
+): Promise<string | null> {
+  const { data: rows, error: selErr } = await admin
+    .from('produto_imagens')
+    .select('imagem_url')
+    .eq('workspace_id', workspaceId)
+    .eq('produto_id', produtoId)
+    .order('ordem', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(1)
+
+  if (selErr) {
+    throw createError({ statusCode: 500, statusMessage: selErr.message })
+  }
+
+  const primeira = rows?.[0] as { imagem_url?: unknown } | undefined
+  const imagem_url =
+    primeira?.imagem_url != null && String(primeira.imagem_url).trim()
+      ? String(primeira.imagem_url).trim()
+      : null
+
+  const { error: updErr } = await admin
+    .from('produtos_workspace')
+    .update({ imagem_url })
+    .eq('id', produtoId)
+    .eq('workspace_id', workspaceId)
+
+  if (updErr) {
+    throw createError({ statusCode: 500, statusMessage: updErr.message })
+  }
+
+  return imagem_url
+}

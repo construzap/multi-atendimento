@@ -2,6 +2,7 @@
 export type CampoIaProdutoId =
   | 'nome'
   | 'categoria'
+  | 'termos_pesquisa'
   | 'sku'
   | 'unidade_venda'
   | 'marca'
@@ -16,6 +17,7 @@ export type CampoIaProdutoId =
 export const CAMPOS_TABELA_IA_PRODUTO: { id: CampoIaProdutoId; label: string }[] = [
   { id: 'nome', label: 'Nome' },
   { id: 'categoria', label: 'Categoria' },
+  { id: 'termos_pesquisa', label: 'Termos pesquisa' },
   { id: 'sku', label: 'SKU' },
   { id: 'unidade_venda', label: 'Unidade de venda' },
   { id: 'marca', label: 'Marca' },

@@ -15,6 +15,10 @@ type ImportacaoFaseLocal = 'idle' | 'lendo' | 'enviando' | 'concluido' | 'erro'
 const ACCEPT_IMPORT =
   '.csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
+const emit = defineEmits<{
+  importado: []
+}>()
+
 const props = withDefaults(
   defineProps<{
     workspaceId?: number | null
@@ -135,12 +139,15 @@ async function executarImportacao(
       importacaoProcessadas.value += chunk.length
     }
 
+    produtosStore.ultimoSnapshotKey = null
     produtosStore.page = 1
     await produtosStore.fetchPagina(workspaceId, {
       page: 1,
       q: props.termoBusca ?? '',
     })
+    useProdutoTermosPesquisaStore().invalidarWorkspace(workspaceId)
     importacaoFase.value = 'concluido'
+    emit('importado')
   } catch (err) {
     importacaoFase.value = 'erro'
     importacaoErro.value = mensagemErroFetch(err, 'Não foi possível concluir a importação.')

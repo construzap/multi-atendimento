@@ -83,10 +83,10 @@ onUnmounted(() => {
           leave-to-class="opacity-0 translate-y-2 scale-95"
         >
           <div
-            class="overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest shadow-xl dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+            class="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest shadow-xl dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
             :class="panelClass"
           >
-            <header class="flex items-start justify-between gap-4 border-b border-outline/30 p-5 dark:border-dark-outline/30">
+            <header class="flex shrink-0 items-start justify-between gap-4 border-b border-outline/30 p-5 dark:border-dark-outline/30">
               <div class="flex items-start gap-3">
                 <div
                   v-if="$slots.icon"
@@ -118,11 +118,11 @@ onUnmounted(() => {
               </button>
             </header>
 
-            <div class="p-5">
+            <div class="min-h-0 flex-1 overflow-y-auto p-5">
               <slot />
             </div>
 
-            <footer class="border-t border-outline/30 p-5 dark:border-dark-outline/30">
+            <footer class="shrink-0 border-t border-outline/30 p-5 dark:border-dark-outline/30">
               <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <slot name="footer" />
               </div>

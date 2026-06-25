@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import ItemConversa from '~/components/chat/area-conversa/ItemConversa.vue'
 import type { Conversa } from '#shared/types/conversa'
 import type { MessageType } from '#shared/types/messageType'
@@ -11,10 +12,14 @@ type ConversaListaItem = {
   horario: string
   avatarSrc: string | null
   messatype: MessageType | null
+  fechada: boolean
+  isGrupo: boolean
+  naoLidas: number
 }
 
 const canais = useCanaisStore()
 const conversas = useConversasStore()
+const { termoPesquisa } = storeToRefs(conversas)
 
 function firstNonEmpty(...vals: Array<string | null | undefined>): string {
   for (const v of vals) {
@@ -50,11 +55,33 @@ function sortIsoAsc(a: string | null, b: string | null): number {
   return da - db
 }
 
+function previewTexto(m: Conversa): string {
+  return labelPreview(m) || ' '
+}
+
+function conversaMatchesPesquisa(m: Conversa, q: string): boolean {
+  if (!q) return true
+  const ql = q.toLowerCase()
+  const haystack = [
+    m.name,
+    m.phone,
+    m.lid,
+    m.message,
+    m.key,
+    m.name_group,
+    m.id_group,
+  ]
+    .map((v) => (v ?? '').toLowerCase())
+    .join(' ')
+  return haystack.includes(ql)
+}
+
 const itens = computed<ConversaListaItem[]>(() => {
   // Se não houver canal selecionado, não lista nada.
   if (!canais.currentCanalId) return []
 
-  const msgs = conversas.items
+  const q = termoPesquisa.value.trim()
+  const msgs = conversas.items.filter((m) => conversaMatchesPesquisa(m, q))
   if (!msgs.length) return []
 
   const sorted = [...msgs].sort((a, b) => {
@@ -66,10 +93,13 @@ const itens = computed<ConversaListaItem[]>(() => {
   return sorted.map((m) => ({
     id: m.key,
     nome: firstNonEmpty(m.name, m.phone, m.lid, m.key),
-    ultimaMensagem: labelPreview(m) || ' ',
+    ultimaMensagem: previewTexto(m) || ' ',
     horario: formatHora(m.updated_at ?? m.created_at),
     avatarSrc: m.photo ?? null,
     messatype: m.messatype ?? null,
+    fechada: m.conversa_aberta === false,
+    isGrupo: m.is_group === true,
+    naoLidas: m.nao_lidas ?? 0,
   }))
 })
 
@@ -149,6 +179,9 @@ function maybeLoadMore() {
         :horario="c.horario"
         :avatar-src="c.avatarSrc"
         :messatype="c.messatype"
+        :fechada="c.fechada"
+        :is-grupo="c.isGrupo"
+        :nao-lidas="c.naoLidas"
         :selected="c.id === conversas.conversaAtual"
         @select="conversas.setConversaAtual(c.id)"
       />
@@ -158,6 +191,9 @@ function maybeLoadMore() {
         class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
       >
         <template v-if="!canais.currentCanalId">Selecione um canal para ver as conversas.</template>
+        <template v-else-if="termoPesquisa.trim()">
+          Nenhuma conversa encontrada para “{{ termoPesquisa.trim() }}”.
+        </template>
         <template v-else>Nenhuma conversa carregada para este canal.</template>
       </p>
     </div>

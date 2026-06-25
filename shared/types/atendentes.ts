@@ -4,7 +4,8 @@ export type AtendenteListaItem = {
   id: number
   nome: string | null
   email: string | null
-  atendente_user_id: string
+  /** `true` se o registro pertence ao usuário autenticado. */
+  sou_eu: boolean
 }
 
 export type AtendentesListResponse = {

@@ -113,7 +113,10 @@ function normalizarLinha(raw: unknown): ProdutoCriarEmMassaLinha | null {
       return v != null && v > 0 ? v : null
     })(),
     codigo_ncm: strOrNull(o.codigo_ncm),
-    termos_pesquisa: strOrNull(o.termos_pesquisa),
+    termo_pesquisa: (() => {
+      const v = intOrNull(o.termo_pesquisa)
+      return v != null && v > 0 ? v : null
+    })(),
     codigo_barras_ean: strOrNull(o.codigo_barras_ean),
     largura: largura != null && largura >= 0 ? largura : 0,
     altura: altura != null && altura >= 0 ? altura : 0,
@@ -215,7 +218,7 @@ export default defineEventHandler(async (event): Promise<ProdutosCriarEmMassaRes
       status: r.status ?? true,
       categoria_id: r.categoria_id ?? null,
       codigo_ncm: r.codigo_ncm ?? null,
-      termos_pesquisa: r.termos_pesquisa ?? null,
+      termo_pesquisa: r.termo_pesquisa ?? null,
       codigo_barras_ean: r.codigo_barras_ean ?? null,
       largura: r.largura ?? 0,
       altura: r.altura ?? 0,

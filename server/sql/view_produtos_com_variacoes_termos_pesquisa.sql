@@ -1,11 +1,12 @@
--- Recria a view de listagem incluindo termos de pesquisa (N:N) e texto auxiliar para busca.
--- Pré-requisitos: produto_termo_de_pesquisa, produto_termo_de_pesquisa_vinculo (ver produto_termo_de_pesquisa_vinculo.sql).
+-- Recria a view de listagem: termo único em produtos_workspace.termo_pesquisa.
+-- Pré-requisitos: produto_termo_de_pesquisa, coluna termo_pesquisa bigint em produtos_workspace.
 --
--- O tipo de `termos_pesquisa` muda de text → json; o Postgres não permite isso com CREATE OR REPLACE.
+-- O tipo de `termos_pesquisa` na view é json; o Postgres não permite CREATE OR REPLACE se mudar o tipo.
 
 drop view if exists public.view_produtos_com_variacoes;
 
-create view public.view_produtos_com_variacoes as
+create view public.view_produtos_com_variacoes
+with (security_invoker = on) as
 select
   p.id,
   p.workspace_id,
@@ -28,24 +29,16 @@ select
   p.codigo_ncm,
   coalesce(
     (
-      select
-        json_agg(
-          json_build_object('id', t.id, 'nome', t.nome)
-          order by t.nome
-        )
-      from public.produto_termo_de_pesquisa_vinculo v
-      inner join public.produto_termo_de_pesquisa t on t.id = v.termo_id
-      where v.produto_id = p.id
-        and t.workspace_id = p.workspace_id
+      select json_build_object('id', t.id, 'nome', t.nome)
+      from public.produto_termo_de_pesquisa t
+      where t.id = p.termo_pesquisa
     ),
-    '[]'::json
+    null::json
   ) as termos_pesquisa,
   (
-    select string_agg(t.nome, ' ' order by t.nome)
-    from public.produto_termo_de_pesquisa_vinculo v
-    inner join public.produto_termo_de_pesquisa t on t.id = v.termo_id
-    where v.produto_id = p.id
-      and t.workspace_id = p.workspace_id
+    select t.nome
+    from public.produto_termo_de_pesquisa t
+    where t.id = p.termo_pesquisa
   ) as termos_pesquisa_busca,
   p.preco_custo,
   p.preco_promocional,
@@ -93,19 +86,16 @@ select
               where c_v.id = var.categoria_id
             ),
             'termos_pesquisa',
-            coalesce(
-              (
-                select
-                  json_agg(
-                    json_build_object('id', t_v.id, 'nome', t_v.nome)
-                    order by t_v.nome
-                  )
-                from public.produto_termo_de_pesquisa_vinculo v_v
-                inner join public.produto_termo_de_pesquisa t_v on t_v.id = v_v.termo_id
-                where v_v.produto_id = var.id
-                  and t_v.workspace_id = var.workspace_id
-              ),
-              '[]'::json
+            (
+              select json_build_object('id', t_v.id, 'nome', t_v.nome)
+              from public.produto_termo_de_pesquisa t_v
+              where t_v.id = var.termo_pesquisa
+            ),
+            'termos_pesquisa_busca',
+            (
+              select t_v.nome
+              from public.produto_termo_de_pesquisa t_v
+              where t_v.id = var.termo_pesquisa
             )
           )
         )
@@ -118,4 +108,4 @@ from public.produtos_workspace p
 where p.parent_id is null;
 
 comment on view public.view_produtos_com_variacoes is
-  'Produtos pai com variações, imagens, categoria e termos de pesquisa (produto_termo_de_pesquisa_vinculo).';
+  'Produtos pai com variações, imagens, categoria e termo de pesquisa (produtos_workspace.termo_pesquisa).';

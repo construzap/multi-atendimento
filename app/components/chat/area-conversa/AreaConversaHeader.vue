@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import BaseAvatar from '~/components/BaseAvatar.vue'
@@ -27,6 +27,7 @@ const workspacesStore = useWorkspacesStore()
 const { currentCanal, instanciaStatus, items } = storeToRefs(canaisStore)
 const route = useRoute()
 const conversasStore = useConversasStore()
+const { mostrarConversasFechadas, mostrarGrupos } = storeToRefs(conversasStore)
 
 function parsePositiveInt(raw: unknown): number | null {
   const s = String(raw ?? '').trim()
@@ -188,6 +189,76 @@ async function criarNovaConversa() {
     criandoNovaConversa.value = false
   }
 }
+
+const alternandoFechadas = ref(false)
+const alternandoGrupos = ref(false)
+const atualizandoLista = ref(false)
+
+const labelToggleFechadas = computed(() =>
+  mostrarConversasFechadas.value ? 'Somente abertas' : 'Mostrar fechadas'
+)
+
+const iconeToggleFechadas = computed(() =>
+  mostrarConversasFechadas.value ? 'visibility_off' : 'visibility'
+)
+
+const labelToggleGrupos = computed(() =>
+  mostrarGrupos.value ? 'Ocultar grupos' : 'Mostrar grupos'
+)
+
+const iconeToggleGrupos = computed(() =>
+  mostrarGrupos.value ? 'group_off' : 'groups'
+)
+
+function executarPesquisa() {
+  conversasStore.aplicarPesquisa(pesquisa.value)
+}
+
+watch(
+  () => currentCanal.value?.id,
+  () => {
+    pesquisa.value = ''
+  },
+)
+
+async function alternarMostrarConversasFechadas() {
+  if (alternandoFechadas.value || !currentCanal.value?.id) return
+  alternandoFechadas.value = true
+  try {
+    await conversasStore.setMostrarConversasFechadas(!mostrarConversasFechadas.value)
+  } catch (err: unknown) {
+    const msg = mensagemErroFetch(err, 'Não foi possível atualizar a lista de conversas.')
+    toast.error(msg, { duration: 8000 })
+  } finally {
+    alternandoFechadas.value = false
+  }
+}
+
+async function alternarMostrarGrupos() {
+  if (alternandoGrupos.value || !currentCanal.value?.id) return
+  alternandoGrupos.value = true
+  try {
+    await conversasStore.setMostrarGrupos(!mostrarGrupos.value)
+  } catch (err: unknown) {
+    const msg = mensagemErroFetch(err, 'Não foi possível atualizar a lista de conversas.')
+    toast.error(msg, { duration: 8000 })
+  } finally {
+    alternandoGrupos.value = false
+  }
+}
+
+async function atualizarListaConversas() {
+  if (atualizandoLista.value || !currentCanal.value?.id) return
+  atualizandoLista.value = true
+  try {
+    await conversasStore.atualizarLista()
+  } catch (err: unknown) {
+    const msg = mensagemErroFetch(err, 'Não foi possível atualizar a lista de conversas.')
+    toast.error(msg, { duration: 8000 })
+  } finally {
+    atualizandoLista.value = false
+  }
+}
 </script>
 
 <template>
@@ -336,17 +407,17 @@ async function criarNovaConversa() {
       </div>
     </div>
 
-    <div class="border-t border-slate-100 px-4 pb-4 pt-2 dark:border-slate-800">
-      <div class="flex items-center gap-2">
+    <div class="border-t border-slate-100 px-4 pb-3 pt-2 dark:border-slate-800">
+      <form class="w-full" @submit.prevent="executarPesquisa">
         <BaseInput
           id="conversas-pesquisa"
           v-model="pesquisa"
           type="search"
           name="pesquisa-conversas"
-          placeholder="Buscar conversas…"
+          placeholder="Buscar conversas… (Enter)"
           autocomplete="off"
           wrapper-id="conversas-pesquisa-wrap"
-          class="flex-1"
+          class="w-full"
         >
           <template #leading>
             <svg
@@ -362,16 +433,66 @@ async function criarNovaConversa() {
             </svg>
           </template>
         </BaseInput>
+      </form>
 
+      <div class="mt-2 grid w-full grid-cols-2 gap-2">
         <BaseButton
           type="button"
           variant="primary"
           size="sm"
           :block="false"
-          class="shrink-0"
+          class="!flex min-h-9 w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap !px-2 !py-0 text-[11px] leading-tight"
           @click="modalNovaConversaAberto = true"
         >
-          Nova conversa
+          <span class="material-symbols-outlined shrink-0 text-[14px]" aria-hidden="true">chat_add_on</span>
+          <span class="truncate">Nova conversa</span>
+        </BaseButton>
+
+        <BaseButton
+          type="button"
+          :variant="mostrarConversasFechadas ? 'primary' : 'secondary'"
+          size="sm"
+          :block="false"
+          class="!flex min-h-9 w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap !px-2 !py-0 text-[11px] leading-tight"
+          :loading="alternandoFechadas"
+          :disabled="alternandoFechadas || !currentCanal?.id"
+          :aria-pressed="mostrarConversasFechadas"
+          :aria-label="labelToggleFechadas"
+          @click="alternarMostrarConversasFechadas"
+        >
+          <span class="material-symbols-outlined shrink-0 text-[14px]" aria-hidden="true">{{ iconeToggleFechadas }}</span>
+          <span class="truncate">{{ labelToggleFechadas }}</span>
+        </BaseButton>
+
+        <BaseButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          :block="false"
+          class="!flex min-h-9 w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap !px-2 !py-0 text-[11px] leading-tight"
+          :loading="atualizandoLista"
+          :disabled="atualizandoLista || !currentCanal?.id"
+          aria-label="Atualizar lista de conversas"
+          @click="atualizarListaConversas"
+        >
+          <span class="material-symbols-outlined shrink-0 text-[14px]" aria-hidden="true">refresh</span>
+          <span class="truncate">Atualizar</span>
+        </BaseButton>
+
+        <BaseButton
+          type="button"
+          :variant="mostrarGrupos ? 'primary' : 'secondary'"
+          size="sm"
+          :block="false"
+          class="!flex min-h-9 w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap !px-2 !py-0 text-[11px] leading-tight"
+          :loading="alternandoGrupos"
+          :disabled="alternandoGrupos || !currentCanal?.id"
+          :aria-pressed="mostrarGrupos"
+          :aria-label="labelToggleGrupos"
+          @click="alternarMostrarGrupos"
+        >
+          <span class="material-symbols-outlined shrink-0 text-[14px]" aria-hidden="true">{{ iconeToggleGrupos }}</span>
+          <span class="truncate">{{ labelToggleGrupos }}</span>
         </BaseButton>
       </div>
     </div>

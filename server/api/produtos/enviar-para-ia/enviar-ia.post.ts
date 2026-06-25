@@ -1,10 +1,10 @@
 import { serverSupabaseClient } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
-import { checkWorkspace } from '../../utils/checkWorkspace'
-import { getAuthUserId } from '../../utils/getAuthUserId'
+import { checkWorkspace } from '../../../utils/checkWorkspace'
+import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 const WEBHOOK_ENVIAR_IA =
-  'https://nwebhook.construzap.com/webhook/54d8073c-b293-48d3-8b42-6fce9361028b'
+  'https://nwebhook.construzap.com/webhook/54d8073c-b293-48dasdasdadfafg43f4frff34f3-8b42-6fce9361028b'
 
 type Body = {
   workspace_id?: unknown
@@ -21,7 +21,7 @@ function parseWorkspaceId(raw: unknown): number {
   return n
 }
 
-/** POST /api/produtos/enviar-ia — dispara importação via I.A. (webhook externo). */
+/** POST /api/produtos/enviar-para-ia/enviar-ia — dispara webhook antes da indexação. */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
 

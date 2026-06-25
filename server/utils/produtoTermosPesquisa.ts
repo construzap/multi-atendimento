@@ -14,34 +14,137 @@ export function normalizarNomeTermoPesquisa(raw: string | null | undefined): str
   return normalizarTextoCategoriaUnica(raw)
 }
 
+/** Importação: célula inteira vira um termo (trim + maiúsculas, sem split). */
+export function normalizarTermoImportacao(raw: string | null | undefined): string | null {
+  if (raw == null) return null
+  const t = String(raw).trim()
+  return t.length ? t.toLocaleUpperCase('pt-BR') : null
+}
+
 /** Escapa `%` e `_` para `ilike` corresponder ao texto literal. */
 export function escapeIlikeLiteral(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
 
-/** Texto da coluna legada `produtos_workspace.termos_pesquisa` (nomes separados por espaço). */
-export function formatTermosPesquisaTextoColuna(termos: ProdutoTermoPesquisaItem[]): string | null {
-  const nomes = termos
-    .map((t) => t.nome.trim())
-    .filter((n) => n.length > 0)
-    .sort((a, b) => a.localeCompare(b, 'pt', { sensitivity: 'base' }))
-  return nomes.length ? nomes.join(' ') : null
+export type ObterOuCriarTermoResult = {
+  data: ProdutoTermoPesquisaItem
+  ja_existia: boolean
 }
 
-export async function termosPesquisaTextoPorIds(
+/**
+ * Find-or-create em `produto_termo_de_pesquisa` (comparação ilike, nome canónico em maiúsculas).
+ * `nomeNormalizado` deve já estar normalizado (maiúsculas).
+ */
+export async function obterOuCriarTermoPesquisa(
   admin: { from: (table: string) => any },
   workspaceId: number,
-  termoIds: number[],
-): Promise<string | null> {
-  if (!termoIds.length) return null
+  nomeNormalizado: string,
+): Promise<ObterOuCriarTermoResult> {
+  const nome = nomeNormalizado.trim()
+  const literal = escapeIlikeLiteral(nome)
+  const { data: existente, error: selErr } = await admin
+    .from('produto_termo_de_pesquisa')
+    .select('id, nome')
+    .eq('workspace_id', workspaceId)
+    .ilike('nome', literal)
+    .limit(1)
+    .maybeSingle()
+
+  if (selErr) throw selErr
+
+  if (existente) {
+    const rec = existente as Record<string, unknown>
+    const id = typeof rec.id === 'number' ? rec.id : Number(rec.id)
+    const nomeDb = String(rec.nome ?? '').trim()
+    if (nomeDb.toLocaleUpperCase('pt-BR') !== nome) {
+      const { error: upErr } = await admin.from('produto_termo_de_pesquisa').update({ nome }).eq('id', id)
+      if (upErr) throw upErr
+    }
+    return {
+      data: mapTermoPesquisaRow({ ...rec, nome }),
+      ja_existia: true,
+    }
+  }
+
+  const { data: inserted, error: insErr } = await admin
+    .from('produto_termo_de_pesquisa')
+    .insert({ workspace_id: workspaceId, nome })
+    .select('id, nome')
+    .single()
+
+  if (insErr) throw insErr
+
+  return {
+    data: mapTermoPesquisaRow(inserted as Record<string, unknown>),
+    ja_existia: false,
+  }
+}
+
+/** Mapa `nome.toLowerCase()` → id para termos já existentes no workspace. */
+export async function mapaNomeMinusculoParaTermoId(
+  admin: { from: (table: string) => any },
+  workspaceId: number,
+): Promise<Map<string, number>> {
   const { data, error } = await admin
     .from('produto_termo_de_pesquisa')
     .select('id, nome')
     .eq('workspace_id', workspaceId)
-    .in('id', termoIds)
+
   if (error) throw error
-  const termos = (data ?? []).map((row: Record<string, unknown>) => mapTermoPesquisaRow(row))
-  return formatTermosPesquisaTextoColuna(termos)
+
+  const map = new Map<string, number>()
+  for (const row of data ?? []) {
+    const rec = row as { id?: unknown; nome?: unknown }
+    const nome = String(rec.nome ?? '').trim().toLowerCase()
+    if (!nome) continue
+    const id = typeof rec.id === 'number' ? rec.id : Number(rec.id)
+    if (!Number.isFinite(id)) continue
+    if (!map.has(nome)) map.set(nome, id)
+  }
+  return map
+}
+
+/** Mapa `nome.toLowerCase()` → item completo do catálogo. */
+async function mapaNomeMinusculoParaTermoItem(
+  admin: { from: (table: string) => any },
+  workspaceId: number,
+): Promise<Map<string, ProdutoTermoPesquisaItem>> {
+  const { data, error } = await admin
+    .from('produto_termo_de_pesquisa')
+    .select('id, nome')
+    .eq('workspace_id', workspaceId)
+
+  if (error) throw error
+
+  const map = new Map<string, ProdutoTermoPesquisaItem>()
+  for (const row of data ?? []) {
+    const t = mapTermoPesquisaRow(row as Record<string, unknown>)
+    if (!t.nome.length) continue
+    const chave = t.nome.toLowerCase()
+    if (!map.has(chave)) map.set(chave, t)
+  }
+  return map
+}
+
+/**
+ * Garante que todos os nomes do lote existem em `produto_termo_de_pesquisa`.
+ * Retorna mapa `nome.toLowerCase()` → termo_id.
+ */
+export async function resolverTermosDoLoteImportacao(
+  admin: { from: (table: string) => any },
+  workspaceId: number,
+  nomesUnicos: string[],
+): Promise<Map<string, number>> {
+  const mapa = await mapaNomeMinusculoParaTermoId(admin, workspaceId)
+
+  for (const nome of nomesUnicos) {
+    const chave = nome.trim().toLowerCase()
+    if (!chave || mapa.has(chave)) continue
+    const { data } = await obterOuCriarTermoPesquisa(admin, workspaceId, nome)
+    if (data.id) mapa.set(chave, data.id)
+  }
+
+  return mapa
 }
 
 export async function conjuntoIdsTermoValidos(
@@ -65,62 +168,6 @@ export async function conjuntoIdsTermoValidos(
   return out
 }
 
-export async function syncProdutoTermosPesquisa(
-  admin: { from: (table: string) => any },
-  workspaceId: number,
-  produtoId: number,
-  termoIds: number[],
-): Promise<void> {
-  const uniqInput = [...new Set(termoIds.filter((id) => Number.isInteger(id) && id >= 1))]
-  const validos = await conjuntoIdsTermoValidos(admin, workspaceId, uniqInput)
-  if (validos.size !== uniqInput.length) {
-    throw new Error('termos_pesquisa_ids inválido ou não pertence a este workspace.')
-  }
-  const desejados = [...validos]
-
-  const { data: atuais, error: selErr } = await admin
-    .from('produto_termo_de_pesquisa_vinculo')
-    .select('termo_id')
-    .eq('produto_id', produtoId)
-  if (selErr) throw selErr
-
-  const atuaisSet = new Set<number>(
-    (atuais ?? [])
-      .map((r: { termo_id: unknown }) => Number(r.termo_id))
-      .filter((id: number) => Number.isFinite(id)),
-  )
-  const desejadosSet = new Set(desejados)
-
-  const remover = [...atuaisSet].filter((id) => !desejadosSet.has(id))
-  const inserir = desejados.filter((id) => !atuaisSet.has(id))
-
-  if (remover.length) {
-    const { error: delErr } = await admin
-      .from('produto_termo_de_pesquisa_vinculo')
-      .delete()
-      .eq('produto_id', produtoId)
-      .in('termo_id', remover)
-    if (delErr) throw delErr
-  }
-
-  if (inserir.length) {
-    const rows = inserir.map((termo_id) => ({ produto_id: produtoId, termo_id }))
-    const { error: insErr } = await admin.from('produto_termo_de_pesquisa_vinculo').insert(rows)
-    if (insErr) throw insErr
-  }
-
-  const termosTexto = await termosPesquisaTextoPorIds(admin, workspaceId, desejados)
-  const { error: upErr } = await admin
-    .from('produtos_workspace')
-    .update({
-      termos_pesquisa: termosTexto,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', produtoId)
-    .eq('workspace_id', workspaceId)
-  if (upErr) throw upErr
-}
-
 function coletarIdsProdutos(items: ProdutoWorkspaceItem[]): number[] {
   const ids = new Set<number>()
   for (const pai of items) {
@@ -138,46 +185,42 @@ export async function mapaTermosPorProdutoId(
   const out = new Map<number, ProdutoTermoPesquisaItem[]>()
   if (!produtoIds.length) return out
 
-  const { data: vinculos, error: vErr } = await admin
-    .from('produto_termo_de_pesquisa_vinculo')
-    .select('produto_id, termo_id')
-    .in('produto_id', produtoIds)
-
-  if (vErr) throw vErr
-  if (!vinculos?.length) return out
-
-  const termoIds = [...new Set(vinculos.map((v: { termo_id: unknown }) => Number(v.termo_id)).filter(Number.isFinite))]
-  if (!termoIds.length) return out
-
-  const { data: termos, error: tErr } = await admin
-    .from('produto_termo_de_pesquisa')
-    .select('id, nome')
+  const { data: produtos, error: pErr } = await admin
+    .from('produtos_workspace')
+    .select('id, termo_pesquisa')
     .eq('workspace_id', workspaceId)
-    .in('id', termoIds)
+    .in('id', produtoIds)
 
-  if (tErr) throw tErr
+  if (pErr) throw pErr
+  if (!produtos?.length) return out
 
+  const termoIds = [...new Set(produtos.map((p: any) => p.termo_pesquisa).filter((id: unknown): id is number => typeof id === 'number' && id > 0))]
+  
   const mapaTermos = new Map<number, ProdutoTermoPesquisaItem>()
-  for (const row of termos ?? []) {
-    const t = mapTermoPesquisaRow(row as Record<string, unknown>)
-    if (t.id) mapaTermos.set(t.id, t)
+  if (termoIds.length > 0) {
+    const { data: termos, error: tErr } = await admin
+      .from('produto_termo_de_pesquisa')
+      .select('id, nome')
+      .eq('workspace_id', workspaceId)
+      .in('id', termoIds)
+      
+    if (tErr) throw tErr
+    
+    for (const row of termos ?? []) {
+      const t = mapTermoPesquisaRow(row as Record<string, unknown>)
+      if (t.id) mapaTermos.set(t.id, t)
+    }
   }
 
-  for (const v of vinculos) {
-    const rec = v as { produto_id: unknown; termo_id: unknown }
-    const produtoId = Number(rec.produto_id)
-    const termoId = Number(rec.termo_id)
-    if (!Number.isFinite(produtoId) || !Number.isFinite(termoId)) continue
-    const termo = mapaTermos.get(termoId)
-    if (!termo) continue
-    const lista = out.get(produtoId) ?? []
-    if (!lista.some((x) => x.id === termo.id)) lista.push(termo)
-    out.set(produtoId, lista)
-  }
-
-  for (const [pid, lista] of out) {
-    lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
-    out.set(pid, lista)
+  for (const row of produtos) {
+    const rec = row as { id?: unknown; termo_pesquisa?: unknown }
+    const produtoId = typeof rec.id === 'number' ? rec.id : Number(rec.id)
+    if (!Number.isFinite(produtoId)) continue
+    
+    const termoId = typeof rec.termo_pesquisa === 'number' ? rec.termo_pesquisa : Number(rec.termo_pesquisa)
+    const termo = Number.isFinite(termoId) ? mapaTermos.get(termoId) : null
+    
+    out.set(produtoId, termo ? [termo] : [])
   }
 
   return out

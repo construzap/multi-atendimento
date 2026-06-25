@@ -72,7 +72,7 @@ function excluir() {
   <BaseModal
     v-model:open="isOpen"
     :title="tituloModal"
-    panel-class="w-full max-w-2xl"
+    panel-class="w-full max-w-4xl"
   >
     <template #icon>
       <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -115,8 +115,8 @@ function excluir() {
           id="modal-prompt-conteudo"
           v-model="conteudo"
           placeholder="Descreva como a IA deve se comportar, regras, tom de voz, contexto do negócio..."
-          :min-height-px="240"
-          :max-height-px="360"
+          :min-height-px="420"
+          :max-height-px="560"
           :submit-on-enter="false"
           :disabled="salvando"
           input-class="font-mono text-sm leading-relaxed"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import type { AtendenteListaItem } from '#shared/types/atendentes'
 import ItemCardAtendente from '~/components/atendentes/ItemCardAtendente.vue'
@@ -12,16 +12,9 @@ const props = defineProps<{
 
 const pesquisa = ref('')
 const modalAberto = ref(false)
-const authUserId = ref<string | null>(null)
 
 const atendentesStore = useAtendentesStore()
 const { items, listPending, listError, souDonoWorkspace } = storeToRefs(atendentesStore)
-
-onMounted(async () => {
-  const supabase = useSupabaseClient()
-  const { data } = await supabase.auth.getUser()
-  authUserId.value = data.user?.id ?? null
-})
 
 watch(
   () => props.workspaceId,
@@ -73,8 +66,7 @@ function rowKey(a: AtendenteListaItem): string {
 }
 
 function podeExcluirCard(a: AtendenteListaItem): boolean {
-  if (!souDonoWorkspace.value || !authUserId.value || !a.atendente_user_id) return false
-  return a.atendente_user_id !== authUserId.value
+  return souDonoWorkspace.value && !a.sou_eu
 }
 
 const itensFiltrados = computed(() => {
@@ -194,7 +186,6 @@ const itensFiltrados = computed(() => {
         v-else
         :key="rowKey(a)"
         :registro-id="a.id"
-        :atendente-user-id="a.atendente_user_id"
         :workspace-id="workspaceId"
         :pode-excluir="podeExcluirCard(a)"
         :nome="displayNome(a)"

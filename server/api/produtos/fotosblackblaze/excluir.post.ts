@@ -13,6 +13,7 @@ import {
   assertProdutoNoWorkspace,
   parseProdutoId,
   parseWorkspaceId,
+  sincronizarImagemUrlCapaProduto,
 } from '../../../utils/produtoImagensDb'
 
 type Body = {
@@ -111,6 +112,8 @@ export default defineEventHandler(async (event): Promise<ProdutosFotosExcluirRes
   const idsRemovidos = (deleted ?? [])
     .map((r: { id?: unknown }) => (typeof r.id === 'number' ? r.id : Number(r.id)))
     .filter((n: number) => Number.isFinite(n))
+
+  await sincronizarImagemUrlCapaProduto(admin, workspaceId, produtoId)
 
   return { removidos, ids: idsRemovidos }
 })

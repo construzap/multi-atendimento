@@ -13,12 +13,18 @@ const props = withDefaults(
     alt?: string
     selected?: boolean
     messatype?: MessageType | null
+  fechada?: boolean
+  isGrupo?: boolean
+  naoLidas?: number
   }>(),
   {
     avatarSrc: null,
     alt: '',
     selected: false,
-    messatype: null
+    messatype: null,
+    fechada: false,
+    isGrupo: false,
+    naoLidas: 0,
   }
 )
 
@@ -85,6 +91,14 @@ const preview = computed(() => {
   return `${emoji} ${props.ultimaMensagem}`.trim()
 })
 
+const temNaoLidas = computed(() => (props.naoLidas ?? 0) >= 1)
+
+const naoLidasLabel = computed(() => {
+  const n = props.naoLidas ?? 0
+  if (n < 1) return ''
+  return n > 99 ? '99+' : String(n)
+})
+
 function onSelect() {
   conversas.setConversaAtual(props.conversaId)
   emit('select')
@@ -97,7 +111,9 @@ function onSelect() {
     :class="
       props.selected
         ? 'border-primary/30 ring-1 ring-primary/20 dark:border-primary/40'
-        : 'border-orange-100 dark:border-orange-900/30'
+        : props.fechada
+          ? 'border-slate-200 opacity-75 dark:border-slate-700'
+          : 'border-orange-100 dark:border-orange-900/30'
     "
     @click="onSelect"
   >
@@ -118,10 +134,31 @@ function onSelect() {
         <h3 class="truncate font-headline text-sm font-semibold text-slate-900 dark:text-slate-100">
           {{ nome }}
         </h3>
-        <span class="shrink-0 text-[10px] text-on-surface-variant dark:text-slate-400">{{ horario }}</span>
+        <div class="flex shrink-0 items-center gap-1.5">
+          <span
+            v-if="props.isGrupo"
+            class="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary dark:bg-primary/20"
+          >
+            Grupo
+          </span>
+          <span
+            v-if="props.fechada"
+            class="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-700 dark:text-slate-300"
+          >
+            Fechada
+          </span>
+          <span class="text-[10px] text-on-surface-variant dark:text-slate-400">{{ horario }}</span>
+        </div>
       </div>
-      <p class="truncate font-body text-xs text-on-surface-variant dark:text-slate-400">
-        {{ preview }}
+      <p class="flex items-center gap-2 font-body text-xs text-on-surface-variant dark:text-slate-400">
+        <span class="min-w-0 flex-1 truncate">{{ preview }}</span>
+        <span
+          v-if="temNaoLidas"
+          class="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#25D366] px-1.5 text-[11px] font-semibold leading-none text-white shadow-sm"
+          :aria-label="`${naoLidasLabel} mensagem${(props.naoLidas ?? 0) === 1 ? '' : 's'} não lida${(props.naoLidas ?? 0) === 1 ? '' : 's'}`"
+        >
+          {{ naoLidasLabel }}
+        </span>
       </p>
     </div>
 

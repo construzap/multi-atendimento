@@ -3,9 +3,10 @@ import Pusher from 'pusher-js'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { useCanaisStore } from '~/stores/canais'
 import { useConversasStore } from '~/stores/conversas'
+import { useKanbanStore } from '~/stores/kanban'
 import { useMensagensStore } from '~/stores/mensagens'
 
-/** Inscreve em `String(id_canal)` conforme `canais.items`; `nova-mensagem` atualiza conversas + mensagens. */
+/** Inscreve em `String(id_canal)` conforme `canais.items` + canais dos cards do kanban. */
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
   const appKey = typeof config.public.pusherKey === 'string' ? config.public.pusherKey.trim() : ''
@@ -24,16 +25,28 @@ export default defineNuxtPlugin(() => {
   }
 
   const canais = useCanaisStore()
+  const kanban = useKanbanStore()
+
+  function canalIdsParaInscrever(): number[] {
+    const ids = new Set<number>()
+    for (const c of canais.items) {
+      if (c.id >= 1) ids.add(c.id)
+    }
+    for (const col of kanban.columns) {
+      for (const card of col.cards) {
+        if (card.id_canal != null && card.id_canal >= 1) ids.add(card.id_canal)
+      }
+    }
+    const infoCanal = kanban.infoContatoIdCanal
+    if (infoCanal != null && infoCanal >= 1) ids.add(infoCanal)
+    return [...ids].sort((a, b) => a - b)
+  }
 
   watch(
-    () =>
-      [...canais.items]
-        .map((c) => c.id)
-        .sort((a, b) => a - b)
-        .join(','),
+    () => canalIdsParaInscrever().join(','),
     () => {
       const p = getClient()
-      const want = new Set(canais.items.map((c) => c.id))
+      const want = new Set(canalIdsParaInscrever())
 
       for (const id of subscribedIds) {
         if (!want.has(id)) {
@@ -48,6 +61,7 @@ export default defineNuxtPlugin(() => {
         channel.bind('nova-mensagem', (data: PusherNovaMensagemPayload) => {
           useConversasStore().mergeFromPusherNovaMensagem(id, data)
           useMensagensStore().mergeFromPusherNovaMensagem(id, data)
+          useKanbanStore().mergeFromPusherNovaMensagem(id, data)
         })
         subscribedIds.add(id)
       }

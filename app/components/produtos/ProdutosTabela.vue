@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type {
@@ -13,6 +13,7 @@ import type {
 import ProdutosModalImagens from '~/components/produtos/ProdutosModalImagens.vue'
 import ProdutosModalNovaVariacao from '~/components/produtos/ProdutosModalNovaVariacao.vue'
 import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
+import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useProdutoCategoriasStore } from '~/stores/produtoCategorias'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
@@ -28,11 +29,12 @@ const itemsExibicao = computed(() =>
 )
 
 const LS_LARGURAS = 'produtos-tabela-larguras-colunas-v6'
+const CHUNK_EXCLUIR_PRODUTOS = 100
 
 const columns = [
   { id: 'sel' as const, label: '' },
   { id: 'produto', label: 'PRODUTO' },
-  { id: 'categoria', label: 'CATEGORIA' },
+  // { id: 'categoria', label: 'CATEGORIA' },
   { id: 'termos', label: 'TERMOS PESQUISA' },
   { id: 'unidade', label: 'UNIDADE DE VENDA' },
   { id: 'marca', label: 'MARCA' },
@@ -57,7 +59,7 @@ type ColId = (typeof columns)[number]['id']
 const DEFAULT_WIDTHS: Record<ColId, number> = {
   sel: 52,
   produto: 320,
-  categoria: 200,
+  // categoria: 200,
   termos: 260,
   unidade: 200,
   marca: 180,
@@ -96,6 +98,7 @@ function loadColWidths(): Record<ColId, number> {
 }
 
 const colWidths = ref<Record<ColId, number>>(loadColWidths())
+const tabelaScrollRef = ref<HTMLElement | null>(null)
 
 /** Largura real da grelha (soma das colunas) para não comprimir com `w-full` + `table-fixed`. */
 const larguraTabelaPx = computed(() =>
@@ -211,6 +214,10 @@ const props = withDefaults(
     mostrarExclusao?: boolean
     /** Força render da tabela mesmo sem itens (útil para modais/rascunho). */
     forcarTabelaVazia?: boolean
+    /** Mostra botão de imagem na coluna PRODUTO. */
+    mostrarImagens?: boolean
+    /** Enter numa célula salta para a linha abaixo (mesma coluna); na última linha cria nova (só `modo="rascunho"`). */
+    enterAdicionaLinha?: boolean
     pending?: boolean
     error?: string | null
     /** Total de produtos (toolbar estilo Notion). */
@@ -224,6 +231,8 @@ const props = withDefaults(
     mostrarSelecao: true,
     mostrarExclusao: true,
     forcarTabelaVazia: false,
+    mostrarImagens: true,
+    enterAdicionaLinha: false,
     pending: false,
     error: null,
     items: () => [],
@@ -232,6 +241,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   atualizado: [row: ProdutoWorkspaceItem]
+  'adicionar-linha': []
   'erro-salvamento': []
   /** Após exclusão em massa bem-sucedida; o pai deve recarregar a listagem. */
   eliminados: []
@@ -242,6 +252,12 @@ const emit = defineEmits<{
 }>()
 
 const excluindo = ref(false)
+const progressoExclusaoAberto = ref(false)
+const progressoExclusaoTotal = ref(0)
+const progressoExclusaoProcessados = ref(0)
+const progressoExclusaoErro = ref<string | null>(null)
+const rotulosExclusao = ref<string[]>([])
+let abortExclusao: AbortController | null = null
 
 type EstadoCelulaSalvamento = 'pending' | 'error'
 /** `${produtoId}:${campo}` — permite editar outras linhas enquanto uma célula grava. */
@@ -325,11 +341,13 @@ function patchOtimista(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch
     const ids = patch.termos_pesquisa_ids ?? []
     if (!ids.length) {
       extra.termos_pesquisa = []
+      extra.termos_pesquisa_busca = null
     } else {
       const lista = useProdutoTermosPesquisaStore().getListaCompletaCopia(wid)
       extra.termos_pesquisa = ids
         .map((id) => lista.find((t) => t.id === id))
         .filter((t): t is NonNullable<typeof t> => t != null)
+      extra.termos_pesquisa_busca = (extra.termos_pesquisa as { nome: string }[])[0]?.nome ?? row.termos_pesquisa_busca
     }
   }
   return extra
@@ -405,6 +423,24 @@ function alternarSelecionarTodosNaPagina(checked: boolean) {
   selecionadosIds.value = [...s]
 }
 
+function mapaNomesProdutosVisiveis(): Map<number, string> {
+  const mapa = new Map<number, string>()
+  for (const pai of itemsPinia.value) {
+    mapa.set(pai.id, pai.nome)
+    for (const v of pai.variacoes ?? []) mapa.set(v.id, v.nome)
+  }
+  return mapa
+}
+
+function rotulosDosIds(ids: number[]): string[] {
+  const mapa = mapaNomesProdutosVisiveis()
+  return ids.map((id) => mapa.get(id) ?? `Produto #${id}`)
+}
+
+function cancelarExclusao() {
+  abortExclusao?.abort()
+}
+
 async function excluirSelecionados() {
   if (props.modo === 'rascunho') return
   const wid = props.workspaceId
@@ -416,26 +452,76 @@ async function excluirSelecionados() {
       ? 'Eliminar este produto? Esta ação não pode ser anulada.'
       : `Eliminar ${ids.length} produtos? Esta ação não pode ser anulada.`
   if (!window.confirm(msg)) return
+
+  progressoExclusaoTotal.value = ids.length
+  progressoExclusaoProcessados.value = 0
+  progressoExclusaoErro.value = null
+  rotulosExclusao.value = rotulosDosIds(ids)
+  progressoExclusaoAberto.value = true
   excluindo.value = true
+  abortExclusao = new AbortController()
+  const signal = abortExclusao.signal
+
+  let totalRemovidos = 0
+  let cancelado = false
+
   try {
-    const res = await $fetch<ProdutosExcluirResponse>('/api/produtos/excluir', {
-      method: 'POST',
-      body: { workspace_id: wid, ids },
-    })
-    selecionadosIds.value = []
-    emit('eliminados')
-    if (res.removidos <= 0) {
-      toast.info('Nenhum produto foi eliminado (ids podem já não existir).')
-    } else if (res.removidos === 1) {
-      toast.success('1 produto eliminado.')
-    } else {
-      toast.success(`${res.removidos} produtos eliminados.`)
+    for (let i = 0; i < ids.length; i += CHUNK_EXCLUIR_PRODUTOS) {
+      if (signal.aborted) {
+        cancelado = true
+        break
+      }
+      const chunk = ids.slice(i, i + CHUNK_EXCLUIR_PRODUTOS)
+      const res = await $fetch<ProdutosExcluirResponse>('/api/produtos/enviar-para-ia/excluir', {
+        method: 'POST',
+        body: { workspace_id: wid, ids: chunk },
+        signal,
+      })
+      totalRemovidos += res.removidos ?? 0
+      progressoExclusaoProcessados.value = Math.min(i + chunk.length, ids.length)
     }
-  } catch (err) {
-    toast.error(mensagemErroFetch(err, 'Não foi possível eliminar os produtos.'))
+
+    if (cancelado) {
+      toast.info('Eliminação cancelada.')
+      progressoExclusaoAberto.value = false
+    } else {
+      selecionadosIds.value = []
+      if (totalRemovidos <= 0) {
+        toast.info('Nenhum produto foi eliminado (ids podem já não existir).')
+      } else if (totalRemovidos === 1) {
+        toast.success('1 produto eliminado.')
+      } else {
+        toast.success(`${totalRemovidos} produtos eliminados.`)
+      }
+      progressoExclusaoAberto.value = false
+    }
+
+    if (totalRemovidos > 0 || progressoExclusaoProcessados.value > 0) {
+      emit('eliminados')
+    }
+  } catch (err: unknown) {
+    const e = err as { name?: string }
+    if (e?.name === 'AbortError') {
+      toast.info('Eliminação cancelada.')
+      if (progressoExclusaoProcessados.value > 0) emit('eliminados')
+      progressoExclusaoAberto.value = false
+    } else {
+      progressoExclusaoErro.value = mensagemErroFetch(err, 'Não foi possível eliminar os produtos.')
+      if (progressoExclusaoProcessados.value > 0) emit('eliminados')
+    }
   } finally {
     excluindo.value = false
+    abortExclusao = null
   }
+}
+
+function fecharModalExclusao() {
+  if (excluindo.value) {
+    cancelarExclusao()
+    return
+  }
+  progressoExclusaoAberto.value = false
+  progressoExclusaoErro.value = null
 }
 
 function podeGravar(): boolean {
@@ -467,6 +553,13 @@ watch(
     expandedParentIds.value = new Set()
   },
 )
+
+function resetarEstadoPosImportacao() {
+  selecionadosIds.value = []
+  expandedParentIds.value = new Set()
+}
+
+defineExpose({ resetarEstadoPosImportacao })
 
 watch(
   itemsExibicao,
@@ -641,9 +734,41 @@ function gravarPatch(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch) 
     })
 }
 
-function blurEnter(el: Event) {
-  const t = el.target as HTMLInputElement | HTMLTextAreaElement
+function focarCampoNaLinha(tr: Element, campo: string) {
+  const input = tr.querySelector(`[data-campo-produto="${campo}"]`) as HTMLInputElement | null
+  if (!input || input.disabled) return
+  input.focus()
+  input.select()
+}
+
+async function onEnterCelula(ev: Event) {
+  const t = ev.target as HTMLInputElement | HTMLTextAreaElement
+  const campo = t.dataset.campoProduto
+  const linhaId = t.closest('tr')?.dataset.linhaProdutoId
+
   t.blur()
+
+  if (!props.enterAdicionaLinha || props.modo !== 'rascunho' || !campo) return
+
+  const root = tabelaScrollRef.value
+  if (!root) return
+
+  const rows = Array.from(root.querySelectorAll<HTMLElement>('tbody tr[data-linha-produto-id]'))
+  const currentIndex = linhaId
+    ? rows.findIndex((r) => r.dataset.linhaProdutoId === linhaId)
+    : -1
+
+  const nextRow = currentIndex >= 0 && currentIndex + 1 < rows.length ? rows[currentIndex + 1] : null
+  if (nextRow) {
+    focarCampoNaLinha(nextRow, campo)
+    return
+  }
+
+  emit('adicionar-linha')
+  await nextTick()
+  const updatedRows = Array.from(root.querySelectorAll<HTMLElement>('tbody tr[data-linha-produto-id]'))
+  const last = updatedRows[updatedRows.length - 1]
+  if (last) focarCampoNaLinha(last, campo)
 }
 
 /** Clicar em qualquer área da célula abre o campo para edição (estilo Notion). */
@@ -661,6 +786,12 @@ function fmtPrecoInput(n: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(n)
+}
+
+/** Célula de preço: vazio quando null ou 0 (sem valor predefinido "0,00"). */
+function fmtPrecoCelula(val: number | null | undefined): string {
+  if (val == null || val === 0) return ''
+  return fmtPrecoInput(val)
 }
 
 function eqNum(a: number | null | undefined, b: number | null | undefined): boolean {
@@ -711,7 +842,12 @@ function blurEstoque(row: ProdutoWorkspaceCampos, ev: Event) {
 
 function blurPreco(row: ProdutoWorkspaceCampos, ev: Event) {
   const raw = (ev.target as HTMLInputElement).value.trim()
-  const n = raw.length === 0 ? 0 : (parseDecimalPtBr(raw) ?? null)
+  if (!raw.length) {
+    if (row.preco == null || row.preco === 0) return
+    void gravarPatch(row, { preco: 0 })
+    return
+  }
+  const n = parseDecimalPtBr(raw)
   if (n == null) {
     toast.error('Preço inválido.')
     return
@@ -726,7 +862,12 @@ function blurPreco(row: ProdutoWorkspaceCampos, ev: Event) {
 
 function blurPrecoCusto(row: ProdutoWorkspaceCampos, ev: Event) {
   const raw = (ev.target as HTMLInputElement).value.trim()
-  const n = raw.length === 0 ? 0 : (parseDecimalPtBr(raw) ?? null)
+  if (!raw.length) {
+    if (row.preco_custo == null || row.preco_custo === 0) return
+    void gravarPatch(row, { preco_custo: 0 })
+    return
+  }
+  const n = parseDecimalPtBr(raw)
   if (n == null || n < 0) {
     toast.error('Preço de custo inválido.')
     return
@@ -738,7 +879,7 @@ function blurPrecoCusto(row: ProdutoWorkspaceCampos, ev: Event) {
 function blurPrecoPrazo(row: ProdutoWorkspaceCampos, ev: Event) {
   const raw = (ev.target as HTMLInputElement).value.trim()
   if (!raw.length) {
-    if (row.preco_prazo == null) return
+    if (row.preco_prazo == null || row.preco_prazo === 0) return
     void gravarPatch(row, { preco_prazo: null })
     return
   }
@@ -754,7 +895,7 @@ function blurPrecoPrazo(row: ProdutoWorkspaceCampos, ev: Event) {
 function blurPrecoPromocional(row: ProdutoWorkspaceCampos, ev: Event) {
   const raw = (ev.target as HTMLInputElement).value.trim()
   if (!raw.length) {
-    if (row.preco_promocional == null) return
+    if (row.preco_promocional == null || row.preco_promocional === 0) return
     void gravarPatch(row, { preco_promocional: null })
     return
   }
@@ -921,6 +1062,7 @@ onUnmounted(() => {
       </div>
 
       <div
+        ref="tabelaScrollRef"
         class="w-full min-w-0 max-w-full overflow-auto"
         :style="modo === 'api' ? { maxHeight: `${alturaMaxScrollTabelaPx}px` } : undefined"
       >
@@ -1013,6 +1155,7 @@ onUnmounted(() => {
                   @mousedown="iniciarResize(col.id, $event)"
                 />
               </template>
+              <!--
               <template v-else-if="col.id === 'categoria'">
                 <div class="flex min-w-0 items-center gap-1.5 pr-3">
                   <span
@@ -1031,6 +1174,7 @@ onUnmounted(() => {
                   @mousedown="iniciarResize(col.id, $event)"
                 />
               </template>
+              -->
               <template v-else>
                 <div class="flex min-w-0 items-center pr-3">
                   <span class="min-w-0 truncate leading-snug">{{ col.label }}</span>
@@ -1056,6 +1200,7 @@ onUnmounted(() => {
             <tr
               v-for="{ row, tipo, pai } in linhasExibicao"
               :key="tipo + '-' + row.id"
+              :data-linha-produto-id="row.id"
               :class="[
                 trClassBase,
                 tipo === 'variacao'
@@ -1132,6 +1277,7 @@ onUnmounted(() => {
                   </span>
                   <span v-else class="w-6 shrink-0" aria-hidden="true" />
                   <button
+                    v-if="mostrarImagens"
                     type="button"
                     :class="iconImagemProdutoClass"
                     :disabled="rowDesabilitada(row)"
@@ -1171,11 +1317,12 @@ onUnmounted(() => {
                       <input
                         type="text"
                         autocomplete="off"
+                        data-campo-produto="nome"
                         :class="classesInput(row.id, 'nome', tipo === 'pai' ? inpClassProduto : inpClass)"
                         :value="row.nome"
                         :disabled="rowDesabilitada(row)"
                         :title="row.nome"
-                        @keydown.enter.prevent="blurEnter"
+                        @keydown.enter.prevent="onEnterCelula"
                         @blur="blurNome(row, $event)"
                       />
                     </div>
@@ -1199,6 +1346,7 @@ onUnmounted(() => {
                   </div>
                 </div>
               </td>
+              <!--
               <td :class="tdClass">
                 <div :class="classesCelula(row.id, 'categoria_id', 'min-h-[2.75rem] w-full')">
                   <ProdutosSelecaoUnica
@@ -1212,6 +1360,7 @@ onUnmounted(() => {
                   />
                 </div>
               </td>
+              -->
               <td :class="tdClass">
                 <div :class="classesCelula(row.id, 'termos_pesquisa_ids', 'min-h-[2.75rem] w-full')">
                   <ProdutosSelecaoUnica
@@ -1220,7 +1369,7 @@ onUnmounted(() => {
                     :workspace-id="workspaceId"
                     :produto-id="row.id"
                     :termo-id="row.termos_pesquisa?.[0]?.id ?? null"
-                    :termo-nome="row.termos_pesquisa?.[0]?.nome ?? null"
+                    :termo-nome="row.termos_pesquisa?.[0]?.nome ?? row.termos_pesquisa_busca ?? null"
                     :disabled="rowDesabilitada(row)"
                     @commit="commitCatalogo(row, $event)"
                   />
@@ -1231,10 +1380,11 @@ onUnmounted(() => {
                 <input
                   type="text"
                   autocomplete="off"
+                  data-campo-produto="unidade_venda"
                   :class="classesInput(row.id, 'unidade_venda', inpClass)"
                   :value="row.unidade_venda ?? ''"
                   :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurUnidade(row, $event)"
                 />
                 </div>
@@ -1244,11 +1394,12 @@ onUnmounted(() => {
                 <input
                   type="text"
                   autocomplete="off"
+                  data-campo-produto="marca"
                   :class="classesInput(row.id, 'marca', inpClass)"
                   :value="row.marca ?? ''"
                   :disabled="rowDesabilitada(row)"
                   placeholder="Marca"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurMarca(row, $event)"
                 />
                 </div>
@@ -1259,10 +1410,11 @@ onUnmounted(() => {
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
+                  data-campo-produto="preco_custo"
                   :class="classesInput(row.id, 'preco_custo', inpClass)"
-                  :value="fmtPrecoInput(row.preco_custo)"
+                  :value="fmtPrecoCelula(row.preco_custo)"
                   :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurPrecoCusto(row, $event)"
                 />
                 </div>
@@ -1273,10 +1425,11 @@ onUnmounted(() => {
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
+                  data-campo-produto="preco"
                   :class="classesInput(row.id, 'preco', inpClass)"
-                  :value="fmtPrecoInput(row.preco)"
+                  :value="fmtPrecoCelula(row.preco)"
                   :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurPreco(row, $event)"
                 />
                 </div>
@@ -1287,11 +1440,11 @@ onUnmounted(() => {
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
+                  data-campo-produto="preco_prazo"
                   :class="classesInput(row.id, 'preco_prazo', inpClass)"
-                  :value="row.preco_prazo != null ? fmtPrecoInput(row.preco_prazo) : ''"
+                  :value="fmtPrecoCelula(row.preco_prazo)"
                   :disabled="rowDesabilitada(row)"
-                  placeholder="Opcional"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurPrecoPrazo(row, $event)"
                 />
                 </div>
@@ -1302,11 +1455,11 @@ onUnmounted(() => {
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
+                  data-campo-produto="preco_promocional"
                   :class="classesInput(row.id, 'preco_promocional', inpClass)"
-                  :value="row.preco_promocional != null ? fmtPrecoInput(row.preco_promocional) : ''"
+                  :value="fmtPrecoCelula(row.preco_promocional)"
                   :disabled="rowDesabilitada(row)"
-                  placeholder="Opcional"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurPrecoPromocional(row, $event)"
                 />
                 </div>
@@ -1317,11 +1470,12 @@ onUnmounted(() => {
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
+                  data-campo-produto="peso_kg"
                   :class="classesInput(row.id, 'peso_kg', inpClass)"
                   :value="row.peso_kg != null ? String(row.peso_kg).replace('.', ',') : ''"
                   :disabled="rowDesabilitada(row)"
                   placeholder="ex.: 1,5"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurPeso(row, $event)"
                 />
                 </div>
@@ -1332,11 +1486,12 @@ onUnmounted(() => {
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
+                  data-campo-produto="largura"
                   :class="classesInput(row.id, 'largura', inpClass)"
                   :value="String(row.largura ?? 0).replace('.', ',')"
                   :disabled="rowDesabilitada(row)"
                   placeholder="0"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurDimensao(row, 'largura', $event)"
                 />
                 </div>
@@ -1347,11 +1502,12 @@ onUnmounted(() => {
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
+                  data-campo-produto="comprimento"
                   :class="classesInput(row.id, 'comprimento', inpClass)"
                   :value="String(row.comprimento ?? 0).replace('.', ',')"
                   :disabled="rowDesabilitada(row)"
                   placeholder="0"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurDimensao(row, 'comprimento', $event)"
                 />
                 </div>
@@ -1362,11 +1518,12 @@ onUnmounted(() => {
                   type="text"
                   inputmode="decimal"
                   autocomplete="off"
+                  data-campo-produto="altura"
                   :class="classesInput(row.id, 'altura', inpClass)"
                   :value="String(row.altura ?? 0).replace('.', ',')"
                   :disabled="rowDesabilitada(row)"
                   placeholder="0"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurDimensao(row, 'altura', $event)"
                 />
                 </div>
@@ -1376,10 +1533,11 @@ onUnmounted(() => {
                 <input
                   type="text"
                   autocomplete="off"
+                  data-campo-produto="sku"
                   :class="classesInput(row.id, 'sku', inpClass)"
                   :value="row.sku ?? ''"
                   :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurSku(row, $event)"
                 />
                 </div>
@@ -1389,11 +1547,12 @@ onUnmounted(() => {
                 <input
                   type="text"
                   autocomplete="off"
+                  data-campo-produto="codigo_ncm"
                   :class="classesInput(row.id, 'codigo_ncm', inpClass)"
                   :value="row.codigo_ncm ?? ''"
                   :disabled="rowDesabilitada(row)"
                   placeholder="NCM"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurCodigoNcm(row, $event)"
                 />
                 </div>
@@ -1403,11 +1562,12 @@ onUnmounted(() => {
                 <input
                   type="text"
                   autocomplete="off"
+                  data-campo-produto="codigo_barras_ean"
                   :class="classesInput(row.id, 'codigo_barras_ean', inpClass)"
                   :value="row.codigo_barras_ean ?? ''"
                   :disabled="rowDesabilitada(row)"
                   placeholder="EAN"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurCodigoBarras(row, $event)"
                 />
                 </div>
@@ -1417,11 +1577,12 @@ onUnmounted(() => {
                 <input
                   type="text"
                   autocomplete="off"
+                  data-campo-produto="infos_relevantes"
                   :class="classesInput(row.id, 'infos_relevantes', inpClass)"
                   :value="row.infos_relevantes ?? ''"
                   :disabled="rowDesabilitada(row)"
                   placeholder="—"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurInfos(row, $event)"
                 />
                 </div>
@@ -1432,11 +1593,12 @@ onUnmounted(() => {
                   type="text"
                   inputmode="numeric"
                   autocomplete="off"
+                  data-campo-produto="codigo"
                   :class="classesInput(row.id, 'codigo', inpClass)"
                   :value="row.codigo != null ? String(row.codigo) : ''"
                   :disabled="rowDesabilitada(row)"
                   title="Código no workspace"
-                  @keydown.enter.prevent="blurEnter"
+                  @keydown.enter.prevent="onEnterCelula"
                   @blur="blurCodigo(row, $event)"
                 />
                 </div>
@@ -1472,12 +1634,41 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <ProdutosModalImagens />
+    <ProdutosModalImagens v-if="mostrarImagens" />
     <ProdutosModalNovaVariacao
       v-model:open="modalVariacaoAberto"
       :pai-nome="paiVariacaoAlvo?.nome ?? ''"
       :salvando="salvandoVariacao"
       @salvar="confirmarNovaVariacao"
     />
+
+    <ModalEnvioProdutos
+      v-model:open="progressoExclusaoAberto"
+      title="A eliminar produtos selecionados…"
+      :total="progressoExclusaoTotal"
+      :enviados="progressoExclusaoProcessados"
+      :erro="progressoExclusaoErro"
+      :pode-cancelar="excluindo"
+      @cancelar="fecharModalExclusao"
+    >
+      <template #extra>
+        <div class="space-y-2">
+          <p class="text-xs font-medium uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+            Selecionados ({{ rotulosExclusao.length }})
+          </p>
+          <ul
+            class="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-outline/20 bg-surface-container-lowest/80 p-2 text-sm dark:border-dark-outline/20 dark:bg-dark-surface-container-lowest/50"
+          >
+            <li
+              v-for="(nome, idx) in rotulosExclusao"
+              :key="idx + '-' + nome"
+              class="truncate text-on-surface dark:text-dark-on-surface"
+            >
+              {{ nome }}
+            </li>
+          </ul>
+        </div>
+      </template>
+    </ModalEnvioProdutos>
   </div>
 </template>

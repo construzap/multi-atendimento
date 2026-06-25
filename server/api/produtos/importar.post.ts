@@ -2,6 +2,10 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutoImportarLinha, ProdutosImportarLoteResponse } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
+import {
+  normalizarTermoImportacao,
+  resolverTermosDoLoteImportacao,
+} from '../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -98,6 +102,8 @@ function normalizarLinha(raw: unknown): ProdutoImportarLinha | null {
     const catNome = normalizarTextoCategoriaUnica(strOrNull(o.categoria))
     if (catNome) linha.categoria = catNome
   }
+  const termo = normalizarTermoImportacao(strOrNull(o.termos_pesquisa))
+  if (termo) linha.termos_pesquisa = termo
   return linha
 }
 
@@ -157,7 +163,8 @@ async function conjuntoIdsCategoriaValidos(
  * Também serve para criar um único produto (ex.: modal «Novo») com `linhas` de um elemento.
  * Insere em `produtos_workspace` com `codigo` inteiro gerado (maior `codigo` existente no workspace + 1, +2, … neste lote).
  * `categoria_id` explícito (validado) ou texto em `categoria` (nome único, case-insensitive) resolvido para id.
- * Texto com vários valores separados por `;` `,` ou `|` usa só o primeiro.
+ * `termos_pesquisa`: texto integral da célula → find-or-create em `produto_termo_de_pesquisa` + FK `termo_pesquisa` em `produtos_workspace`.
+ * Texto com vários valores separados por `;` `,` ou `|` usa só o primeiro (categoria).
  * Não apaga nem atualiza linhas existentes.
  */
 export default defineEventHandler(async (event): Promise<ProdutosImportarLoteResponse> => {
@@ -215,6 +222,17 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
   const idsOk = await conjuntoIdsCategoriaValidos(admin, workspaceId, idsExplicitos)
   const nomeParaId = await mapaNomeMinusculoParaCategoriaId(admin, workspaceId)
 
+  const nomesTermosUnicos = [
+    ...new Set(
+      normalizadas
+        .map((r) => r.termos_pesquisa?.trim())
+        .filter((n): n is string => Boolean(n?.length)),
+    ),
+  ]
+  if (nomesTermosUnicos.length > 0) {
+    await resolverTermosDoLoteImportacao(admin, workspaceId, nomesTermosUnicos)
+  }
+
   function resolverCategoriaId(r: ProdutoImportarLinha): number | null {
     const cid = r.categoria_id
     if (cid != null && cid > 0) {
@@ -233,11 +251,14 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
 
   const insertRows = normalizadas.map((r) => {
     codigoAtual += 1
+    const termoNome = r.termos_pesquisa?.trim() || null
+    const termoId = termoNome ? termoIdPorNome.get(termoNome.toLowerCase()) ?? null : null
     return {
       workspace_id: workspaceId,
       codigo: codigoAtual,
       nome: r.nome,
       categoria_id: resolverCategoriaId(r),
+      termo_pesquisa: termoId,
       sku: r.sku ?? null,
       unidade_venda: r.unidade_venda ?? null,
       marca: r.marca ?? null,

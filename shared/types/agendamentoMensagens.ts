@@ -97,3 +97,24 @@ export type AgendamentoMensagemRow = {
   /** Postgres `interval` — o cliente recebe em geral como string. */
   intervalo_recorrencia: string | null
 }
+
+/** Resposta de `DELETE /api/agendamento-de-mensagem/:id`. */
+export type AgendamentoMensagemEliminarResponse = {
+  ok: true
+}
+
+/** Campos mínimos de `conversas` para escolha de destinatário no agendamento. */
+export type AgendamentoDestinatarioConversa = {
+  connect_phone: string | null
+  id_canal: number | null
+  lid: string | null
+  name: string | null
+}
+
+/** Resposta de `GET /api/agendamento-de-mensagem/conversas`. */
+export type AgendamentoDestinatariosListResponse = {
+  data: AgendamentoDestinatarioConversa[]
+  page: number
+  perPage: number
+  total: number
+}

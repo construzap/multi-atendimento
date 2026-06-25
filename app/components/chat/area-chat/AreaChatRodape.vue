@@ -1,10 +1,36 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
+import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
+import type { MessageType } from '#shared/types/messageType'
 import { mensagemErroFetch } from '~/stores/canais'
+
+export type AreaChatRodapeContexto = {
+  conversaKey: string
+  idCanal: number
+  workspaceId: number | string
+  telefone?: string | null
+  lid?: string | null
+  name?: string | null
+  photo?: string | null
+}
+
+const props = withDefaults(
+  defineProps<{
+    /** Contexto fixo (ex.: modal kanban) em vez de conversas/canais stores. */
+    contextoExterno?: AreaChatRodapeContexto | null
+    compact?: boolean
+    inputId?: string
+  }>(),
+  {
+    contextoExterno: null,
+    compact: false,
+    inputId: 'chat-mensagem-input',
+  },
+)
 
 const mensagem = ref('')
 const isRecording = ref(false)
@@ -24,13 +50,65 @@ const { conversaAtual, items } = storeToRefs(conversasStore)
 const fileInputImage = ref<HTMLInputElement | null>(null)
 const fileInputVideo = ref<HTMLInputElement | null>(null)
 const fileInputDocument = ref<HTMLInputElement | null>(null)
+const mensagemInputRef = ref<{ focus: () => void } | null>(null)
 
-const conversaSelecionada = computed(() => {
+function focarInputMensagem() {
+  nextTick(() => {
+    mensagemInputRef.value?.focus()
+  })
+}
+
+watch(
+  () => props.contextoExterno?.conversaKey ?? conversaAtual.value,
+  (key, prev) => {
+    if (!key || key === prev) return
+    focarInputMensagem()
+  },
+)
+
+onMounted(() => {
+  const key = props.contextoExterno?.conversaKey ?? conversaAtual.value
+  if (key) focarInputMensagem()
+})
+
+type ConversaCtx = {
+  key: string
+  phone: string | null
+  lid: string | null
+  name: string | null
+  photo: string | null
+}
+
+const conversaSelecionada = computed((): ConversaCtx | null => {
+  const ext = props.contextoExterno
+  if (ext) {
+    return {
+      key: ext.conversaKey,
+      phone: ext.telefone ?? null,
+      lid: ext.lid ?? null,
+      name: ext.name ?? null,
+      photo: ext.photo ?? null,
+    }
+  }
   const key = conversaAtual.value
   if (!key) return null
   const list = items.value
   if (!list?.length) return null
-  return list.find((c) => c.key === key) ?? null
+  const found = list.find((c) => c.key === key)
+  if (!found) return null
+  return {
+    key: found.key,
+    phone: found.phone ?? null,
+    lid: found.lid ?? null,
+    name: found.name ?? null,
+    photo: found.photo ?? null,
+  }
+})
+
+const workspaceIdEnvio = computed(() => {
+  const ext = props.contextoExterno?.workspaceId
+  if (ext != null && String(ext).trim()) return ext
+  return workspacesStore.currentWorkspaceId
 })
 
 const phoneOpt = computed(() => {
@@ -49,9 +127,10 @@ function ensureCanSend(): {
   telefone?: string
   lid?: string
 } | null {
-  const idCanal = canaisStore.currentCanalId
+  const ext = props.contextoExterno
+  const idCanal = ext?.idCanal ?? canaisStore.currentCanalId
   if (!idCanal) {
-    toast.error('Selecione um canal antes de enviar.')
+    toast.error(ext ? 'Canal da conversa não encontrado.' : 'Selecione um canal antes de enviar.')
     return null
   }
   const tel = phoneOpt.value
@@ -60,7 +139,8 @@ function ensureCanSend(): {
     toast.error('Esta conversa não tem telefone nem LID para enviar.')
     return null
   }
-  const conversaKey = String(conversaAtual.value)
+  const conversaKey = ext?.conversaKey ?? String(conversaAtual.value ?? '')
+  if (!conversaKey) return null
   return {
     idCanal,
     conversaKey,
@@ -89,22 +169,29 @@ function enviarMensagem() {
 
   mensagem.value = ''
 
-  void $fetch('/api/mensagens', {
+  void $fetch<UazapiSendRes>('/api/mensagens', {
     method: 'POST',
     body: {
       id_canal: idCanal,
-      workspace_id: workspacesStore.currentWorkspaceId,
+      workspace_id: workspaceIdEnvio.value,
       ...(telefone ? { telefone } : {}),
       ...(lid ? { lid } : {}),
       conteudo: t,
       temp_id: tempId,
       conversa_sessao: conversaKey,
     },
-  }).catch((err: unknown) => {
-    mensagensStore.removeByTempId(conversaKey, tempId)
-    const msg = mensagemErroFetch(err, 'Não foi possível enviar a mensagem.')
-    toast.error(msg, { duration: 8000 })
   })
+    .then((res) => {
+      confirmOptimisticAfterSend(idCanal, conversaKey, tempId, res, conversaSelecionada.value, {
+        fallbackText: t,
+        messagetype: 'conversation',
+      })
+    })
+    .catch((err: unknown) => {
+      mensagensStore.removeByTempId(conversaKey, tempId)
+      const msg = mensagemErroFetch(err, 'Não foi possível enviar a mensagem.')
+      toast.error(msg, { duration: 8000 })
+    })
 }
 
 async function uploadFileToB2(idCanal: number, file: File): Promise<string> {
@@ -159,11 +246,11 @@ async function enviarMidia(kind: 'image' | 'video' | 'document', file: File) {
 
   try {
     const url = await uploadFileToB2(idCanal, file)
-    await $fetch('/api/mensagens', {
+    const res = await $fetch<UazapiSendRes>('/api/mensagens', {
       method: 'POST',
       body: {
         id_canal: idCanal,
-        workspace_id: workspacesStore.currentWorkspaceId,
+        workspace_id: workspaceIdEnvio.value,
         ...(telefone ? { telefone } : {}),
         ...(lid ? { lid } : {}),
         conteudo: caption,
@@ -172,6 +259,13 @@ async function enviarMidia(kind: 'image' | 'video' | 'document', file: File) {
         media_type: kind,
         media_file: url,
       },
+    })
+    confirmOptimisticAfterSend(idCanal, conversaKey, tempId, res, conversaSelecionada.value, {
+      fallbackText: caption,
+      messagetype,
+      media_url: url,
+      caption: caption || null,
+      filename: file.name || null,
     })
   } catch (err: unknown) {
     mensagensStore.removeByTempId(conversaKey, tempId)
@@ -325,11 +419,11 @@ async function sendRecordedAudio() {
       },
     }).then((x) => x.url)
 
-    await $fetch('/api/mensagens', {
+    const res = await $fetch<UazapiSendRes>('/api/mensagens', {
       method: 'POST',
       body: {
         id_canal: idCanal,
-        workspace_id: workspacesStore.currentWorkspaceId,
+        workspace_id: workspaceIdEnvio.value,
         ...(telefone ? { telefone } : {}),
         ...(lid ? { lid } : {}),
         conteudo: '',
@@ -338,6 +432,11 @@ async function sendRecordedAudio() {
         media_type: 'ptt',
         media_file: url,
       },
+    })
+    confirmOptimisticAfterSend(idCanal, conversaKey, tempId, res, conversaSelecionada.value, {
+      messagetype: 'audioMessage',
+      media_url: url,
+      filename: `audio_${Date.now()}.webm`,
     })
   } catch (err: unknown) {
     mensagensStore.removeByTempId(conversaKey, tempId)
@@ -349,13 +448,88 @@ async function sendRecordedAudio() {
 }
 
 const hasText = computed(() => Boolean(mensagem.value.trim()))
+
+type UazapiSendRes = {
+  messageid?: unknown
+  text?: unknown
+  messageTimestamp?: unknown
+  response?: { fileUrl?: string }
+  fileURL?: string
+}
+
+function uazapiTimestampToMs(raw: unknown): number {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return Date.now()
+  return raw > 1e12 ? raw : raw * 1000
+}
+
+/** Confirma mensagem otimista após POST ok (fallback quando Pusher ainda não inscreveu no canal). */
+function confirmOptimisticAfterSend(
+  idCanal: number,
+  conversaKey: string,
+  tempId: string,
+  res: UazapiSendRes,
+  conv: ConversaCtx | null,
+  opts: {
+    fallbackText?: string
+    messagetype?: MessageType | null
+    media_url?: string | null
+    caption?: string | null
+    filename?: string | null
+  } = {},
+) {
+  const rawId = res?.messageid
+  const message_id =
+    typeof rawId === 'string' && rawId.trim()
+      ? rawId.trim()
+      : String(rawId ?? '').trim()
+  if (!message_id) return
+
+  const messagetype = opts.messagetype ?? 'conversation'
+  const messageText =
+    typeof res?.text === 'string' && res.text.trim()
+      ? res.text.trim()
+      : (opts.fallbackText ?? '').trim()
+  const fileUrlFromRes =
+    (typeof res?.response?.fileUrl === 'string' && res.response.fileUrl.trim()) ||
+    (typeof res?.fileURL === 'string' && res.fileURL.trim()) ||
+    ''
+  const isMedia = messagetype !== 'conversation'
+  const media_url = isMedia ? (fileUrlFromRes || opts.media_url || null) : null
+  const caption = isMedia && (opts.caption ?? messageText) ? (opts.caption ?? messageText) : null
+
+  const payload: PusherNovaMensagemPayload = {
+    conversa_key: conversaKey,
+    mensagem: {
+      key_conversa: conversaKey,
+      temp_id: tempId,
+      message_id,
+      created_at: new Date(uazapiTimestampToMs(res.messageTimestamp)).toISOString(),
+      from_me: true,
+      message: isMedia ? caption : (messageText || null),
+      phone: conv?.phone ?? null,
+      lid: conv?.lid ?? null,
+      connected_phone: null,
+      messagetype,
+      from_api: true,
+      id_canal: idCanal,
+      media_url,
+      caption,
+      filename: opts.filename ?? null,
+      name: conv?.name ?? null,
+      photo: conv?.photo ?? null,
+    },
+  }
+
+  mensagensStore.mergeFromPusherNovaMensagem(idCanal, payload)
+}
 </script>
 
 <template>
   <footer
-    class="shrink-0 border-t border-outline-variant/10 bg-surface-container-lowest p-6 dark:bg-slate-900"
+    class="shrink-0 border-t border-outline-variant/10 bg-surface-container-lowest dark:bg-slate-900"
+    :class="compact ? 'p-3' : 'p-6'"
   >
-    <div class="flex items-end gap-4">
+    <div class="flex items-end gap-3" :class="compact ? 'gap-2' : 'gap-4'">
       <BaseDropdown title="Enviar mídia" align="left" side="top" panel-class="w-60 min-w-[14rem]">
         <template #trigger>
           <span
@@ -424,15 +598,16 @@ const hasText = computed(() => Boolean(mensagem.value.trim()))
 
       <div class="relative min-w-0 flex-1">
         <BaseTextarea
-          id="chat-mensagem-input"
+          ref="mensagemInputRef"
+          :id="inputId"
           v-model="mensagem"
           name="mensagem"
           placeholder="Escreva sua mensagem..."
           title="Enter envia a mensagem · Shift+Enter quebra linha"
           autocomplete="off"
-          wrapper-id="chat-mensagem-wrap"
-          :min-height-px="48"
-          :max-height-px="160"
+          :wrapper-id="`${inputId}-wrap`"
+          :min-height-px="compact ? 44 : 48"
+          :max-height-px="compact ? 120 : 160"
           input-class="!rounded-2xl !border-0 bg-surface-container-low !py-3 !pl-6 !pr-28 text-sm leading-relaxed !shadow-none focus:!border-transparent focus:!ring-1 focus:!ring-primary dark:!bg-slate-800 dark:!text-slate-200"
           @submit="enviarMensagem"
         />
@@ -454,7 +629,8 @@ const hasText = computed(() => Boolean(mensagem.value.trim()))
         <button
           v-if="hasText"
           type="button"
-          class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95"
+          class="flex items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95"
+          :class="compact ? 'h-10 w-10' : 'h-12 w-12'"
           aria-label="Enviar mensagem"
           @click="enviarMensagem"
         >
@@ -464,7 +640,8 @@ const hasText = computed(() => Boolean(mensagem.value.trim()))
         <button
           v-else
           type="button"
-          class="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95"
+          class="flex items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95"
+          :class="compact ? 'h-10 w-10' : 'h-12 w-12'"
           :aria-label="isRecording ? 'Enviar áudio' : 'Gravar áudio'"
           @click="isRecording ? sendRecordedAudio() : startRecording()"
         >

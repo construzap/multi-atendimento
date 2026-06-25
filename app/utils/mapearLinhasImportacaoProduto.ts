@@ -36,11 +36,20 @@ function parseStatus(raw: string): boolean {
   return true
 }
 
+/** Célula inteira vira um termo (trim + maiúsculas, sem split por vírgula). */
+function normalizarTermoImportacao(raw: string | null | undefined): string | null {
+  if (raw == null) return null
+  const t = String(raw).trim()
+  return t.length ? t.toLocaleUpperCase('pt-BR') : null
+}
+
 function valorCelulaParaCampo(field: CampoIaProdutoId, rawCell: unknown): unknown {
   const str = cellToString(rawCell)
   switch (field) {
     case 'nome':
       return str.trim() || null
+    case 'termos_pesquisa':
+      return normalizarTermoImportacao(str)
     case 'preco': {
       const n = parseDecimalPtBr(str)
       return n ?? 0
@@ -101,6 +110,7 @@ export function construirLinhasImportacaoProduto(
       imagem_url: (obj.imagem_url as string | null) ?? null,
       infos_relevantes: (obj.infos_relevantes as string | null) ?? null,
       status: typeof obj.status === 'boolean' ? obj.status : true,
+      termos_pesquisa: normalizarTermoImportacao((obj.termos_pesquisa as string | null) ?? null),
     })
   }
 

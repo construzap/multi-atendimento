@@ -1,4 +1,28 @@
 /**
+ * Extrai dígitos de telefone vindos de planilha, formulário ou API.
+ * Trata número Excel (`5511999990001`), strings com `.0` (`5511999990001.0`) e formatação comum.
+ */
+export function extrairDigitosTelefone(input: unknown): string {
+  if (input === null || input === undefined) return ''
+  if (typeof input === 'number' && Number.isFinite(input)) {
+    return String(Math.trunc(input))
+  }
+
+  const s = String(input).trim()
+  if (!s) return ''
+
+  const compacto = s.replace(/[()\s-]/g, '')
+  if (/^\d+\.\d+$/.test(compacto)) {
+    const n = Number(compacto)
+    if (Number.isFinite(n) && n > 0) {
+      return String(Math.trunc(n))
+    }
+  }
+
+  return s.replace(/\D/g, '')
+}
+
+/**
  * Garante DDI `55` quando o usuário digita só DDD + número (10 ou 11 dígitos),
  * depois aplica `normalizeWhatsappBr` (9º dígito).
  *
@@ -6,8 +30,8 @@
  * - Já com `55…` mantém e só normaliza.
  * - Outros formatos (só dígitos): repassa para `normalizeWhatsappBr` sem prefixar.
  */
-export function normalizeTelefoneBrParaEnvio(input: string): string {
-  let digits = String(input ?? '').replace(/\D/g, '')
+export function normalizeTelefoneBrParaEnvio(input: unknown): string {
+  let digits = extrairDigitosTelefone(input)
   if (!digits) return ''
 
   if (!digits.startsWith('55') && (digits.length === 10 || digits.length === 11)) {
@@ -15,6 +39,24 @@ export function normalizeTelefoneBrParaEnvio(input: string): string {
   }
 
   return normalizeWhatsappBr(digits)
+}
+
+/** Valida telefone já normalizado para gravação em `conversas.phone`. */
+export function telefoneContatoNormalizadoValido(digits: string): boolean {
+  if (!digits) return false
+  if (digits.startsWith('55')) {
+    return digits.length === 12 || digits.length === 13
+  }
+  return digits.length >= 10
+}
+
+/**
+ * Normaliza e valida telefone de contato/conversa.
+ * Retorna string vazia se inválido ou vazio.
+ */
+export function normalizarTelefoneContatoParaGravacao(input: unknown): string {
+  const normalized = normalizeTelefoneBrParaEnvio(input)
+  return telefoneContatoNormalizadoValido(normalized) ? normalized : ''
 }
 
 /**
@@ -28,7 +70,7 @@ export function normalizeTelefoneBrParaEnvio(input: string): string {
  * - 5541991338055 -> 554191338055 (DDD 41 > 28, remove 9)
  */
 export function normalizeWhatsappBr(input: string): string {
-  const digits = String(input ?? '').replace(/\D/g, '')
+  const digits = extrairDigitosTelefone(input)
   if (!digits.startsWith('55')) return digits
 
   // Formato mais comum do BR no WhatsApp: 55 + DDD(2) + 9 + número(8) = 13 dígitos.
