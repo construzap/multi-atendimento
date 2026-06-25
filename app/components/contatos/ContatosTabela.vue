@@ -72,7 +72,7 @@ async function garantirCanais() {
   const wid = workspaceId.value
   if (wid == null) return
   try {
-    await canaisStore.fetchCanais(wid)
+    await canaisStore.ensureCanaisLoaded(wid)
   } catch {
     // Lista de contatos segue sem nome do canal; erro já fica em canaisStore.listError.
   }

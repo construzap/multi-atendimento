@@ -76,7 +76,7 @@ watch(
     if (!aberto) return
     preencherFormulario()
     const wid = props.workspaceId
-    if (wid != null) void canaisStore.fetchCanais(wid).catch(() => {})
+    if (wid != null) void canaisStore.ensureCanaisLoaded(wid).catch(() => {})
   },
 )
 

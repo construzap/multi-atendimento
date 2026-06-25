@@ -18,7 +18,8 @@ onMounted(async () => {
     const wid = Number.parseInt(workspaceId.value, 10)
     if (!Number.isFinite(wid)) return
 
-    const list = await canaisStore.fetchCanais(wid).catch(() => [])
+    await canaisStore.ensureCanaisLoaded(wid).catch(() => {})
+    const list = canaisStore.items
     if (list.length > 0) {
       const preferredRaw = String(lastCanalCookie.value ?? '').trim()
       const preferredId = preferredRaw ? Number.parseInt(preferredRaw, 10) : NaN

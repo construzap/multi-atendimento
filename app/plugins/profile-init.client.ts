@@ -8,7 +8,7 @@ export default defineNuxtPlugin(() => {
   async function refreshIfLoggedIn() {
     if (!session.value) return
     try {
-      await profile.fetchMe()
+      await profile.ensureMeLoaded()
     } catch {
       // erro já fica em profile.error; não quebra navegação
     }
@@ -25,6 +25,7 @@ export default defineNuxtPlugin(() => {
         profile.me = null
         profile.error = null
         profile.pending = false
+        profile.loadedAt = null
         return
       }
       await refreshIfLoggedIn()

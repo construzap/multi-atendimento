@@ -8,7 +8,7 @@ export default defineNuxtPlugin(() => {
   async function refreshIfLoggedIn() {
     if (!session.value) return
     try {
-      await workspaces.fetchAll()
+      await workspaces.ensureAllLoaded()
     } catch {
       // erro já fica em workspaces.error; não quebra navegação
     }
@@ -25,6 +25,7 @@ export default defineNuxtPlugin(() => {
         workspaces.items = []
         workspaces.error = null
         workspaces.pending = false
+        workspaces.loadedAt = null
         workspaces.setCurrentWorkspaceId(null)
         return
       }

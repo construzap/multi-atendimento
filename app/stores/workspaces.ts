@@ -6,6 +6,8 @@ type WorkspacesState = {
   pending: boolean
   error: string | null
   currentWorkspaceId: string | null
+  /** Timestamp (ms) do último GET /api/workspaces bem sucedido. */
+  loadedAt: number | null
 }
 
 export const useWorkspacesStore = defineStore('workspaces', {
@@ -13,7 +15,8 @@ export const useWorkspacesStore = defineStore('workspaces', {
     items: [],
     pending: false,
     error: null,
-    currentWorkspaceId: null
+    currentWorkspaceId: null,
+    loadedAt: null,
   }),
   actions: {
     setCurrentWorkspaceId(id: string | null) {
@@ -26,15 +29,24 @@ export const useWorkspacesStore = defineStore('workspaces', {
       try {
         const data = await $fetch<Workspace[]>('/api/workspaces', { method: 'GET' })
         this.items = data
+        this.loadedAt = Date.now()
         return data
       } catch (err) {
         this.items = []
+        this.loadedAt = null
         this.error = err instanceof Error ? err.message : 'Falha ao carregar workspaces.'
         throw err
       } finally {
         this.pending = false
       }
     },
+
+    /** Cache-first: só busca se a lista ainda não foi carregada nesta sessão. */
+    async ensureAllLoaded(options?: { force?: boolean }) {
+      if (!options?.force && this.loadedAt != null) return
+      await this.fetchAll()
+    },
+
     async create(input: { nome: string; descricao?: string | null }) {
       this.pending = true
       this.error = null

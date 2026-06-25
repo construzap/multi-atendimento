@@ -128,9 +128,9 @@ async function executarImportacao(
 
   try {
     await Promise.all([
-      canaisStore.fetchCanais(workspaceId).catch(() => {}),
-      kanbanStore.fetchBoard(workspaceId).catch(() => {}),
-      atendentesStore.fetchList(workspaceId).catch(() => {}),
+      canaisStore.ensureCanaisLoaded(workspaceId).catch(() => {}),
+      kanbanStore.ensureBoardLoaded(workspaceId).catch(() => {}),
+      atendentesStore.ensureListLoaded(workspaceId).catch(() => {}),
     ])
 
     const canaisPorNome = new Map<string, number>()

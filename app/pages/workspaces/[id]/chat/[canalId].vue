@@ -89,7 +89,7 @@ watch(
 onMounted(async () => {
   const wid = workspaceId.value
   if (wid != null) {
-    await canaisStore.fetchCanais(wid).catch(() => {})
+    await canaisStore.ensureCanaisLoaded(wid).catch(() => {})
     // Depois do fetch, garante que o objeto completo seja preenchido (se existir na lista).
     if (canalId.value != null) canaisStore.setCurrentCanalId(canalId.value)
 

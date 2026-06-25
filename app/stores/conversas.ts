@@ -401,6 +401,7 @@ export const useConversasStore = defineStore('conversas', {
 
     /**
      * Zera `nao_lidas` no banco e no cache local ao abrir a conversa.
+     * Só chama a API se o Pinia tiver `nao_lidas > 0` para essa conversa.
      */
     async marcarComoLida(conversaKey?: string) {
       const key = (conversaKey ?? this.conversaAtual)?.trim()
@@ -410,9 +411,13 @@ export const useConversasStore = defineStore('conversas', {
       if (idCanal == null) return
 
       const bucket = this.byCanal[idCanal]
+      const item = bucket?.items.find((c) => c.key === key)
+      const naoLidasAtual = item?.nao_lidas ?? 0
+      if (naoLidasAtual <= 0) return
+
       if (bucket) {
         const idx = bucket.items.findIndex((c) => c.key === key)
-        if (idx !== -1 && (bucket.items[idx]!.nao_lidas ?? 0) > 0) {
+        if (idx !== -1) {
           bucket.items[idx] = { ...bucket.items[idx]!, nao_lidas: 0 }
         }
       }

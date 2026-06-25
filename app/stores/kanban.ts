@@ -321,6 +321,17 @@ export const useKanbanStore = defineStore('kanban', {
       const key = conversaKey?.trim()
       if (!key || key.startsWith('temp:')) return
 
+      const conversas = useConversasStore()
+      let naoLidasAtual = 0
+      for (const bucket of Object.values(conversas.byCanal)) {
+        const item = bucket.items.find((c) => c.key === key)
+        if (item) {
+          naoLidasAtual = item.nao_lidas ?? 0
+          break
+        }
+      }
+      if (naoLidasAtual <= 0) return
+
       try {
         await $fetch('/api/conversas/marcar-lidas', {
           method: 'POST',
@@ -330,7 +341,6 @@ export const useKanbanStore = defineStore('kanban', {
         return
       }
 
-      const conversas = useConversasStore()
       for (const bucket of Object.values(conversas.byCanal)) {
         const idx = bucket.items.findIndex((c) => c.key === key)
         if (idx !== -1) {

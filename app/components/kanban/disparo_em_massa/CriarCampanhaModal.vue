@@ -540,9 +540,8 @@ function selecionarTodasColunas() {
 async function carregarCanaisSeNecessario() {
   const wid = workspaceIdAtual()
   if (wid == null) return
-  if (canaisStore.items.length > 0) return
   try {
-    await canaisStore.fetchCanais(wid)
+    await canaisStore.ensureCanaisLoaded(wid)
   } catch {
     /* erro em canaisStore.listError */
   }

@@ -21,7 +21,7 @@ watch(
   (id) => {
     pesquisa.value = ''
     if (Number.isFinite(id) && id >= 1) {
-      void atendentesStore.fetchList(id)
+      void atendentesStore.ensureListLoaded(id)
     } else {
       atendentesStore.reset()
     }
@@ -31,7 +31,7 @@ watch(
 
 function recarregar() {
   if (Number.isFinite(props.workspaceId) && props.workspaceId >= 1) {
-    void atendentesStore.fetchList(props.workspaceId)
+    void atendentesStore.fetchList(props.workspaceId, { force: true })
   }
 }
 

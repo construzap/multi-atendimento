@@ -339,7 +339,7 @@ watch(
 
     if (wid != null) {
       try {
-        await canaisStore.fetchCanais(wid)
+        await canaisStore.ensureCanaisLoaded(wid)
       } catch {
         /* lista opcional; validação ao salvar */
       }

@@ -63,7 +63,7 @@ async function confirmarExcluir() {
     })
     toast.success('Atendente removido.')
     modalExcluir.value = false
-    await atendentesStore.fetchList(props.workspaceId)
+    await atendentesStore.fetchList(props.workspaceId, { force: true })
   } catch (err: unknown) {
     toast.error(mensagemErroFetch(err, 'Não foi possível remover o atendente.'))
   } finally {

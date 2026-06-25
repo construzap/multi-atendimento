@@ -111,7 +111,7 @@ async function fechar() {
   emit('update:open', false)
   // Ao fechar, atualiza o status da instância para refletir na UI.
   if (props.canalId) {
-    await canaisStore.fetchInstanciaStatus(props.canalId).catch(() => {})
+    await canaisStore.ensureInstanciaStatusLoaded(props.canalId, { force: true }).catch(() => {})
   }
 }
 

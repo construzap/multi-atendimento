@@ -4,8 +4,8 @@ import { useConversasStore } from '~/stores/conversas'
 import { useKanbanStore } from '~/stores/kanban'
 
 /**
- * Quando o canal atual (store `canais`) muda, recarrega a primeira página de conversas.
- * Sem isso, trocar de `/chat/2` para `/chat/6` dependeria só de outro gatilho.
+ * Quando o canal atual (store `canais`) muda, garante status da instância e lista de conversas.
+ * Usa cache Pinia (`ensure*`) para não refazer GET ao voltar para um canal já carregado.
  */
 export default defineNuxtPlugin(() => {
   const canais = useCanaisStore()
@@ -20,16 +20,15 @@ export default defineNuxtPlugin(() => {
       if (id == null) {
         conversas.setActiveCanalId(null)
         canais.instanciaStatus = null
+        canais.instanciaStatusCanalIdLoaded = null
         canais.instanciaStatusPending = false
         canais.instanciaStatusError = null
         return
       }
-      await canais.fetchInstanciaStatus(id).catch(() => {
+      await canais.ensureInstanciaStatusLoaded(id).catch(() => {
         /* erro permanece em canais.instanciaStatusError */
       })
-      // Sempre refaz a 1ª página ao abrir o canal, para não ficar “preso” em cache antigo.
-      conversas.resetActive()
-      await conversas.fetchPage(1, id, conversas.listFetchOptions()).catch(() => {
+      await conversas.ensureLoaded(id, 1).catch(() => {
         /* erro permanece em conversas.error */
       })
     },

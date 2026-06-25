@@ -37,9 +37,13 @@ type CanaisState = {
   instanciaStatus: InstanciaStatus | null
   instanciaStatusPending: boolean
   instanciaStatusError: string | null
+  /** Canal ao qual `instanciaStatus` pertence (cache). */
+  instanciaStatusCanalIdLoaded: number | null
   subscription: CanaisSubscription | null
   subscriptionPending: boolean
   subscriptionError: string | null
+  /** Workspace cuja assinatura está em `subscription` (cache). */
+  subscriptionWorkspaceIdLoaded: number | null
 }
 
 function normalizeStatus(s: string) {
@@ -125,9 +129,11 @@ export const useCanaisStore = defineStore('canais', {
     instanciaStatus: null,
     instanciaStatusPending: false,
     instanciaStatusError: null,
+    instanciaStatusCanalIdLoaded: null,
     subscription: null,
     subscriptionPending: false,
-    subscriptionError: null
+    subscriptionError: null,
+    subscriptionWorkspaceIdLoaded: null,
   }),
   getters: {
     canCreateCanal(state): boolean {
@@ -154,14 +160,31 @@ export const useCanaisStore = defineStore('canais', {
           query: { id_canal: id }
         })
         this.instanciaStatus = data
+        this.instanciaStatusCanalIdLoaded = id
         return data
       } catch (err) {
         this.instanciaStatus = null
+        this.instanciaStatusCanalIdLoaded = null
         this.instanciaStatusError = mensagemErroFetch(err, 'Não foi possível verificar o status da instância.')
         throw err
       } finally {
         this.instanciaStatusPending = false
       }
+    },
+
+    /** Cache-first: só busca status se ainda não houver cache para este canal. */
+    async ensureInstanciaStatusLoaded(canalId?: number, options?: { force?: boolean }) {
+      const id = canalId ?? this.currentCanalId
+      if (!id) return null
+      if (
+        !options?.force &&
+        this.instanciaStatusCanalIdLoaded === id &&
+        this.instanciaStatus != null &&
+        !this.instanciaStatusError
+      ) {
+        return this.instanciaStatus
+      }
+      return this.fetchInstanciaStatus(id)
     },
 
     async desconectarInstancia(canalId?: number) {
@@ -170,6 +193,7 @@ export const useCanaisStore = defineStore('canais', {
 
       // Mantém a UX responsiva: limpa imediatamente para refletir na UI.
       this.instanciaStatus = null
+      this.instanciaStatusCanalIdLoaded = null
       this.instanciaStatusError = null
 
       await $fetch<{ response: string }>('/api/canais/desconectar', {
@@ -241,9 +265,11 @@ export const useCanaisStore = defineStore('canais', {
           query: { workspace_id: workspaceId },
         })
         this.subscription = data
+        this.subscriptionWorkspaceIdLoaded = workspaceId
         return data
       } catch (err) {
         this.subscription = null
+        this.subscriptionWorkspaceIdLoaded = null
         this.subscriptionError = mensagemErroFetch(
           err,
           'Não foi possível carregar dados da assinatura.'
@@ -252,6 +278,20 @@ export const useCanaisStore = defineStore('canais', {
       } finally {
         this.subscriptionPending = false
       }
+    },
+
+    /** Cache-first: só busca assinatura se ainda não houver cache para este workspace. */
+    async ensureSubscriptionLoaded(workspaceId: number, options?: { force?: boolean }) {
+      if (!workspaceId) return
+      if (
+        !options?.force &&
+        this.subscriptionWorkspaceIdLoaded === workspaceId &&
+        this.subscription != null &&
+        !this.subscriptionError
+      ) {
+        return this.subscription
+      }
+      return this.fetchSubscription(workspaceId)
     },
 
     async create(input: {
@@ -277,7 +317,7 @@ export const useCanaisStore = defineStore('canais', {
           }),
           this.fetchSubscription(input.workspace_id).catch(() => {
             /* contagem pode falhar sem invalidar o canal criado */
-          })
+          }),
         ])
         return created
       } catch (err) {
@@ -341,6 +381,7 @@ export const useCanaisStore = defineStore('canais', {
         if (this.currentCanal?.id === id_canal) {
           this.currentCanal = null
           this.instanciaStatus = null
+          this.instanciaStatusCanalIdLoaded = null
           this.instanciaStatusError = null
         }
         await this.fetchSubscription(workspace_id).catch(() => {

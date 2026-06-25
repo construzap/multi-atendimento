@@ -18,7 +18,7 @@ watch(
   () => props.workspaceId,
   (id) => {
     if (Number.isFinite(id)) {
-      canaisStore.fetchCanais(id).catch(() => {})
+      canaisStore.ensureCanaisLoaded(id).catch(() => {})
     }
   },
   { immediate: true }

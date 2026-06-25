@@ -145,11 +145,9 @@ async function garantirDadosFunil() {
   const wid = workspaceId.value
   if (wid == null) return
 
-  const tarefas: Promise<unknown>[] = [atendentesStore.fetchList(wid)]
+  const tarefas: Promise<unknown>[] = [atendentesStore.ensureListLoaded(wid)]
 
-  if (kanbanStore.workspaceIdLoaded !== wid || kanbanStore.columns.length === 0) {
-    tarefas.push(kanbanStore.fetchBoard(wid))
-  }
+  tarefas.push(kanbanStore.ensureBoardLoaded(wid))
 
   try {
     await Promise.all(tarefas)

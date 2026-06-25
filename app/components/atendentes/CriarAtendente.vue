@@ -51,7 +51,7 @@ async function onSubmit() {
       },
     })
     toast.success('Atendente adicionado com sucesso.')
-    await atendentesStore.fetchList(props.workspaceId)
+    await atendentesStore.fetchList(props.workspaceId, { force: true })
     close()
     email.value = ''
   } catch (err: unknown) {

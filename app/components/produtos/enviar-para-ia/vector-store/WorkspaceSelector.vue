@@ -22,7 +22,7 @@ const workspaceAtual = computed(() => {
 onMounted(async () => {
   if (items.value.length || pending.value) return
   try {
-    await workspacesStore.fetchAll()
+    await workspacesStore.ensureAllLoaded()
   } catch {
     // erro exposto em workspacesStore.error
   }

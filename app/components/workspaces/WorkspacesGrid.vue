@@ -14,7 +14,7 @@ onMounted(() => {
   // Fora de /workspaces/:id, então não há workspace “atual”
   store.setCurrentWorkspaceId(null)
   if (!store.items.length && !store.pending) {
-    store.fetchAll().catch(() => {})
+    store.ensureAllLoaded().catch(() => {})
   }
 })
 
