@@ -26,8 +26,8 @@ watch(
   workspaceId,
   (id) => {
     if (!import.meta.client || !id) return
-    void kanban.fetchBoard(id)
-    void useCanaisStore().fetchCanais(id).catch(() => {})
+    void kanban.ensureBoardLoaded(id)
+    void useCanaisStore().ensureCanaisLoaded(id).catch(() => {})
   },
   { immediate: true },
 )

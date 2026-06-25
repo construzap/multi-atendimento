@@ -27,6 +27,8 @@ type CanaisState = {
   error: string | null
   /** Lista do workspace atual (GET /api/canais) */
   items: Canal[]
+  /** Workspace cuja lista está em `items` (cache). */
+  workspaceIdLoaded: number | null
   listPending: boolean
   listError: string | null
   /** Canal em foco na UI (ex.: rota `/chat/:canalId`). `null` = nenhum. */
@@ -116,6 +118,7 @@ export const useCanaisStore = defineStore('canais', {
     pending: false,
     error: null,
     items: [],
+    workspaceIdLoaded: null,
     listPending: false,
     listError: null,
     currentCanal: null,
@@ -203,6 +206,7 @@ export const useCanaisStore = defineStore('canais', {
           query: { workspace_id: workspaceId }
         })
         this.items = data
+        this.workspaceIdLoaded = workspaceId
         if (this.currentCanal) {
           const match = data.find((c) => c.id === this.currentCanal!.id)
           this.currentCanal = match ?? null
@@ -210,6 +214,7 @@ export const useCanaisStore = defineStore('canais', {
         return data
       } catch (err) {
         this.items = []
+        this.workspaceIdLoaded = null
         this.listError = mensagemErroFetch(
           err,
           'Não foi possível carregar os canais.'
@@ -218,6 +223,13 @@ export const useCanaisStore = defineStore('canais', {
       } finally {
         this.listPending = false
       }
+    },
+
+    /** Cache-first: só busca se a lista ainda não foi carregada para este workspace. */
+    async ensureCanaisLoaded(workspaceId: number, options?: { force?: boolean }) {
+      if (!workspaceId) return
+      if (!options?.force && this.workspaceIdLoaded === workspaceId) return
+      await this.fetchCanais(workspaceId)
     },
 
     async fetchSubscription(workspaceId: number) {

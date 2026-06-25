@@ -30,7 +30,7 @@ watch(
   workspaceId,
   (id) => {
     if (!import.meta.client || !id) return
-    void kanban.fetchBoard(id)
+    void kanban.ensureBoardLoaded(id)
   },
   { immediate: true },
 )

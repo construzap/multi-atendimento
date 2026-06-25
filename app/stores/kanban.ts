@@ -146,6 +146,22 @@ export const useKanbanStore = defineStore('kanban', {
       }
     },
 
+    /**
+     * Cache-first: só busca se o board deste workspace ainda não estiver no Pinia.
+     * Use `fetchBoard` ou `{ force: true }` após mutações (mover card, busca, etc.).
+     */
+    async ensureBoardLoaded(workspaceId: number, options?: { force?: boolean }) {
+      if (!workspaceId) return
+      if (
+        !options?.force &&
+        this.loadedAt != null &&
+        this.workspaceIdLoaded === workspaceId
+      ) {
+        return
+      }
+      await this.fetchBoard(workspaceId)
+    },
+
     async loadMoreCards(payload: { workspaceId: number; colunaId: number }) {
       const { workspaceId, colunaId } = payload
       if (!workspaceId || !colunaId) return
