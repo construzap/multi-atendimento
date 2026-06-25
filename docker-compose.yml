@@ -1,0 +1,58 @@
+services:
+  multi-atendimento:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        SUPABASE_URL: ${SUPABASE_URL}
+        SUPABASE_KEY: ${SUPABASE_KEY}
+        NUXT_PUBLIC_PUSHER_APP_ID: ${NUXT_PUBLIC_PUSHER_APP_ID}
+        NUXT_PUBLIC_PUSHER_KEY: ${NUXT_PUBLIC_PUSHER_KEY}
+        NUXT_PUBLIC_PUSHER_CLUSTER: ${NUXT_PUBLIC_PUSHER_CLUSTER}
+    image: multi-atendimento:latest
+    container_name: multi-atendimento
+    restart: unless-stopped
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_KEY: ${SUPABASE_KEY}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY}
+      NUXT_B2_ENDPOINT: ${NUXT_B2_ENDPOINT}
+      NUXT_B2_REGION: ${NUXT_B2_REGION}
+      NUXT_B2_KEY_ID: ${NUXT_B2_KEY_ID}
+      NUXT_B2_APP_KEY: ${NUXT_B2_APP_KEY}
+      NUXT_B2_BUCKET_NAME: ${NUXT_B2_BUCKET_NAME}
+      NUXT_B2_AGENDAMENTO_BUCKET_NAME: ${NUXT_B2_AGENDAMENTO_BUCKET_NAME}
+      NUXT_B2_DISPARO_EM_MASSA_BUCKET_NAME: ${NUXT_B2_DISPARO_EM_MASSA_BUCKET_NAME:-}
+      NUXT_B2_PRODUTOS_BUCKET_NAME: ${NUXT_B2_PRODUTOS_BUCKET_NAME}
+      NUXT_PUBLIC_PUSHER_APP_ID: ${NUXT_PUBLIC_PUSHER_APP_ID}
+      NUXT_PUBLIC_PUSHER_KEY: ${NUXT_PUBLIC_PUSHER_KEY}
+      NUXT_PUBLIC_PUSHER_CLUSTER: ${NUXT_PUBLIC_PUSHER_CLUSTER}
+      NUXT_PUSHER_SECRET: ${NUXT_PUSHER_SECRET}
+      NUXT_STRIPE_ENV: ${NUXT_STRIPE_ENV}
+      NUXT_STRIPE_TEST_SECRET_KEY: ${NUXT_STRIPE_TEST_SECRET_KEY:-}
+      NUXT_STRIPE_TEST_PRICE_ID: ${NUXT_STRIPE_TEST_PRICE_ID:-}
+      NUXT_STRIPE_TEST_WEBHOOK_SECRET: ${NUXT_STRIPE_TEST_WEBHOOK_SECRET:-}
+      NUXT_STRIPE_LIVE_SECRET_KEY: ${NUXT_STRIPE_LIVE_SECRET_KEY:-}
+      NUXT_STRIPE_LIVE_PRICE_ID: ${NUXT_STRIPE_LIVE_PRICE_ID:-}
+      NUXT_STRIPE_LIVE_WEBHOOK_SECRET: ${NUXT_STRIPE_LIVE_WEBHOOK_SECRET:-}
+      NUXT_VECTOR_SUPABASE_URL: ${NUXT_VECTOR_SUPABASE_URL}
+      NUXT_VECTOR_SUPABASE_SECRET_KEY: ${NUXT_VECTOR_SUPABASE_SECRET_KEY}
+      NUXT_VECTOR_DOCUMENTS_TABLE: ${NUXT_VECTOR_DOCUMENTS_TABLE}
+      NUXT_VECTOR_SEARCH_API_KEY: ${NUXT_VECTOR_SEARCH_API_KEY}
+      NUXT_OPENAI_API_KEY: ${NUXT_OPENAI_API_KEY}
+      NUXT_OPENAI_EMBEDDING_MODEL: ${NUXT_OPENAI_EMBEDDING_MODEL:-text-embedding-3-small}
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.whats-construzap.rule=Host(`whats.construzap.com`)
+      - traefik.http.routers.whats-construzap.entrypoints=websecure
+      - traefik.http.routers.whats-construzap.tls.certresolver=letsencrypt
+      - traefik.http.services.whats-construzap.loadbalancer.server.port=3000
+
+networks:
+  proxy:
+    external: true
