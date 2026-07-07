@@ -14,6 +14,14 @@ export type CriarCampanhaBody = {
   /** Um ou mais canais de envio. */
   canais_ids: number[]
   coluna_ids: number[]
+  /** Coluna do funil para mover o contato após o disparo (`null` = não mover). */
+  coluna_id?: number | null
+  /** Filtro opcional: canais de origem dos destinatários (persistido em `fonte_canal_id` como csv). */
+  fonte_canais_ids?: number[]
+  /** @deprecated use fonte_canais_ids — csv legado em `fonte_canal_id`. */
+  fonte_canal_id?: string | null
+  /** Incluir conversas de grupo WhatsApp na fila. */
+  envia_para_grupo?: boolean
   intervalo_minimo_minutos: number
   intervalo_maximo_minutos: number
   /** `yyyy-mm-dd` no fuso local do formulário. */
@@ -55,6 +63,10 @@ export type CampanhaRow = {
   visualizacao_unica: boolean | null
   hora_permitida_inicio: string | null
   hora_permitida_fim: string | null
+  fonte_canal_id: string | null
+  envia_para_grupo: boolean | null
+  /** Coluna do funil para mover o contato após o disparo. */
+  coluna_id: number | null
 }
 
 /** Item retornado por `GET /api/kanban/disparo_em_massa`. */
@@ -79,6 +91,8 @@ export type CampanhaListItem = Pick<
   | 'visualizacao_unica'
   | 'hora_permitida_inicio'
   | 'hora_permitida_fim'
+  | 'fonte_canal_id'
+  | 'envia_para_grupo'
 >
 
 /** Resposta de `GET /api/kanban/disparo_em_massa`. */

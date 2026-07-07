@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import AreaChatRodape, { type AreaChatRodapeContexto } from '~/components/chat/area-chat/AreaChatRodape.vue'
-import { useKanbanStore } from '~/stores/kanban'
-import { useWorkspacesStore } from '~/stores/workspaces'
+import AreaChatRodape, { type AreaChatRodapeContexto } from '../../chat/area-chat/AreaChatRodape.vue'
+import { useKanbanStore } from '../../../stores/kanban'
+import { useWorkspacesStore } from '../../../stores/workspaces'
 
 const kanban = useKanbanStore()
 const workspacesStore = useWorkspacesStore()

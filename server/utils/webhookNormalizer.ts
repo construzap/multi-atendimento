@@ -10,6 +10,57 @@ export function isMediaMessage(msg: UazapiMessage): boolean {
   return (MEDIA_MEDIA_TYPES as readonly string[]).includes(msg.mediaType)
 }
 
+function pickQuotedId(o: Record<string, unknown>): string | null {
+  for (const k of ['messageId', 'messageid', 'id', 'stanzaId', 'stanzaID']) {
+    const v = o[k]
+    if (typeof v === 'string' && v.trim()) return v.trim()
+  }
+  return null
+}
+
+/** Extrai `message_id` citado (reply) do payload bruto da uazapi. */
+export function parseQuotedReplyId(msg: UazapiMessage): string | null {
+  const raw = msg.quoted
+  if (typeof raw === 'string' && raw.trim()) {
+    const s = raw.trim()
+    if (s.startsWith('{')) {
+      try {
+        const o = JSON.parse(s) as Record<string, unknown>
+        const id = pickQuotedId(o)
+        if (id) return id
+      } catch {
+        /* texto simples */
+      }
+    }
+    return s
+  }
+  if (raw && typeof raw === 'object') {
+    const id = pickQuotedId(raw as Record<string, unknown>)
+    if (id) return id
+  }
+
+  const content = msg.content
+  if (content && typeof content === 'object') {
+    const ci = (content as Record<string, unknown>).contextInfo
+    if (ci && typeof ci === 'object') {
+      const stanza =
+        (ci as Record<string, unknown>).stanzaID ?? (ci as Record<string, unknown>).stanzaId
+      if (typeof stanza === 'string' && stanza.trim()) return stanza.trim()
+
+      const quotedMsg = (ci as Record<string, unknown>).quotedMessage
+      if (quotedMsg && typeof quotedMsg === 'object') {
+        const key = (quotedMsg as Record<string, unknown>).key
+        if (key && typeof key === 'object') {
+          const id = (key as Record<string, unknown>).id
+          if (typeof id === 'string' && id.trim()) return id.trim()
+        }
+      }
+    }
+  }
+
+  return null
+}
+
 // ---------------------------------------------------------------------------
 // Helpers de normalização
 // ---------------------------------------------------------------------------
@@ -219,7 +270,10 @@ export function normalizarMensagem(
     name = msg.fromMe ? null : resolveSenderName(msg)
     photo = msg.fromMe ? null : resolveGroupPhoto(payload)
   } else {
-    const extracted = extractPhoneLid(resolvedChatid, resolvedChatlid)
+    let extracted = extractPhoneLid(resolvedChatid, resolvedChatlid)
+    if (!extracted.phone && !extracted.lid) {
+      extracted = extractPhoneLid(msg.sender_pn, msg.sender_lid ?? msg.sender)
+    }
     phone = extracted.phone
     lid = extracted.lid
     name = msg.fromMe ? null : resolveContactName(payload)
@@ -231,7 +285,7 @@ export function normalizarMensagem(
   return {
     // ── mensagens ──────────────────────────────────────────────────────────
     message_id:      msg.messageid,
-    from_me:         msg.fromMe,
+    from_me:         msg.fromMe || msg.wasSentByApi === true,
     message:         msg.text?.trim() || null,
     phone,
     lid,
@@ -252,5 +306,6 @@ export function normalizarMensagem(
     id_group,
     name_group,
     from_ia: isMensagemIa(msg),
+    replyid: parseQuotedReplyId(msg),
   }
 }

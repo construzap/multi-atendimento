@@ -10,7 +10,8 @@ import { useMensagensStore } from '~/stores/mensagens'
 const conversasStore = useConversasStore()
 const canaisStore = useCanaisStore()
 const mensagensStore = useMensagensStore()
-const { conversaAtual, items } = storeToRefs(conversasStore)
+const { items } = storeToRefs(conversasStore)
+const { conversaKeyAtiva } = useConversaKeyAtiva()
 
 function firstNonEmpty(...vals: Array<string | null | undefined>): string {
   for (const v of vals) {
@@ -26,7 +27,7 @@ function sortIsoAsc(a: string | null, b: string | null): number {
 }
 
 const conversaSelecionada = computed<Conversa | null>(() => {
-  const key = conversaAtual.value
+  const key = conversaKeyAtiva.value
   if (!key) return null
   const list = items.value
   if (!list?.length) return null
@@ -46,18 +47,18 @@ const conversaSelecionada = computed<Conversa | null>(() => {
 const avatarUrl = computed<string | undefined>(() => conversaSelecionada.value?.photo ?? undefined)
 const nome = computed(() => {
   const c = conversaSelecionada.value
-  if (!c) return conversaAtual.value ?? ''
-  return firstNonEmpty(c.name, c.phone, c.lid, conversaAtual.value)
+  if (!c) return conversaKeyAtiva.value ?? ''
+  return firstNonEmpty(c.name, c.phone, c.lid, conversaKeyAtiva.value)
 })
 const telefone = computed(() => {
   const c = conversaSelecionada.value
-  if (!c) return conversaAtual.value ?? ''
+  if (!c) return conversaKeyAtiva.value ?? ''
   if (c.is_group) return firstNonEmpty(c.phone, 'Grupo')
-  return firstNonEmpty(c.phone, conversaAtual.value)
+  return firstNonEmpty(c.phone, conversaKeyAtiva.value)
 })
 
 function fecharConversa() {
-  const key = conversaAtual.value
+  const key = conversaKeyAtiva.value
   if (!key) return
   conversasStore
     .fecharConversa(key)

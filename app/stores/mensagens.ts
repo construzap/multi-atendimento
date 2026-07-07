@@ -51,6 +51,8 @@ type MensagensState = {
   activeKey: MensagensBucketKey | null
   byKey: Record<MensagensBucketKey, KeyMensagensState>
   keyOrder: MensagensBucketKey[]
+  /** Mensagem citada ao responder (somente UI; envio ainda não implementado). */
+  mensagemEmResposta: Mensagem | null
 }
 
 function emptyKeyState(): KeyMensagensState {
@@ -68,6 +70,58 @@ function emptyKeyState(): KeyMensagensState {
 
 type FetchOptions = {
   append?: boolean
+  /** Ignora cache e refaz GET (ex.: ao abrir chat no kanban). */
+  force?: boolean
+}
+
+/** Mantém a primeira ocorrência de cada `message_id` (lista já vem da mais nova para a mais antiga). */
+function dedupePorMessageId(items: Mensagem[]): Mensagem[] {
+  const seen = new Set<string>()
+  const out: Mensagem[] = []
+  for (const m of items) {
+    const id = (m.message_id ?? '').trim()
+    if (!id) {
+      out.push(m)
+      continue
+    }
+    if (seen.has(id)) continue
+    seen.add(id)
+    out.push(m)
+  }
+  return out
+}
+
+function preservarFromMeEnviada(prev: Mensagem, incoming: Mensagem): boolean {
+  if (prev.from_me !== true || incoming.from_me !== false) return incoming.from_me === true
+  if (prev.from_api === true || incoming.from_api === true) return true
+  return incoming.from_me === true
+}
+
+function mesclarMensagemPusher(prev: Mensagem, msg: Mensagem): Mensagem {
+  const merged: Mensagem = { ...prev, ...msg, temp_id: null }
+  merged.from_me = preservarFromMeEnviada(prev, msg)
+  if (!merged.replyid && prev.replyid) merged.replyid = prev.replyid
+  if (msg.replyid) merged.replyid = msg.replyid
+  if (!merged.mensagem_citada && prev.mensagem_citada) {
+    merged.mensagem_citada = prev.mensagem_citada
+  }
+  if (msg.mensagem_citada) merged.mensagem_citada = msg.mensagem_citada
+  return merged
+}
+
+/**
+ * Remove balão otimista pendente quando a confirmação real chegou (webhook/Pusher antes do merge por temp_id).
+ */
+function removerOptimisticSubstituida(items: Mensagem[], confirmada: Mensagem): Mensagem[] {
+  if (!confirmada.from_me) return items
+  const textoConfirmado = (confirmada.message ?? '').trim()
+  if (!textoConfirmado) return items
+
+  return items.filter((m) => {
+    if (!m.temp_id) return true
+    if (!m.from_me) return true
+    return (m.message ?? '').trim() !== textoConfirmado
+  })
 }
 
 export const useMensagensStore = defineStore('mensagens', {
@@ -75,6 +129,7 @@ export const useMensagensStore = defineStore('mensagens', {
     activeKey: null,
     byKey: {},
     keyOrder: [],
+    mensagemEmResposta: null,
   }),
   getters: {
     active(state): KeyMensagensState | null {
@@ -114,6 +169,15 @@ export const useMensagensStore = defineStore('mensagens', {
       const a = state.activeKey ? state.byKey[state.activeKey] : null
       return Boolean(a && a.loadedAt != null)
     },
+    /** Mensagem da conversa ativa pelo `message_id` (ex.: resolver `replyid`). */
+    mensagemPorId(state) {
+      return (messageId: string | null | undefined): Mensagem | null => {
+        const id = (messageId ?? '').trim()
+        if (!id) return null
+        const a = state.activeKey ? state.byKey[state.activeKey] : null
+        return a?.items.find((m) => m.message_id === id) ?? null
+      }
+    },
   },
   actions: {
     createTempId(): string {
@@ -129,6 +193,8 @@ export const useMensagensStore = defineStore('mensagens', {
       text: string
       name?: string | null
       photo?: string | null
+      replyid?: string | null
+      mensagem_citada?: Mensagem | null
     }): string {
       const tempId = this.createTempId()
       const key = mensagensBucketKey(input.conversa_key)
@@ -158,6 +224,8 @@ export const useMensagensStore = defineStore('mensagens', {
         filename: null,
         name: input.name ?? null,
         photo: input.photo ?? null,
+        ...(input.replyid?.trim() ? { replyid: input.replyid.trim() } : {}),
+        ...(input.mensagem_citada ? { mensagem_citada: input.mensagem_citada } : {}),
       }
 
       bucket.items = [msg, ...bucket.items]
@@ -243,6 +311,9 @@ export const useMensagensStore = defineStore('mensagens', {
     },
 
     setActiveKey(key: MensagensBucketKey | null) {
+      if (key !== this.activeKey) {
+        this.mensagemEmResposta = null
+      }
       this.activeKey = key
       if (!key) return
       if (!this.byKey[key]) this.byKey[key] = emptyKeyState()
@@ -260,6 +331,15 @@ export const useMensagensStore = defineStore('mensagens', {
       this.byKey = {}
       this.activeKey = null
       this.keyOrder = []
+      this.mensagemEmResposta = null
+    },
+
+    iniciarResposta(mensagem: Mensagem) {
+      this.mensagemEmResposta = mensagem
+    },
+
+    cancelarResposta() {
+      this.mensagemEmResposta = null
     },
 
     mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
@@ -283,16 +363,38 @@ export const useMensagensStore = defineStore('mensagens', {
       if (tempId) {
         const idx = bucket.items.findIndex((x) => x.temp_id === tempId)
         if (idx !== -1) {
+          const prev = bucket.items[idx]!
+          const merged: Mensagem = { ...msg, temp_id: null }
+          merged.from_me = preservarFromMeEnviada(prev, merged)
+          if (!merged.replyid && prev.replyid) merged.replyid = prev.replyid
+          if (msg.replyid) merged.replyid = msg.replyid
+          if (!merged.mensagem_citada && prev.mensagem_citada) {
+            merged.mensagem_citada = prev.mensagem_citada
+          }
+          if (msg.mensagem_citada) merged.mensagem_citada = msg.mensagem_citada
           const next = [...bucket.items]
-          next[idx] = { ...msg, temp_id: null }
-          bucket.items = next
+          next[idx] = merged
+          bucket.items = dedupePorMessageId(removerOptimisticSubstituida(next, merged))
           return
         }
       }
 
-      if (bucket.items.some((x) => x.message_id === msg.message_id)) return
+      if (bucket.items.some((x) => x.message_id === msg.message_id)) {
+        const dupIdx = bucket.items.findIndex((x) => x.message_id === msg.message_id)
+        if (dupIdx !== -1) {
+          const prev = bucket.items[dupIdx]!
+          const merged = mesclarMensagemPusher(prev, msg)
+          let next = [...bucket.items]
+          next[dupIdx] = merged
+          next = removerOptimisticSubstituida(next, merged)
+          bucket.items = dedupePorMessageId(next)
+        }
+        return
+      }
 
-      bucket.items = [msg, ...bucket.items]
+      let next = removerOptimisticSubstituida(bucket.items, msg)
+      next = [msg, ...next]
+      bucket.items = dedupePorMessageId(next)
       bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
     },
 
@@ -351,19 +453,25 @@ export const useMensagensStore = defineStore('mensagens', {
       }
     },
 
-    async ensureLoaded(idCanal: number, conversaKey: string, page: number = 1) {
+    async ensureLoaded(
+      idCanal: number,
+      conversaKey: string,
+      page: number = 1,
+      options: FetchOptions = {},
+    ) {
       const key = mensagensBucketKey(conversaKey)
       this.setActiveKey(key)
       let bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
 
       const cacheValido =
+        !options.force &&
         bucket.loadedAt != null &&
         bucket.items.length > 0 &&
         (bucket.id_canal == null || bucket.id_canal === idCanal)
 
       if (cacheValido) return
 
-      const inflightKey = `${idCanal}:${key}:${page}`
+      const inflightKey = `${idCanal}:${key}:${page}:${options.force ? 'f' : 'c'}`
       const inflight = ensureLoadedInflight.get(inflightKey)
       if (inflight) return inflight
 

@@ -13,13 +13,10 @@ import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 const WEBHOOK_URL_CAMPANHA = 'https://nwebhook.construzap.com/webhook/28d7sdasd132a-ae0s444132s5'
 
+const VIEW_KANBAN_CONVERSAS = 'view_kanban_conversas'
+
 type Body = Record<string, unknown>
 type SupabaseAdmin = ReturnType<typeof serverSupabaseServiceRole<any>>
-
-type FunilConversaStatusRow = {
-  conversa_key: string
-  conversas: { id_canal: number | null } | { id_canal: number | null }[] | null
-}
 
 function parseWorkspaceId(raw: unknown): number {
   const n =
@@ -60,6 +57,50 @@ function parseIaLigada(raw: unknown): boolean {
   if (raw === 'true' || raw === 1 || raw === '1') return true
   if (raw === 'false' || raw === 0 || raw === '0') return false
   throw createError({ statusCode: 400, statusMessage: 'ia_ligada é obrigatório (true ou false).' })
+}
+
+function parseEnviaParaGrupo(raw: unknown): boolean {
+  if (raw === undefined || raw === null || raw === '') return false
+  if (typeof raw === 'boolean') return raw
+  if (raw === 'true' || raw === 1 || raw === '1') return true
+  if (raw === 'false' || raw === 0 || raw === '0') return false
+  throw createError({ statusCode: 400, statusMessage: 'envia_para_grupo inválido (true ou false).' })
+}
+
+function parseFonteCanaisIds(body: Body): number[] {
+  const raw = body.fonte_canais_ids
+  if (Array.isArray(raw)) {
+    const ids = raw.map((item) => {
+      const n = typeof item === 'number' ? item : Number.parseInt(String(item ?? '').trim(), 10)
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+        throw createError({ statusCode: 400, statusMessage: 'fonte_canais_ids contém id inválido.' })
+      }
+      return n
+    })
+    return [...new Set(ids)]
+  }
+
+  const legacy = body.fonte_canal_id
+  if (legacy === undefined || legacy === null || legacy === '') return []
+
+  const parts = String(legacy)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const ids: number[] = []
+  for (const part of parts) {
+    const n = Number.parseInt(part, 10)
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+      throw createError({ statusCode: 400, statusMessage: 'fonte_canal_id inválido.' })
+    }
+    ids.push(n)
+  }
+  return [...new Set(ids)]
+}
+
+function serializarFonteCanalId(ids: number[]): string | null {
+  if (ids.length === 0) return null
+  return ids.join(',')
 }
 
 function parseVisualizacaoUnica(raw: unknown): boolean {
@@ -128,6 +169,16 @@ function parseColunaIds(raw: unknown): number[] {
   return [...new Set(ids)]
 }
 
+/** Coluna destino após o disparo (`null` = não mover). */
+function parseColunaIdAposDisparo(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw).trim(), 10)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+    throw createError({ statusCode: 400, statusMessage: 'coluna_id inválido.' })
+  }
+  return n
+}
+
 function parseHoraPermitida(raw: unknown, campo: string): string {
   if (raw === undefined || raw === null || raw === '') {
     throw createError({ statusCode: 400, statusMessage: `${campo} é obrigatório.` })
@@ -180,77 +231,40 @@ function safeMime(raw: unknown): string {
   return (s.split(';')[0] ?? '').trim().toLowerCase()
 }
 
-function idCanalDaConversa(
-  conversas: FunilConversaStatusRow['conversas'],
-): number | null {
-  if (!conversas) return null
-  const conv = Array.isArray(conversas) ? conversas[0] : conversas
-  const raw = conv?.id_canal
-  const n = typeof raw === 'number' ? raw : raw != null ? Number(raw) : NaN
-  return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : null
+function aplicarFiltroIsGroupDestinatarios<
+  T extends { or: (filters: string) => T },
+>(query: T, enviaParaGrupo: boolean): T {
+  if (enviaParaGrupo) return query
+  return query.or('is_group.is.null,is_group.eq.false')
 }
 
-async function validarColunasDoWorkspace(
-  admin: SupabaseAdmin,
-  workspaceId: number,
-  colunaIds: number[],
-) {
-  const { data: funil, error: funilErr } = await admin
-    .from('funil_workspace')
-    .select('id')
-    .eq('workspace_id', workspaceId)
-    .maybeSingle()
-
-  if (funilErr) {
-    throw createError({ statusCode: 500, statusMessage: funilErr.message })
-  }
-  if (!funil) {
-    throw createError({ statusCode: 400, statusMessage: 'Funil não encontrado para este workspace.' })
-  }
-
-  const funilId = typeof funil.id === 'number' ? funil.id : Number(funil.id)
-
-  const { data: cols, error: colErr } = await admin
-    .from('funil_workspace_colunas')
-    .select('id')
-    .eq('funil_id', funilId)
-    .in('id', colunaIds)
-    .is('deleted_at', null)
-
-  if (colErr) {
-    throw createError({ statusCode: 500, statusMessage: colErr.message })
-  }
-
-  const encontradas = new Set((cols ?? []).map((c: { id: number }) => c.id))
-  if (encontradas.size !== colunaIds.length) {
-    throw createError({ statusCode: 400, statusMessage: 'Uma ou mais colunas não pertencem ao funil deste workspace.' })
-  }
-}
-
+/** Destinatários via `view_kanban_conversas` (coluna + canal fonte + grupos). */
 async function buscarConversasKeys(
   admin: SupabaseAdmin,
   workspaceId: number,
   colunaIds: number[],
-  canaisIds: number[],
+  fonteCanaisIds: number[],
+  enviaParaGrupo: boolean,
 ): Promise<string[]> {
-  const { data, error } = await admin
-    .from('funil_conversa_status')
-    .select('conversa_key, conversas!inner(id_canal)')
+  let query = admin
+    .from(VIEW_KANBAN_CONVERSAS)
+    .select('conversa_key')
     .eq('workspace_id', workspaceId)
     .in('coluna_id', colunaIds)
-    .in('conversas.id_canal', canaisIds)
+    .in('id_canal', fonteCanaisIds)
+
+  query = aplicarFiltroIsGroupDestinatarios(query, enviaParaGrupo)
+
+  const { data, error } = await query
 
   if (error) {
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
 
-  const canaisSet = new Set(canaisIds)
   const keys = new Set<string>()
-  for (const row of (data ?? []) as FunilConversaStatusRow[]) {
+  for (const row of (data ?? []) as Array<{ conversa_key?: unknown }>) {
     const key = String(row.conversa_key ?? '').trim()
-    const idCanal = idCanalDaConversa(row.conversas)
-    if (!key || idCanal == null || !canaisSet.has(idCanal)) continue
-    keys.add(key)
+    if (key) keys.add(key)
   }
 
   return [...keys]
@@ -260,6 +274,7 @@ async function buscarConversasKeys(
  * POST /api/kanban/disparo_em_massa
  *
  * Cria campanha em `campanhas` e retorna as conversas para enfileirar em lotes no cliente.
+ * Destinatários resolvidos via `view_kanban_conversas`.
  */
 export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> => {
   assertMethod(event, 'POST')
@@ -292,6 +307,10 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
   const canais_ids = parseCanaisIds(body)
   const canal_id = canais_ids[0]!
   const coluna_ids = parseColunaIds(body.coluna_ids)
+  const coluna_id = parseColunaIdAposDisparo(body.coluna_id)
+  const fonte_canais_ids = parseFonteCanaisIds(body)
+  const fonte_canal_id = serializarFonteCanalId(fonte_canais_ids)
+  const envia_para_grupo = parseEnviaParaGrupo(body.envia_para_grupo)
 
   const intervalo_minimo_minutos = parseIntervaloMinutos(
     body.intervalo_minimo_minutos,
@@ -314,14 +333,31 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     throw createError({ statusCode: 403, statusMessage: 'Canal inválido ou sem permissão.' })
   }
 
+  if (fonte_canais_ids.length === 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Selecione ao menos um canal fonte para buscar destinatários.',
+    })
+  }
+
+  const fonteCanaisOk = await checkChannels(event, fonte_canais_ids, userId)
+  if (!fonteCanaisOk) {
+    throw createError({ statusCode: 403, statusMessage: 'Canal fonte inválido ou sem permissão.' })
+  }
+
   if (tipo_mensagem === 'texto' && !conteudo_texto) {
     throw createError({ statusCode: 400, statusMessage: 'conteudo_texto é obrigatório para mensagem de texto.' })
   }
 
   const admin = serverSupabaseServiceRole<any>(event)
-  await validarColunasDoWorkspace(admin, workspaceId, coluna_ids)
 
-  const conversaKeys = await buscarConversasKeys(admin, workspaceId, coluna_ids, canais_ids)
+  const conversaKeys = await buscarConversasKeys(
+    admin,
+    workspaceId,
+    coluna_ids,
+    fonte_canais_ids,
+    envia_para_grupo,
+  )
   const total_contatos = conversaKeys.length
 
   let url_midia: string | null = null
@@ -384,13 +420,16 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     visualizacao_unica,
     hora_permitida_inicio,
     hora_permitida_fim,
+    fonte_canal_id,
+    envia_para_grupo,
+    coluna_id,
   }
 
   const { data: campanhaInsert, error: campanhaErr } = await admin
     .from('campanhas')
     .insert(insertCampanha)
     .select(
-      'id, nome, tipo_mensagem, conteudo_texto, url_midia, webhook_url, intervalo_minimo_minutos, intervalo_maximo_minutos, status, criado_em, canal_id, canais_ids, ultimo_canal_id, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim',
+      'id, nome, tipo_mensagem, conteudo_texto, url_midia, webhook_url, intervalo_minimo_minutos, intervalo_maximo_minutos, status, criado_em, canal_id, canais_ids, ultimo_canal_id, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id',
     )
     .single()
 

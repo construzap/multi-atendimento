@@ -2,6 +2,34 @@ import { defineStore } from 'pinia'
 import type { Conversa, ConversasListResponse } from '#shared/types/conversa'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { useCanaisStore } from '~/stores/canais'
+import { useConfiguracoesStore } from '~/stores/configuracoes'
+import { useWorkspacesStore } from '~/stores/workspaces'
+
+export const CODIGO_COLUNA_ORIGEM_LEADS_NAO_CONFIGURADA = 'COLUNA_ORIGEM_LEADS_NAO_CONFIGURADA'
+
+export class ColunaOrigemLeadsNaoConfiguradaError extends Error {
+  readonly code = CODIGO_COLUNA_ORIGEM_LEADS_NAO_CONFIGURADA
+  constructor() {
+    super('Configure a coluna origem dos leads em Configurações antes de criar conversas.')
+    this.name = 'ColunaOrigemLeadsNaoConfiguradaError'
+  }
+}
+
+export function isColunaOrigemLeadsNaoConfiguradaError(err: unknown): boolean {
+  if (err instanceof ColunaOrigemLeadsNaoConfiguradaError) return true
+  if (!err || typeof err !== 'object') return false
+  const e = err as { name?: string; data?: unknown }
+  if (e.name === 'ColunaOrigemLeadsNaoConfiguradaError') return true
+  const payload = e.data
+  if (!payload || typeof payload !== 'object') return false
+  const p = payload as Record<string, unknown>
+  if (p.code === CODIGO_COLUNA_ORIGEM_LEADS_NAO_CONFIGURADA) return true
+  const inner = p.data
+  if (inner && typeof inner === 'object') {
+    return (inner as Record<string, unknown>).code === CODIGO_COLUNA_ORIGEM_LEADS_NAO_CONFIGURADA
+  }
+  return false
+}
 
 function mensagemErroFetch(err: unknown, fallback: string): string {
   if (err && typeof err === 'object') {
@@ -202,6 +230,7 @@ export const useConversasStore = defineStore('conversas', {
 
     /**
      * Garante que exista uma conversa no banco para (canal + phone).
+     * Exige `coluna_origem_leads` nas configurações do workspace (Pinia / GET ia).
      * - Cria uma conversa temporária (key `temp:`) imediatamente no Pinia e seleciona.
      * - Depois resolve no backend (busca ou cria) e substitui no Pinia.
      */
@@ -209,6 +238,22 @@ export const useConversasStore = defineStore('conversas', {
       const idCanal = input.id_canal
       const phone = input.phone.trim()
       if (!idCanal || !phone) return
+
+      const workspaces = useWorkspacesStore()
+      const workspaceIdRaw = workspaces.currentWorkspaceId
+      const workspaceId =
+        workspaceIdRaw != null && workspaceIdRaw !== ''
+          ? Number.parseInt(String(workspaceIdRaw).trim(), 10)
+          : NaN
+      if (!Number.isFinite(workspaceId) || workspaceId < 1) {
+        throw new Error('Workspace não identificado.')
+      }
+
+      const configuracoes = useConfiguracoesStore()
+      const colunaOrigemId = await configuracoes.obterColunaOrigemLeadsId(workspaceId)
+      if (colunaOrigemId == null) {
+        throw new ColunaOrigemLeadsNaoConfiguradaError()
+      }
 
       const tempKey = this.createTempKey(phone)
       const temp: Conversa = {
@@ -235,15 +280,23 @@ export const useConversasStore = defineStore('conversas', {
       this.addOrUpdateLocalConversa(temp, idCanal)
       this.setConversaAtual(tempKey, idCanal)
 
-      const real = await $fetch<Conversa>('/api/conversas/ensure', {
-        method: 'POST',
-        body: { id_canal: idCanal, telefone: phone },
-      })
+      try {
+        const real = await $fetch<Conversa>('/api/conversas/ensure', {
+          method: 'POST',
+          body: { id_canal: idCanal, telefone: phone },
+        })
 
-      // troca temp pelo real
-      this.removeLocalConversaByKey(tempKey, idCanal)
-      this.addOrUpdateLocalConversa(real, idCanal)
-      this.setConversaAtual(real.key, idCanal)
+        this.removeLocalConversaByKey(tempKey, idCanal)
+        this.addOrUpdateLocalConversa(real, idCanal)
+        this.setConversaAtual(real.key, idCanal)
+      } catch (err) {
+        this.removeLocalConversaByKey(tempKey, idCanal)
+        this.setConversaAtual(null, idCanal)
+        if (isColunaOrigemLeadsNaoConfiguradaError(err)) {
+          throw new ColunaOrigemLeadsNaoConfiguradaError()
+        }
+        throw err
+      }
     },
 
     /** Troca o canal ativo (não apaga cache). */
@@ -443,7 +496,7 @@ export const useConversasStore = defineStore('conversas', {
      * `name` / `photo` vêm do payload quando existirem (inclui `from_me === true`, teste — pode voltar a preservar só foto depois).
      */
     mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
-      const conversaKey = payload.conversa_key?.trim()
+      let conversaKey = payload.conversa_key?.trim()
       if (!conversaKey) return
       if (!this.mostrarGrupos && payload.is_group) return
 
@@ -452,7 +505,21 @@ export const useConversasStore = defineStore('conversas', {
 
       if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
 
-      const idx = bucket.items.findIndex((c) => c.key === conversaKey)
+      let idx = bucket.items.findIndex((c) => c.key === conversaKey)
+
+      if (idx === -1 && !payload.is_group) {
+        const phone = msg.phone?.trim()
+        const lid = msg.lid?.trim()
+        if (phone || lid) {
+          idx = bucket.items.findIndex((c) => {
+            if (lid && c.lid?.trim() === lid) return true
+            if (phone && c.phone?.trim() === phone) return true
+            return false
+          })
+          if (idx !== -1) conversaKey = bucket.items[idx]!.key
+        }
+      }
+
       const preview = (msg.message ?? msg.caption ?? '').trim() || ' '
       const createdAt = msg.created_at ?? null
 

@@ -4,8 +4,9 @@ import BalaoMensagem from '~/components/chat/area-chat/BalaoMensagens/BalaoMensa
 
 const conversas = useConversasStore()
 const mensagens = useMensagensStore()
+const { conversaKeyAtiva } = useConversaKeyAtiva()
 
-const activeKey = computed(() => conversas.conversaAtual)
+const activeKey = conversaKeyAtiva
 
 const ehGrupo = computed(() => {
   const key = activeKey.value

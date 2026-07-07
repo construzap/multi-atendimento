@@ -17,7 +17,7 @@ definePageMeta({
       </p>
     </header>
 
-    <div class="min-h-0 flex-1">
+    <div class="min-h-0 flex-1 overflow-y-auto">
       <SeletorPrompt />
     </div>
   </div>

@@ -10,6 +10,31 @@ const fetchesEmCurso = new Map<number, Promise<boolean>>()
 
 const TELEFONE_REGEX = /^[0-9]{12,13}$/
 
+const TEMPO_RESPOSTA_PADRAO = 10
+const TEMPO_PAUSA_PADRAO = 28800
+
+function parseWorkspaceIdAtual(): number | null {
+  const workspaces = useWorkspacesStore()
+  const raw = workspaces.currentWorkspaceId
+  if (raw == null || raw === '') return null
+  const n = Number.parseInt(String(raw).trim(), 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function normalizarConfiguracoes(config: WorkspaceConfiguracoes): WorkspaceConfiguracoes {
+  return {
+    ...config,
+    tempo_resposta:
+      typeof config.tempo_resposta === 'number' && Number.isFinite(config.tempo_resposta)
+        ? Math.trunc(config.tempo_resposta)
+        : TEMPO_RESPOSTA_PADRAO,
+    tempo_pausa:
+      typeof config.tempo_pausa === 'number' && Number.isFinite(config.tempo_pausa)
+        ? Math.trunc(config.tempo_pausa)
+        : TEMPO_PAUSA_PADRAO,
+  }
+}
+
 /** HTML vazio do editor → null para a API */
 export function descricaoParaApi(html: string): string | null {
   const texto = html
@@ -40,6 +65,21 @@ export const useConfiguracoesStore = defineStore('configuracoes', {
   },
 
   actions: {
+    /**
+     * Garante config carregada e devolve `coluna_origem_leads` como id numérico (> 0).
+     * `null` se ausente, `"0"` ou inválido.
+     */
+    async obterColunaOrigemLeadsId(workspaceId: number): Promise<number | null> {
+      if (!Number.isFinite(workspaceId) || workspaceId < 1) return null
+      const ok = await this.fetchSeNecessario(workspaceId)
+      if (!ok) return null
+      const raw = this.porWorkspace[workspaceId]?.coluna_origem_leads
+      if (raw == null || String(raw).trim() === '') return null
+      const n = Number.parseInt(String(raw).trim(), 10)
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return null
+      return n
+    },
+
     atualizarCampo<K extends keyof WorkspaceConfiguracoes>(
       workspaceId: number,
       campo: K,
@@ -55,6 +95,7 @@ export const useConfiguracoesStore = defineStore('configuracoes', {
         return false
       }
       if (this.porWorkspace[workspaceId] !== undefined) {
+        this.porWorkspace[workspaceId] = normalizarConfiguracoes(this.porWorkspace[workspaceId]!)
         return true
       }
       const emCurso = fetchesEmCurso.get(workspaceId)
@@ -71,7 +112,7 @@ export const useConfiguracoesStore = defineStore('configuracoes', {
             method: 'GET',
             query: { workspace_id: workspaceId },
           })
-          this.porWorkspace[workspaceId] = { ...res }
+          this.porWorkspace[workspaceId] = normalizarConfiguracoes(res)
           return true
         } catch (err) {
           this.fetchError = mensagemErroFetch(err, 'Não foi possível carregar as configurações.')
@@ -91,7 +132,7 @@ export const useConfiguracoesStore = defineStore('configuracoes', {
 
     aplicarSalva(workspaceId: number, config: WorkspaceConfiguracoes) {
       if (!Number.isFinite(workspaceId) || workspaceId < 1) return
-      this.porWorkspace[workspaceId] = { ...config }
+      this.porWorkspace[workspaceId] = normalizarConfiguracoes(config)
     },
 
     validar(config: WorkspaceConfiguracoes): string | null {
@@ -111,15 +152,19 @@ export const useConfiguracoesStore = defineStore('configuracoes', {
       return null
     },
 
-    async salvar(workspaceId: number): Promise<WorkspaceConfiguracoes | null> {
-      if (!Number.isFinite(workspaceId) || workspaceId < 1) {
-        return null
+    async salvar(workspaceIdParam?: number): Promise<WorkspaceConfiguracoes | null> {
+      const workspaceId = workspaceIdParam ?? parseWorkspaceIdAtual()
+      if (workspaceId == null || !Number.isFinite(workspaceId) || workspaceId < 1) {
+        throw new Error('Workspace não encontrado.')
       }
 
-      const config = this.porWorkspace[workspaceId]
-      if (!config) {
+      const bruto = this.porWorkspace[workspaceId]
+      if (!bruto) {
         throw new Error('Configurações não carregadas.')
       }
+
+      const config = normalizarConfiguracoes(bruto)
+      this.porWorkspace[workspaceId] = config
 
       const erro = this.validar(config)
       if (erro) {
@@ -137,9 +182,17 @@ export const useConfiguracoesStore = defineStore('configuracoes', {
             fase_teste: config.fase_teste,
             numero_testes: config.fase_teste ? config.numero_testes?.trim() ?? null : null,
             numero_notificacao: config.numero_notificacao?.trim() || null,
+            tempo_resposta: config.tempo_resposta,
+            tempo_pausa: config.tempo_pausa,
+            coluna_origem_leads: (() => {
+              const raw = config.coluna_origem_leads?.trim() || ''
+              if (!raw) return null
+              const n = Number.parseInt(raw, 10)
+              return Number.isFinite(n) && n >= 1 ? n : null
+            })(),
           },
         })
-        this.aplicarSalva(workspaceId, salvo)
+        this.aplicarSalva(workspaceId, normalizarConfiguracoes(salvo))
 
         const workspaces = useWorkspacesStore()
         const idx = workspaces.items.findIndex((w) => w.id === workspaceId)

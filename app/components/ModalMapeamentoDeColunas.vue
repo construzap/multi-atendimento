@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 import BaseModal from '~/components/BaseModal.vue'
+import MapeamentoDescricaoComTooltip from '~/components/MapeamentoDescricaoComTooltip.vue'
 import {
   mapeamentoTemCamposObrigatorios,
   type CampoMapeamentoColuna,
@@ -346,12 +347,11 @@ function formatarTamanho(bytes: number): string {
                         check
                       </span>
                     </span>
-                    <span
+                    <MapeamentoDescricaoComTooltip
                       v-if="campo.descricao"
-                      class="pl-4 text-[11px] leading-snug text-on-surface-variant dark:text-dark-on-surface-variant"
-                    >
-                      {{ campo.descricao }}
-                    </span>
+                      :descricao="campo.descricao"
+                      :descricao-completa="campo.descricaoCompleta"
+                    />
                     <span
                       v-if="
                         campoEstaMapeado(campo.id) &&

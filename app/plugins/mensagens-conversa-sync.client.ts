@@ -24,7 +24,7 @@ export default defineNuxtPlugin(() => {
     async ([kanbanKey, kanbanCanalId, canalId, conversaKey]) => {
       if (kanbanKey != null) {
         if (!kanbanCanalId || String(kanbanKey).startsWith('temp:')) return
-        await mensagens.ensureLoaded(kanbanCanalId, kanbanKey, 1).catch(() => {
+        await mensagens.ensureLoaded(kanbanCanalId, kanbanKey, 1, { force: true }).catch(() => {
           /* erro fica em mensagens.error */
         })
         return

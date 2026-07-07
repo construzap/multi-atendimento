@@ -19,6 +19,7 @@ type ConversaListaItem = {
 
 const canais = useCanaisStore()
 const conversas = useConversasStore()
+const { conversaKeyAtiva } = useConversaKeyAtiva()
 const { termoPesquisa } = storeToRefs(conversas)
 
 function firstNonEmpty(...vals: Array<string | null | undefined>): string {
@@ -107,15 +108,18 @@ const itens = computed<ConversaListaItem[]>(() => {
 watch(
   itens,
   (list) => {
+    if (conversas.pending) return
+    if (!conversas.hasCacheForActive) return
+
     if (!list.length) {
       conversas.setConversaAtual(null)
       return
     }
-    const cur = conversas.conversaAtual
+    const cur = conversaKeyAtiva.value
     // Se a conversa atual não existir mais no novo conjunto, apenas limpa a seleção.
     if (cur && !list.some((x) => x.id === cur)) conversas.setConversaAtual(null)
   },
-  { immediate: true }
+  { immediate: true },
 )
 
 const isScrolling = ref(false)
@@ -182,8 +186,7 @@ function maybeLoadMore() {
         :fechada="c.fechada"
         :is-grupo="c.isGrupo"
         :nao-lidas="c.naoLidas"
-        :selected="c.id === conversas.conversaAtual"
-        @select="conversas.setConversaAtual(c.id)"
+        :selected="c.id === conversaKeyAtiva"
       />
 
       <p

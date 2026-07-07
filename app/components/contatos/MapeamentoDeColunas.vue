@@ -14,6 +14,7 @@ import type { CampoPersonalizado } from '#shared/types/camposPersonalizados'
 import {
   MAPEAMENTO_FUNIL_ATENDENTE_ID,
   MAPEAMENTO_FUNIL_COLUNA_ID,
+  resumirListaDescricao,
   type CampoMapeamentoColuna,
 } from '~/utils/mapeamentoColunasImportacao'
 
@@ -78,17 +79,11 @@ const camposPersonalizadosMapeamento = computed((): CampoMapeamentoColuna[] =>
   })),
 )
 
-function resumirLista(textos: string[], max = 4): string {
-  if (!textos.length) return ''
-  if (textos.length <= max) return textos.join(' · ')
-  return `${textos.slice(0, max).join(' · ')} · +${textos.length - max}`
-}
-
 const camposFunilMapeamento = computed((): CampoMapeamentoColuna[] => {
-  const colunasDesc = resumirLista(
+  const colunas = resumirListaDescricao(
     kanbanStore.columns.map((col) => `${col.nome} (ID ${col.id})`),
   )
-  const atendentesDesc = resumirLista(
+  const atendentes = resumirListaDescricao(
     atendentesStore.items
       .map((a) => a.email?.trim())
       .filter((email): email is string => Boolean(email)),
@@ -98,12 +93,14 @@ const camposFunilMapeamento = computed((): CampoMapeamentoColuna[] => {
     {
       id: MAPEAMENTO_FUNIL_COLUNA_ID,
       label: 'Coluna do funil (ID)',
-      descricao: colunasDesc || 'Carregue o kanban do workspace para ver as colunas disponíveis.',
+      descricao: colunas.descricao || 'Carregue o kanban do workspace para ver as colunas disponíveis.',
+      descricaoCompleta: colunas.descricaoCompleta,
     },
     {
       id: MAPEAMENTO_FUNIL_ATENDENTE_ID,
       label: 'Atendente (e-mail)',
-      descricao: atendentesDesc || 'Nenhum atendente com e-mail cadastrado neste workspace.',
+      descricao: atendentes.descricao || 'Nenhum atendente com e-mail cadastrado neste workspace.',
+      descricaoCompleta: atendentes.descricaoCompleta,
     },
   ]
 })

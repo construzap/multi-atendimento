@@ -34,6 +34,31 @@ type Body = {
   media_type?: 'image' | 'video' | 'document' | 'audio' | 'ptt'
   /** URL pública do arquivo (ex.: B2 público). */
   media_file?: string
+  /** ID da mensagem citada (reply) na Uazapi. */
+  replyid?: string
+}
+
+/** Extrai `messageid` da resposta Uazapi (`messageid` ou sufixo de `id`). */
+function extractUazapiMessageId(res: Record<string, unknown>): string {
+  const rawMessageId = res.messageid
+  if (typeof rawMessageId === 'string' && rawMessageId.trim()) {
+    return rawMessageId.trim()
+  }
+  if (typeof rawMessageId === 'number' && Number.isFinite(rawMessageId)) {
+    return String(Math.trunc(rawMessageId))
+  }
+
+  const rawId = res.id
+  if (typeof rawId === 'string' && rawId.trim()) {
+    const id = rawId.trim()
+    const colon = id.lastIndexOf(':')
+    if (colon >= 0 && colon < id.length - 1) {
+      return id.slice(colon + 1).trim()
+    }
+    return id
+  }
+
+  return ''
 }
 
 function normalizeStatus(s: string) {
@@ -65,9 +90,9 @@ function normalizeLidForUazapi(raw: string): string {
 }
 
 /**
- * Ambos informados → usa telefone.
- * Só um → usa esse.
- * Nenhum → erro (lançado no handler).
+ * Ambos informados → usa **LID** (telefone em `conversas.phone` pode estar errado com vários canais).
+ * Só telefone → usa telefone.
+ * Só LID → usa LID.
  */
 function resolveUazapiNumber(telRaw: string, lidRaw: string): {
   number: string
@@ -77,12 +102,12 @@ function resolveUazapiNumber(telRaw: string, lidRaw: string): {
   const tel = telRaw.trim()
   const lidIn = lidRaw.trim()
 
-  if (tel && lidIn) {
-    const number = normalizeUazapiNumber(tel)
+  if (lidIn) {
+    const number = normalizeLidForUazapi(lidIn)
     if (!number) {
-      throw createError({ statusCode: 400, statusMessage: 'telefone inválido.' })
+      throw createError({ statusCode: 400, statusMessage: 'lid inválido.' })
     }
-    return { number, enviouPorPhone: true, lidNormalizado: null }
+    return { number, enviouPorPhone: false, lidNormalizado: number }
   }
 
   if (tel) {
@@ -91,14 +116,6 @@ function resolveUazapiNumber(telRaw: string, lidRaw: string): {
       throw createError({ statusCode: 400, statusMessage: 'telefone inválido.' })
     }
     return { number, enviouPorPhone: true, lidNormalizado: null }
-  }
-
-  if (lidIn) {
-    const number = normalizeLidForUazapi(lidIn)
-    if (!number) {
-      throw createError({ statusCode: 400, statusMessage: 'lid inválido.' })
-    }
-    return { number, enviouPorPhone: false, lidNormalizado: number }
   }
 
   throw createError({
@@ -137,7 +154,7 @@ function mensagemErroUazapiFetch(err: unknown): string {
  *
  * Body:
  * - `id_canal` (obrigatório)
- * - `telefone` e/ou `lid` — obrigatório pelo menos um; se ambos, usa **telefone** para a Uazapi
+ * - `telefone` e/ou `lid` — obrigatório pelo menos um; se ambos, usa **LID** na Uazapi
  * - `conteudo` (obrigatório para texto; mídia pode ser vazio com legenda opcional)
  * - `conversa_sessao`: `conversas.key` da conversa aberta (lookup persistência / foto)
  *
@@ -199,6 +216,9 @@ export default defineEventHandler(async (event) => {
 
   const tempId = typeof body.temp_id === 'string' && body.temp_id.trim() ? body.temp_id.trim() : null
 
+  const replyid =
+    typeof body.replyid === 'string' && body.replyid.trim() ? body.replyid.trim() : null
+
   const isOwner = await checkChannel(event, canalId, userId)
   if (!isOwner) {
     throw createError({ statusCode: 403, statusMessage: 'Você não tem permissão para acessar este canal.' })
@@ -239,16 +259,20 @@ export default defineEventHandler(async (event) => {
   let lidResolvedParaPersist: string | null = lidNormalizado
 
   try {
+    const replyFields = replyid ? { replyid } : {}
+
     const bodyPrimario = isMedia
       ? {
           number: numeroEnvio,
           type: mediaType,
           file: mediaFile,
           text: conteudo || undefined,
+          ...replyFields,
         }
       : {
           number: numeroEnvio,
           text: conteudo,
+          ...replyFields,
         }
 
     let res: any
@@ -282,10 +306,12 @@ export default defineEventHandler(async (event) => {
                 type: mediaType,
                 file: mediaFile,
                 text: conteudo || undefined,
+                ...replyFields,
               }
             : {
                 number: jidLidFallback,
                 text: conteudo,
+                ...replyFields,
               },
         })
         numeroEnvio = jidLidFallback
@@ -313,8 +339,8 @@ export default defineEventHandler(async (event) => {
       const { data: convRow } = await admin
         .from('conversas')
         .select('lid, phone, photo')
-        .eq('id_canal', canalId)
         .eq('key', sessaoRaw)
+        .is('deleted_at', null)
         .maybeSingle()
       if (convRow && typeof convRow === 'object') {
         lidHint =
@@ -333,15 +359,12 @@ export default defineEventHandler(async (event) => {
     const lidParaPersist = enviouPorPhoneEfetivo
       ? lidHint
       : (lidHint ?? lidResolvedParaPersist)
-    const phoneParaPersist = enviouPorPhoneEfetivo
-      ? (pnLocal || null)
-      : (phoneFromConv ?? null)
+    const phoneParaPersist =
+      phoneFromConv ??
+      (enviouPorPhoneEfetivo ? pnLocal || null : null) ??
+      (telefoneRaw ? normalizeWhatsappBr(telefoneRaw.replace(/\D/g, '')) : null)
 
-    const messageIdRaw = res?.messageid
-    const message_id =
-      typeof messageIdRaw === 'string' && messageIdRaw.trim()
-        ? messageIdRaw.trim()
-        : String(messageIdRaw ?? '').trim()
+    const message_id = extractUazapiMessageId((res ?? {}) as Record<string, unknown>)
     if (!message_id) {
       throw createError({ statusCode: 502, statusMessage: 'Resposta da Uazapi sem messageid.' })
     }
@@ -368,6 +391,18 @@ export default defineEventHandler(async (event) => {
               ? ('audioMessage' as const)
               : ('documentMessage' as const)
 
+    let replyidValido: string | null = null
+    if (replyid) {
+      const { data: replyRow } = await admin
+        .from('mensagens')
+        .select('message_id')
+        .eq('message_id', replyid)
+        .maybeSingle()
+      if (replyRow && typeof replyRow === 'object') {
+        replyidValido = replyid
+      }
+    }
+
     const normalizada: MensagemNormalizada = {
       message_id,
       from_me: true,
@@ -378,7 +413,7 @@ export default defineEventHandler(async (event) => {
       messagetype,
       from_api: true,
       id_canal: canalId,
-      workspace_id: null,
+      workspace_id: workspaceId,
       media_url,
       caption: isMedia && messageText ? messageText : null,
       filename: null,
@@ -388,9 +423,12 @@ export default defineEventHandler(async (event) => {
       is_group: false,
       id_group: null,
       name_group: null,
+      ...(replyidValido ? { replyid: replyidValido } : {}),
     }
 
-    const saved = await persistWebhookMensagem(admin, normalizada)
+    const saved = await persistWebhookMensagem(admin, normalizada, {
+      conversa_key_hint: sessaoRaw || null,
+    })
     if (!saved.ok) {
       throw createError({
         statusCode: 500,
@@ -399,6 +437,77 @@ export default defineEventHandler(async (event) => {
     }
 
     const conversa_key = saved.conversa_key
+
+    const { data: mensagemSalva, error: mensagemSalvaErr } = await admin
+      .from('mensagens')
+      .select('message_id')
+      .eq('message_id', message_id)
+      .maybeSingle()
+
+    if (mensagemSalvaErr) {
+      throw createError({ statusCode: 500, statusMessage: mensagemSalvaErr.message })
+    }
+
+    if (!mensagemSalva) {
+      const { error: insertMsgErr } = await admin.from('mensagens').insert({
+        message_id,
+        created_at: createdAt,
+        from_me: true,
+        message: messageText || null,
+        phone: phoneParaPersist,
+        lid: lidParaPersist,
+        connected_phone: null,
+        messagetype,
+        from_api: true,
+        id_canal: canalId,
+        media_url,
+        caption: isMedia && messageText ? messageText : null,
+        filename: null,
+        key_conversa: conversa_key,
+        ...(replyidValido ? { replyid: replyidValido } : {}),
+      })
+
+      if (insertMsgErr) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: `Falha ao salvar mensagem: ${insertMsgErr.message}`,
+        })
+      }
+    }
+
+    let mensagemCitada: MensagemShape | null = null
+    if (replyidValido) {
+      const { data: citadaRow } = await admin
+        .from('mensagens')
+        .select(
+          'message_id, created_at, from_me, message, phone, lid, connected_phone, messagetype, from_api, id_canal, media_url, caption, filename, key_conversa, name, replyid',
+        )
+        .eq('message_id', replyidValido)
+        .maybeSingle()
+      if (citadaRow && typeof citadaRow === 'object') {
+        const row = citadaRow as Record<string, unknown>
+        mensagemCitada = {
+          key_conversa: typeof row.key_conversa === 'string' ? row.key_conversa : conversa_key,
+          message_id: String(row.message_id ?? replyidValido),
+          created_at:
+            typeof row.created_at === 'string' ? row.created_at : new Date().toISOString(),
+          from_me: row.from_me === true,
+          message: typeof row.message === 'string' ? row.message : null,
+          phone: typeof row.phone === 'string' ? row.phone : phoneParaPersist,
+          lid: typeof row.lid === 'string' ? row.lid : lidParaPersist,
+          connected_phone:
+            typeof row.connected_phone === 'string' ? row.connected_phone : null,
+          messagetype: (row.messagetype as MensagemShape['messagetype']) ?? 'conversation',
+          from_api: row.from_api === true,
+          id_canal: typeof row.id_canal === 'number' ? row.id_canal : canalId,
+          media_url: typeof row.media_url === 'string' ? row.media_url : null,
+          caption: typeof row.caption === 'string' ? row.caption : null,
+          filename: typeof row.filename === 'string' ? row.filename : null,
+          name: typeof row.name === 'string' ? row.name : null,
+          photo: photoExisting,
+        }
+      }
+    }
 
     const mensagem: MensagemShape = {
       key_conversa: conversa_key,
@@ -418,6 +527,8 @@ export default defineEventHandler(async (event) => {
       filename: null,
       name: null,
       photo: photoExisting,
+      ...(replyidValido ? { replyid: replyidValido } : {}),
+      ...(mensagemCitada ? { mensagem_citada: mensagemCitada } : {}),
     }
 
     const payload: PusherNovaMensagemPayload = {

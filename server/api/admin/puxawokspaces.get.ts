@@ -1,6 +1,6 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError } from 'h3'
-import type { Workspace } from '#shared/types/workspace'
+import type { AdminWorkspace } from '#shared/types/admin'
 import { checkAdmin } from '../../utils/checkAdmin'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -8,7 +8,7 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
  * GET /api/admin/puxawokspaces
  * Lista todos os workspaces ativos (sem soft delete), apenas para administradores.
  */
-export default defineEventHandler(async (event): Promise<Workspace[]> => {
+export default defineEventHandler(async (event): Promise<AdminWorkspace[]> => {
   const client = await serverSupabaseClient(event)
   const { data: authData, error: authError } = await client.auth.getUser()
 
@@ -33,7 +33,7 @@ export default defineEventHandler(async (event): Promise<Workspace[]> => {
 
   const { data, error } = await admin
     .from('workspace')
-    .select('id, nome, descricao, created_at')
+    .select('id, nome, descricao, created_at, user_id')
     .is('deleted_at', null)
     .is('deleted_by', null)
     .order('created_at', { ascending: false })
@@ -45,5 +45,14 @@ export default defineEventHandler(async (event): Promise<Workspace[]> => {
     })
   }
 
-  return (data ?? []) as Workspace[]
+  return (data ?? []).map((row) => {
+    const r = row as Record<string, unknown>
+    return {
+      id: Number(r.id),
+      nome: String(r.nome ?? ''),
+      descricao: r.descricao == null ? null : String(r.descricao),
+      created_at: String(r.created_at ?? ''),
+      user_id: String(r.user_id ?? ''),
+    } satisfies AdminWorkspace
+  })
 })

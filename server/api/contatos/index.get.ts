@@ -10,10 +10,11 @@ import {
 
 const PER_PAGE = 20
 
-const VIEW = 'view_conversas_com_detalhes_campos'
+const VIEW = 'view_kanban_conversas'
 
+/** Sem `mensagens` (histórico pesado); view já exclui `deleted_at`. */
 const SELECT =
-  'key, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, workspace_id, latitude, longitude, conversa_aberta, is_group, name_group, ia_ligada, nao_lidas, campos_personalizados, status_funil, deleted_at'
+  'conversa_key, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, workspace_id, conversa_aberta, is_group, name_group, ia_ligada, nao_lidas, funil_id, coluna_id, atendente_id, posicao, prioridade, campos_personalizados'
 
 /** Escapa `%` e `_` para uso em padrões `ilike` do PostgREST. */
 function escapeIlike(value: string): string {
@@ -27,7 +28,7 @@ function quotePostgrestFilterValue(value: string): string {
 /**
  * GET /api/contatos?workspace_id=&page=&q=
  *
- * Retorna contatos a partir da view `view_conversas_com_detalhes_campos`, filtrando por `workspace_id`.
+ * Retorna contatos a partir da view `view_kanban_conversas`, filtrando por `workspace_id`.
  * Paginado (20 por página).
  */
 export default defineEventHandler(async (event): Promise<ContatosListResponse> => {
@@ -77,7 +78,6 @@ export default defineEventHandler(async (event): Promise<ContatosListResponse> =
     .from(VIEW)
     .select(SELECT, { count: 'exact' })
     .eq('workspace_id', workspaceId)
-    .is('deleted_at', null)
 
   if (searchRaw.length > 0) {
     const esc = escapeIlike(searchRaw)

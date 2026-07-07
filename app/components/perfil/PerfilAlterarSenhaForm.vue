@@ -1,15 +1,55 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
+import { validarSenhaUsuario } from '#shared/utils/validarSenhaUsuario'
+
+const profile = useProfileStore()
 
 const novaSenha = ref('')
 const confirmarSenha = ref('')
+const revogarOutrasSessoes = ref(true)
 const showNova = ref(false)
 const showConfirmar = ref(false)
+const submitting = ref(false)
 
-function onAtualizar() {
-  /* UI — integrar depois */
+async function onAtualizar() {
+  const senha = novaSenha.value
+  const confirmacao = confirmarSenha.value
+
+  if (senha !== confirmacao) {
+    toast.warning('As senhas não conferem.')
+    return
+  }
+
+  const validacao = validarSenhaUsuario(senha)
+  if (!validacao.valida) {
+    toast.warning(validacao.mensagem ?? 'Senha inválida.')
+    return
+  }
+
+  submitting.value = true
+  try {
+    const resultado = await profile.updatePassword({
+      new_password: senha,
+      new_password_confirm: confirmacao,
+      revogar_outras_sessoes: revogarOutrasSessoes.value,
+    })
+    novaSenha.value = ''
+    confirmarSenha.value = ''
+    if (resultado.aviso) {
+      toast.warning(resultado.aviso)
+    } else if (resultado.revogou_outras_sessoes) {
+      toast.success('Senha atualizada. Outros acessos foram encerrados.')
+    } else {
+      toast.success('Senha atualizada com sucesso.')
+    }
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : 'Falha ao alterar senha.')
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 
@@ -139,9 +179,29 @@ function onAtualizar() {
           </BaseInput>
         </div>
 
+        <label
+          class="flex cursor-pointer items-start gap-3 rounded-xl border border-outline/30 px-4 py-3 text-sm dark:border-dark-outline/30"
+        >
+          <input
+            id="revogar-outras-sessoes"
+            v-model="revogarOutrasSessoes"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 shrink-0 rounded border-outline/50"
+            :disabled="submitting || profile.pending"
+          />
+          <span>
+            <span class="block font-semibold text-on-surface dark:text-dark-on-surface">
+              Encerrar acessos em outros dispositivos
+            </span>
+            <span class="mt-1 block text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+              Desconecta sessões abertas em outros navegadores e aparelhos. Você permanece logado neste dispositivo.
+            </span>
+          </span>
+        </label>
+
         <div class="pt-2">
-          <BaseButton id="btn-perfil-atualizar-senha" type="submit">
-            Atualizar Senha
+          <BaseButton id="btn-perfil-atualizar-senha" type="submit" :disabled="submitting || profile.pending">
+            {{ submitting || profile.pending ? 'Atualizando...' : 'Atualizar Senha' }}
           </BaseButton>
         </div>
       </form>

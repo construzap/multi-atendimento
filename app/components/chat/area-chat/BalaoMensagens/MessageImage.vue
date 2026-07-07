@@ -26,7 +26,7 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
         alt="Imagem"
         loading="lazy"
       />
-      <p v-if="caption" class="px-2 font-body text-sm text-on-surface dark:text-slate-200">
+      <p v-if="caption" class="whitespace-pre-wrap break-words px-2 font-body text-sm text-on-surface dark:text-slate-200">
         {{ caption }}
       </p>
       <span class="mt-1 block px-2 text-right text-[10px] text-on-surface-variant dark:text-slate-400">
@@ -43,7 +43,7 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
         alt="Imagem"
         loading="lazy"
       />
-      <p v-if="caption" class="px-2 font-body text-sm text-on-primary-container">
+      <p v-if="caption" class="whitespace-pre-wrap break-words px-2 font-body text-sm text-on-primary-container">
         {{ caption }}
       </p>
       <div class="mt-1 flex items-center justify-end gap-1 px-2">

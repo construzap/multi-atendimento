@@ -3,11 +3,15 @@ import { computed, watch } from 'vue'
 import { NuxtLink } from '#components'
 import AdminAcessoNegado from '~/components/admin/AdminAcessoNegado.vue'
 import AdminEmpresaSeletor from '~/components/admin/AdminEmpresaSeletor.vue'
+import SeletorCanaisIa from '~/components/admin/ia/SeletorCanaisIa.vue'
 import type { AdminEmpresaRow } from '#shared/types/admin'
 import type { AdminVerificarResponse } from '#shared/types/profile'
 
 const adminStore = useAdminStore()
+const route = useRoute()
 const mobileSidebarOpen = ref(false)
+
+const isPaginaIa = computed(() => route.path.startsWith('/admin/ia'))
 
 const {
   data: verificarData,
@@ -34,10 +38,20 @@ watch(
   (id) => {
     if (id) {
       adminStore.fetchPromptsSeNecessario(id).catch(() => {})
+      if (isPaginaIa.value) {
+        useAdminIaStore().fetchCanaisSeNecessario(id).catch(() => {})
+      }
     }
   },
   { immediate: true },
 )
+
+watch(isPaginaIa, (paginaIa) => {
+  const id = adminStore.selectedWorkspaceId
+  if (paginaIa && id) {
+    useAdminIaStore().fetchCanaisSeNecessario(id).catch(() => {})
+  }
+})
 
 const companies = computed<AdminEmpresaRow[]>(() => adminStore.workspaceSeletorRows)
 
@@ -139,12 +153,20 @@ function closeMobileSidebar() {
             </svg>
           </button>
         </div>
-        <AdminEmpresaSeletor
-          :companies="companies"
-          :selected-company-id="adminStore.selectedWorkspaceId"
-          :loading="adminStore.workspacesPending && !adminStore.workspacesLoaded"
-          @select="onSelectCompany"
-        />
+        <div class="min-h-0 flex-1 overflow-y-auto">
+          <AdminEmpresaSeletor
+            :companies="companies"
+            :selected-company-id="adminStore.selectedWorkspaceId"
+            :loading="adminStore.workspacesPending && !adminStore.workspacesLoaded"
+            @select="onSelectCompany"
+          />
+          <div
+            v-if="isPaginaIa"
+            class="border-t border-outline/40 dark:border-dark-outline/40"
+          >
+            <SeletorCanaisIa compact />
+          </div>
+        </div>
       </aside>
     </div>
 
@@ -181,7 +203,22 @@ function closeMobileSidebar() {
       </div>
     </aside>
 
+    <!-- Desktop: seletor de canais I.A (somente na página /admin/ia) -->
+    <aside
+      v-if="isPaginaIa"
+      class="hidden w-72 shrink-0 flex-col overflow-hidden border-r border-outline/40 bg-surface-container-lowest dark:border-dark-outline/40 dark:bg-dark-surface-container-low md:flex"
+      aria-label="Seletor de canais com I.A"
+    >
+      <SeletorCanaisIa />
+    </aside>
+
     <main class="min-w-0 flex-1 overflow-y-auto bg-background transition-colors dark:bg-dark-background">
+      <div
+        v-if="isPaginaIa"
+        class="border-b border-outline/40 md:hidden dark:border-dark-outline/40"
+      >
+        <SeletorCanaisIa compact />
+      </div>
       <slot />
     </main>
   </div>

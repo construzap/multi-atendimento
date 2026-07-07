@@ -27,16 +27,25 @@ export interface Mensagem {
   photo: string | null
   /** Indica resposta enviada pela I.A (`track_id === "ia"` no webhook). */
   from_ia?: boolean
+  /** `message_id` da mensagem citada (reply). */
+  replyid?: string | null
+  /** Mensagem citada (resolvida no GET a partir de `replyid`). */
+  mensagem_citada?: Mensagem | null
 }
 
 /**
  * Resposta paginada de `GET /api/mensagens`.
+ * Metadados da conversa vêm de `view_kanban_conversas` (nível conversa, não por mensagem).
  */
 export interface MensagensListResponse {
   data: Mensagem[]
   page: number
   perPage: number
   total: number
+  id_canal?: number | null
+  funil_id?: number | null
+  coluna_id?: number | null
+  atendente_id?: string | null
 }
 
 /**

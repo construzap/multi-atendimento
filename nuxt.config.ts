@@ -14,6 +14,14 @@ export default defineNuxtConfig({
     strictPort: true,
   },
   runtimeConfig: {
+    /** URL do webhook N8N para I.A nas instâncias (override: NUXT_URL_IA_N8N ou URL_IA_N8N no .env). */
+    urlIaN8n: process.env.URL_IA_N8N || process.env.NUXT_URL_IA_N8N || '',
+    /** URL do app multiatendimento para webhook na instância (override: NUXT_URL_MULTIATENDIMENTO_CONSTRUZAP). */
+    urlMultiatendimentoConstruzap:
+      process.env.URL_MULTIATENDIMENTO_CONSTRUZAP ||
+      process.env.NUXT_URL_MULTIATENDIMENTO_CONSTRUZAP ||
+      '',
+
     // --- Backblaze B2 (override: NUXT_B2_*) ---
     b2Endpoint: '',
     b2Region: '',
@@ -50,7 +58,10 @@ export default defineNuxtConfig({
   },
   vite: {
     server: {
-      allowedHosts: ['fondness-auction-peroxide.ngrok-free.dev']
+      allowedHosts: [
+        'fondness-auction-peroxide.ngrok-free.dev',
+        'whats.construzap.com',
+      ],
     }
   },
   app: {

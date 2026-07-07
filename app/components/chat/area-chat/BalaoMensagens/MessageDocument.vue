@@ -108,7 +108,7 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
         </a>
       </div>
 
-      <p v-if="caption" class="mt-2 font-body text-sm text-on-surface dark:text-slate-200">
+      <p v-if="caption" class="mt-2 whitespace-pre-wrap break-words font-body text-sm text-on-surface dark:text-slate-200">
         {{ caption }}
       </p>
 
@@ -170,7 +170,7 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
         </a>
       </div>
 
-      <p v-if="caption" class="mt-2 font-body text-sm text-on-primary-container">
+      <p v-if="caption" class="mt-2 whitespace-pre-wrap break-words font-body text-sm text-on-primary-container">
         {{ caption }}
       </p>
 

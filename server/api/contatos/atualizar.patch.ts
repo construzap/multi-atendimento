@@ -11,9 +11,10 @@ import { mapViewRowToContato } from '../../utils/viewConversasDetalhes'
 const SELECT =
   'key, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, workspace_id, latitude, longitude, conversa_aberta, is_group, name_group, ia_ligada, nao_lidas'
 
-const VIEW = 'view_conversas_com_detalhes_campos'
+const VIEW = 'view_kanban_conversas'
 
-const VIEW_SELECT = `${SELECT}, campos_personalizados, status_funil, deleted_at`
+const VIEW_SELECT =
+  'conversa_key, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, workspace_id, conversa_aberta, is_group, name_group, ia_ligada, nao_lidas, funil_id, coluna_id, atendente_id, posicao, prioridade, campos_personalizados'
 
 type Body = {
   workspace_id?: unknown
@@ -255,11 +256,8 @@ export default defineEventHandler(async (event): Promise<ContatoAtualizarRespons
   const { data: viewRow, error: viewErr } = await admin
     .from(VIEW)
     .select(VIEW_SELECT)
-    .eq('key', key)
+    .eq('conversa_key', key)
     .eq('workspace_id', workspaceId)
-    .is('deleted_at', null)
-    .order('updated_at', { ascending: false })
-    .limit(1)
     .maybeSingle()
 
   if (viewErr) {

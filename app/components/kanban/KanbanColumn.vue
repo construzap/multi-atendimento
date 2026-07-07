@@ -1,10 +1,24 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { KanbanCard as KanbanCardModel, KanbanColumn } from '#shared/types/kanban'
+import { computed, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { toast } from 'vue-sonner'
+import type {
+  KanbanCard as KanbanCardModel,
+  KanbanColumn,
+  KanbanCriarContatoBody,
+  KanbanCriarContatoResponse,
+} from '#shared/types/kanban'
+import { normalizarTelefoneContatoParaGravacao } from '#shared/utils/normalizeWhatsappBr'
+import BaseButton from '~/components/BaseButton.vue'
+import BaseInput from '~/components/BaseInput.vue'
+import BaseModal from '~/components/BaseModal.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
+import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
+import { useKanbanStore } from '~/stores/kanban'
 import KanbanCard from './KanbanCard.vue'
 
 const props = defineProps<{
+  workspaceId: number
   column: KanbanColumn
   draggingId?: string | null
   dragOverColumnId?: string | number | null
@@ -26,6 +40,140 @@ const emit = defineEmits<{
   loadMore: [columnId: number]
   cardOpen: [card: KanbanCardModel]
 }>()
+
+const kanban = useKanbanStore()
+const canaisStore = useCanaisStore()
+const { columns } = storeToRefs(kanban)
+const { items: canaisItems, listPending: canaisPending, currentCanalId } = storeToRefs(canaisStore)
+
+/** Coluna atual no Pinia (fonte de verdade do board). */
+const colunaNoStore = computed(() =>
+  columns.value.find((c) => c.id === props.column.id) ?? null,
+)
+
+const colunaIdExibicao = computed(() => colunaNoStore.value?.id ?? props.column.id)
+
+const modalNovoContatoAberto = ref(false)
+const nomeContato = ref('')
+const telefoneContato = ref('')
+const colunaSelecionadaId = ref<number | null>(null)
+const canalSelecionadoId = ref<number | null>(null)
+const criandoContato = ref(false)
+const carregandoCanaisModal = ref(false)
+
+function nomeCanalOpcao(canal: { id: number; nome: string | null }) {
+  const n = canal.nome?.trim()
+  return n || `Canal #${canal.id}`
+}
+
+function canalPadraoId(): number | null {
+  const atual = currentCanalId.value
+  if (atual != null && canaisItems.value.some((c) => c.id === atual)) return atual
+  return canaisItems.value[0]?.id ?? null
+}
+
+async function garantirCanaisNoModal() {
+  if (!props.workspaceId) return
+  carregandoCanaisModal.value = true
+  try {
+    await canaisStore.ensureCanaisLoaded(props.workspaceId)
+    if (
+      canalSelecionadoId.value == null ||
+      !canaisItems.value.some((c) => c.id === canalSelecionadoId.value)
+    ) {
+      canalSelecionadoId.value = canalPadraoId()
+    }
+  } catch (err: unknown) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível carregar os canais.'))
+  } finally {
+    carregandoCanaisModal.value = false
+  }
+}
+
+async function abrirModalNovoContato() {
+  nomeContato.value = ''
+  telefoneContato.value = ''
+  colunaSelecionadaId.value = props.column.id
+  canalSelecionadoId.value = canalPadraoId()
+  modalNovoContatoAberto.value = true
+  await garantirCanaisNoModal()
+}
+
+function fecharModalNovoContato() {
+  modalNovoContatoAberto.value = false
+}
+
+watch(modalNovoContatoAberto, (aberto) => {
+  if (!aberto) {
+    nomeContato.value = ''
+    telefoneContato.value = ''
+    colunaSelecionadaId.value = null
+    canalSelecionadoId.value = null
+    criandoContato.value = false
+    carregandoCanaisModal.value = false
+  }
+})
+
+function validarFormularioNovoContato():
+  | { erro: string }
+  | { telefone: string; id_canal: number; coluna_id: number } {
+  if (!nomeContato.value.trim()) return { erro: 'Informe o nome.' }
+
+  const telefone = normalizarTelefoneContatoParaGravacao(telefoneContato.value)
+  if (!telefone) {
+    return {
+      erro: 'Telefone inválido. Use DDD+número (ex: 11 9xxxx xxxx) ou com DDI 55.',
+    }
+  }
+
+  if (colunaSelecionadaId.value == null || colunaSelecionadaId.value < 1) {
+    return { erro: 'Selecione a coluna.' }
+  }
+
+  if (canalSelecionadoId.value == null || canalSelecionadoId.value < 1) {
+    return { erro: 'Selecione o canal.' }
+  }
+
+  return {
+    telefone,
+    id_canal: canalSelecionadoId.value,
+    coluna_id: colunaSelecionadaId.value,
+  }
+}
+
+async function criarContato() {
+  const validacao = validarFormularioNovoContato()
+  if ('erro' in validacao) {
+    toast.error(validacao.erro)
+    return
+  }
+  if (!props.workspaceId) {
+    toast.error('Workspace não informado.')
+    return
+  }
+
+  criandoContato.value = true
+  try {
+    const body: KanbanCriarContatoBody = {
+      workspace_id: props.workspaceId,
+      nome: nomeContato.value.trim(),
+      telefone: validacao.telefone,
+      coluna_id: validacao.coluna_id,
+      id_canal: validacao.id_canal,
+    }
+    await $fetch<KanbanCriarContatoResponse>('/api/kanban/contato', {
+      method: 'POST',
+      body,
+    })
+    fecharModalNovoContato()
+    await kanban.fetchBoard(props.workspaceId)
+    toast.success('Contato criado.')
+  } catch (err: unknown) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível criar o contato.'))
+  } finally {
+    criandoContato.value = false
+  }
+}
 
 function onEditar(close: () => void) {
   close()
@@ -115,12 +263,17 @@ function onDrop(e: DragEvent) {
             :style="dotStyle"
             aria-hidden="true"
           />
-          <h2
-            class="min-w-0 flex-1 break-normal font-headline text-sm font-bold leading-snug text-slate-900 dark:text-dark-on-surface"
-            lang="pt-BR"
-          >
-            {{ column.nome }}
-          </h2>
+          <div class="min-w-0 flex-1">
+            <h2
+              class="break-normal font-headline text-sm font-bold leading-snug text-slate-900 dark:text-dark-on-surface"
+              lang="pt-BR"
+            >
+              {{ column.nome }}
+            </h2>
+            <p class="mt-0.5 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
+              ID {{ colunaIdExibicao }}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -158,6 +311,15 @@ function onDrop(e: DragEvent) {
         >
           {{ column.total_cards ?? column.cards.length }}
         </span>
+
+        <button
+          type="button"
+          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-white/60 dark:text-slate-400 dark:hover:bg-slate-800/80"
+          :aria-label="`Adicionar em ${column.nome}`"
+          @click.stop="abrirModalNovoContato"
+        >
+          <span class="material-symbols-outlined text-[22px]" aria-hidden="true">add</span>
+        </button>
 
         <div class="shrink-0" @click.stop @mousedown.stop>
           <BaseDropdown
@@ -259,5 +421,112 @@ function onDrop(e: DragEvent) {
       </span>
       <span v-else>Carregar mais</span>
     </button>
+
+    <BaseModal
+      v-model:open="modalNovoContatoAberto"
+      title="Novo contato"
+      :show-close="!criandoContato"
+      panel-class="w-full max-w-md"
+    >
+      <div class="space-y-4">
+        <div>
+          <label
+            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
+            for="kanban-novo-contato-nome"
+          >
+            Nome
+          </label>
+          <BaseInput
+            id="kanban-novo-contato-nome"
+            v-model="nomeContato"
+            name="kanban-novo-contato-nome"
+            placeholder="Nome do contato"
+            autocomplete="name"
+            :disabled="criandoContato"
+          />
+        </div>
+
+        <div>
+          <label
+            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
+            for="kanban-novo-contato-telefone"
+          >
+            Telefone
+          </label>
+          <BaseInput
+            id="kanban-novo-contato-telefone"
+            v-model="telefoneContato"
+            name="kanban-novo-contato-telefone"
+            type="tel"
+            placeholder="DDD + número"
+            autocomplete="tel"
+            :disabled="criandoContato"
+          />
+        </div>
+
+        <div>
+          <label
+            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
+            for="kanban-novo-contato-canal"
+          >
+            Canal
+          </label>
+          <select
+            id="kanban-novo-contato-canal"
+            v-model.number="canalSelecionadoId"
+            class="w-full rounded-xl border border-outline/45 bg-surface-container-lowest/90 px-3.5 py-2.5 text-sm font-medium text-on-surface shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:opacity-60 dark:border-dark-outline/45 dark:bg-dark-surface-container-low/90 dark:text-dark-on-surface"
+            :disabled="criandoContato || carregandoCanaisModal || canaisPending"
+          >
+            <option v-if="canaisItems.length === 0" :value="null" disabled>
+              {{ carregandoCanaisModal || canaisPending ? 'Carregando canais…' : 'Nenhum canal disponível' }}
+            </option>
+            <option v-for="canal in canaisItems" :key="canal.id" :value="canal.id">
+              {{ nomeCanalOpcao(canal) }}
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label
+            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
+            for="kanban-novo-contato-coluna"
+          >
+            Coluna
+          </label>
+          <select
+            id="kanban-novo-contato-coluna"
+            v-model.number="colunaSelecionadaId"
+            class="w-full rounded-xl border border-outline/45 bg-surface-container-lowest/90 px-3.5 py-2.5 text-sm font-medium text-on-surface shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-outline/45 dark:bg-dark-surface-container-low/90 dark:text-dark-on-surface"
+            :disabled="criandoContato"
+          >
+            <option v-for="col in columns" :key="col.id" :value="col.id">
+              {{ col.nome?.trim() || `Coluna #${col.id}` }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <template #footer>
+        <BaseButton
+          variant="secondary"
+          size="sm"
+          :block="false"
+          :disabled="criandoContato"
+          @click="fecharModalNovoContato"
+        >
+          Cancelar
+        </BaseButton>
+        <BaseButton
+          variant="primary"
+          size="sm"
+          :block="false"
+          :loading="criandoContato"
+          :disabled="criandoContato || carregandoCanaisModal || canaisPending || canaisItems.length === 0"
+          @click="criarContato"
+        >
+          Criar
+        </BaseButton>
+      </template>
+    </BaseModal>
   </section>
 </template>

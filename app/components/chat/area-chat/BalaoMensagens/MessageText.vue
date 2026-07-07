@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Mensagem } from '#shared/types/mensagem'
+import MensagemCitada from '~/components/chat/area-chat/BalaoMensagens/MensagemCitada.vue'
 
 const props = withDefaults(
   defineProps<{
     mensagem: Mensagem
     /** Só em conversas de grupo: exibe o remetente acima do balão. */
     ehGrupo?: boolean
+    /** Mensagem citada (resolvida via Pinia a partir de `replyid`). */
+    mensagemCitada?: Mensagem | null
   }>(),
-  { ehGrupo: false },
+  { ehGrupo: false, mensagemCitada: null },
 )
 
 const isFromMe = computed(() => Boolean(props.mensagem.from_me))
@@ -30,15 +33,20 @@ const nomeRemetente = computed(() => {
 
 <template>
   <!-- Recebida -->
-  <div v-if="!isFromMe" class="mb-4 flex max-w-[70%] flex-col items-start">
+  <div v-if="!isFromMe" class="mb-4 flex w-full min-w-0 flex-col items-start">
     <p
       v-if="nomeRemetente"
-      class="mb-1 px-1 text-[11px] font-semibold text-primary dark:text-primary-300"
+      class="mb-1 max-w-full px-1 text-[11px] font-semibold text-primary dark:text-primary-300"
     >
       {{ nomeRemetente }}
     </p>
-    <div class="rounded-xl rounded-tl-none bg-surface-container-highest p-4 shadow-sm dark:bg-slate-800">
-      <p class="font-body text-sm text-on-surface dark:text-slate-200">
+    <div class="w-full min-w-0 max-w-full rounded-xl rounded-tl-none bg-surface-container-highest p-4 shadow-sm dark:bg-slate-800">
+      <MensagemCitada
+        v-if="mensagemCitada"
+        :mensagem="mensagemCitada"
+        :eh-grupo="ehGrupo"
+      />
+      <p class="whitespace-pre-wrap break-words font-body text-sm text-on-surface dark:text-slate-200">
         {{ texto }}
       </p>
       <span class="mt-1 block text-right text-[10px] text-on-surface-variant dark:text-slate-400">
@@ -48,9 +56,15 @@ const nomeRemetente = computed(() => {
   </div>
 
   <!-- Enviada -->
-  <div v-else class="mb-4 ml-auto flex max-w-[70%] flex-col items-end self-end">
-    <div class="rounded-xl rounded-tr-none bg-primary-container p-4 shadow-sm">
-      <p class="font-body text-sm text-on-primary-container">
+  <div v-else class="mb-4 flex w-full min-w-0 flex-col items-end">
+    <div class="w-full min-w-0 max-w-full rounded-xl rounded-tr-none bg-primary-container p-4 shadow-sm">
+      <MensagemCitada
+        v-if="mensagemCitada"
+        :mensagem="mensagemCitada"
+        :eh-grupo="ehGrupo"
+        from-me
+      />
+      <p class="whitespace-pre-wrap break-words font-body text-sm text-on-primary-container">
         {{ texto }}
       </p>
       <div class="mt-1 flex items-center justify-end gap-1">

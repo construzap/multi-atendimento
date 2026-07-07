@@ -1,14 +1,26 @@
 <script setup lang="ts">
 import { computed, onUnmounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import InfoContatoConversa from '~/components/InfoContatoConversa.vue'
-import KanbanInfoContatoConversaCampos from './KanbanInfoContatoConversaCampos.vue'
-import KanbanInfoContatoConversaChat from './KanbanInfoContatoConversaChat.vue'
+import InfoContatoConversa from '../../InfoContatoConversa.vue'
+import Etapa from './Etapa.vue'
+import ConversaCampos from './ConversaCampos.vue'
+import ConversaChat from './ConversaChat.vue'
 import type { InfoContatoConversaData } from '#shared/types/infoContatoConversa'
-import { useKanbanStore } from '~/stores/kanban'
+import { useKanbanStore } from '../../../stores/kanban'
 
 const kanban = useKanbanStore()
 const { infoContatoConversaKey, infoContatoCard, infoContatoColumn } = storeToRefs(kanban)
+
+const route = useRoute()
+
+const workspaceId = computed(() => {
+  const fromStore = kanban.workspaceIdLoaded
+  if (fromStore != null && fromStore > 0) return fromStore
+  const raw = route.params.id
+  const s = String(Array.isArray(raw) ? raw[0] : raw ?? '').trim()
+  const n = Number.parseInt(s, 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+})
 
 const isOpen = computed({
   get: () => infoContatoConversaKey.value != null,
@@ -29,8 +41,14 @@ const contato = computed((): InfoContatoConversaData | null => {
     preview: card.preview,
     updated_at: card.updated_at,
     canal_nome: card.canal_nome,
+    id_canal: card.id_canal,
+    conversa_aberta: card.conversa_aberta,
+    is_group: card.is_group,
+    name_group: card.name_group,
+    ia_ligada: card.ia_ligada,
     prioridade: card.prioridade,
     etapa_nome: infoContatoColumn.value?.nome ?? null,
+    coluna_id: card.coluna_id,
   }
 })
 
@@ -96,10 +114,25 @@ onUnmounted(() => {
             class="flex h-[min(90vh,720px)] w-full max-w-4xl overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest shadow-xl dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
             @click.stop
           >
-            <InfoContatoConversa v-model:open="isOpen" embedded :contato="contato">
-              <KanbanInfoContatoConversaCampos />
+            <InfoContatoConversa
+              v-model:open="isOpen"
+              embedded
+              :contato="contato"
+              conversa-editavel
+              :workspace-id="workspaceId"
+            >
+              <template v-if="contato" #etapa-funil>
+                <Etapa
+                  :conversa-key="contato.conversa_key"
+                  :coluna-id="contato.coluna_id ?? null"
+                  :etapa-nome="contato.etapa_nome ?? null"
+                  conversa-editavel
+                  :workspace-id="workspaceId"
+                />
+              </template>
+              <ConversaCampos />
             </InfoContatoConversa>
-            <KanbanInfoContatoConversaChat />
+            <ConversaChat />
           </div>
         </Transition>
       </div>

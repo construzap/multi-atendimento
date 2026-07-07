@@ -1,12 +1,12 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, getQuery } from 'h3'
-import { getAuthUserId } from '../../utils/getAuthUserId'
-import { checkWorkspace } from '../../utils/checkWorkspace'
+import { getAuthUserId } from '../../../utils/getAuthUserId'
+import { checkWorkspace } from '../../../utils/checkWorkspace'
 
 /**
  * DELETE /api/kanban/coluna?workspace_id=&coluna_id=
  * Soft-delete (`deleted_at`) e renumera `ordem` das colunas ativas do funil (1..n).
- * Bloqueia se existir card em `funil_conversa_status` para essa coluna neste workspace.
+ * Bloqueia se existir conversa em `conversas` com `coluna_id` desta coluna neste workspace.
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'DELETE')
@@ -83,15 +83,16 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const { data: statusSample, error: stErr } = await admin
-    .from('funil_conversa_status')
-    .select('conversa_key')
+  const { data: cardsNaColuna, error: cardsErr } = await admin
+    .from('conversas')
+    .select('key')
     .eq('workspace_id', workspaceId)
     .eq('coluna_id', colunaId)
+    .is('deleted_at', null)
     .limit(1)
 
-  if (stErr) throw createError({ statusCode: 500, statusMessage: stErr.message })
-  if (statusSample && statusSample.length > 0) {
+  if (cardsErr) throw createError({ statusCode: 500, statusMessage: cardsErr.message })
+  if (cardsNaColuna && cardsNaColuna.length > 0) {
     throw createError({
       statusCode: 400,
       statusMessage:

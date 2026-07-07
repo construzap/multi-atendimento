@@ -229,9 +229,10 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
         .filter((n): n is string => Boolean(n?.length)),
     ),
   ]
-  if (nomesTermosUnicos.length > 0) {
-    await resolverTermosDoLoteImportacao(admin, workspaceId, nomesTermosUnicos)
-  }
+  const termoIdPorNome =
+    nomesTermosUnicos.length > 0
+      ? await resolverTermosDoLoteImportacao(admin, workspaceId, nomesTermosUnicos)
+      : new Map<string, number>()
 
   function resolverCategoriaId(r: ProdutoImportarLinha): number | null {
     const cid = r.categoria_id

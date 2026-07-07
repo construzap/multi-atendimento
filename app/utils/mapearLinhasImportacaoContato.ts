@@ -387,7 +387,43 @@ export function construirLinhasImportacaoContato(
     diagnostico.validas += 1
   }
 
-  return { linhas: out, diagnostico }
+  const linhas = deduplicarLinhasImportacaoContato(out)
+
+  return { linhas, diagnostico }
+}
+
+function mesclarCamposPersonalizados(
+  a: ContatoImportarLinha['campos_personalizados'],
+  b: ContatoImportarLinha['campos_personalizados'],
+): ContatoImportarLinha['campos_personalizados'] {
+  const map = new Map<number, NonNullable<ContatoImportarLinha['campos_personalizados']>[number]>()
+  for (const cp of a ?? []) map.set(cp.campo_id, cp)
+  for (const cp of b ?? []) map.set(cp.campo_id, cp)
+  return map.size ? [...map.values()] : undefined
+}
+
+/** Mescla duas linhas do mesmo telefone; a última prevalece nos campos escalares. */
+export function mesclarLinhasImportacaoContato(
+  prev: ContatoImportarLinha,
+  next: ContatoImportarLinha,
+): ContatoImportarLinha {
+  const merged: ContatoImportarLinha = { ...prev, ...next }
+  const cps = mesclarCamposPersonalizados(prev.campos_personalizados, next.campos_personalizados)
+  if (cps?.length) merged.campos_personalizados = cps
+  else delete merged.campos_personalizados
+  if (next.status_funil) merged.status_funil = next.status_funil
+  else if (prev.status_funil) merged.status_funil = prev.status_funil
+  return merged
+}
+
+/** Remove duplicatas pelo telefone (mesmo workspace/canal); mescla campos personalizados. */
+export function deduplicarLinhasImportacaoContato(linhas: ContatoImportarLinha[]): ContatoImportarLinha[] {
+  const porPhone = new Map<string, ContatoImportarLinha>()
+  for (const linha of linhas) {
+    const prev = porPhone.get(linha.phone)
+    porPhone.set(linha.phone, prev ? mesclarLinhasImportacaoContato(prev, linha) : linha)
+  }
+  return [...porPhone.values()]
 }
 
 export function mapeamentoTemNome(mapeamentoPorIndice: Record<number, string>): boolean {

@@ -1,5 +1,6 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
+import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 type Body = {
@@ -11,7 +12,7 @@ type Body = {
 /**
  * POST /api/kanban/mover
  * Body: `{ workspace_id, conversa_key, coluna_id }`
- * Atualiza ou cria linha em `funil_conversa_status`.
+ * Atualiza `conversas.coluna_id` e `conversas.funil_id`.
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
@@ -50,26 +51,13 @@ export default defineEventHandler(async (event) => {
     typeof colunaIdRaw === 'number'
       ? colunaIdRaw
       : Number.parseInt(String(colunaIdRaw ?? ''), 10)
-  if (!Number.isFinite(colunaId) || !Number.isInteger(colunaId)) {
+  if (!Number.isFinite(colunaId) || !Number.isInteger(colunaId) || colunaId < 1) {
     throw createError({ statusCode: 400, statusMessage: 'coluna_id inválido.' })
   }
 
+  await checkWorkspace(event, workspaceId, userId)
+
   const admin = serverSupabaseServiceRole<any>(event)
-
-  const { data: wsRow, error: wsErr } = await admin
-    .from('workspace')
-    .select('id')
-    .eq('id', workspaceId)
-    .eq('user_id', userId)
-    .maybeSingle()
-
-  if (wsErr) throw createError({ statusCode: 500, statusMessage: wsErr.message })
-  if (!wsRow) {
-    throw createError({
-      statusCode: 403,
-      statusMessage: 'Workspace não encontrado ou sem permissão.',
-    })
-  }
 
   const { data: funil, error: funilErr } = await admin
     .from('funil_workspace')
@@ -102,18 +90,28 @@ export default defineEventHandler(async (event) => {
 
   const nowIso = new Date().toISOString()
 
-  const { error: upErr } = await admin.from('funil_conversa_status').upsert(
-    {
-      conversa_key: conversaKey,
-      workspace_id: workspaceId,
+  const { data: updated, error: upErr } = await admin
+    .from('conversas')
+    .update({
       coluna_id: colunaId,
+      funil_id: funilId,
       updated_at: nowIso,
-    },
-    { onConflict: 'conversa_key' },
-  )
+    })
+    .eq('key', conversaKey)
+    .eq('workspace_id', workspaceId)
+    .is('deleted_at', null)
+    .select('key')
+    .maybeSingle()
 
   if (upErr) {
     throw createError({ statusCode: 500, statusMessage: upErr.message })
+  }
+
+  if (!updated) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: 'Conversa não encontrada neste workspace.',
+    })
   }
 
   return { ok: true as const }

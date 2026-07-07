@@ -1,13 +1,59 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, getQuery } from 'h3'
 import type { Conversa, ConversasListResponse } from '#shared/types/conversa'
+import type { MessageType } from '#shared/types/messageType'
 import { checkChannel } from '../../utils/checkChannel'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 const PER_PAGE = 20
+const VIEW_KANBAN_CONVERSAS = 'view_kanban_conversas'
 
-const SELECT =
-  'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group, nao_lidas'
+const VIEW_SELECT =
+  'conversa_key, preview, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group, nao_lidas'
+
+type ViewKanbanConversaRow = {
+  conversa_key: string
+  preview: string | null
+  messatype: string | null
+  name: string | null
+  created_at: string | null
+  updated_at: string | null
+  id_canal: number | null
+  phone: string | null
+  lid: string | null
+  connect_phone: string | null
+  photo: string | null
+  from_me: boolean | null
+  media_url: string | null
+  conversa_aberta: boolean | null
+  is_group: boolean | null
+  id_group: string | null
+  name_group: string | null
+  nao_lidas: number | null
+}
+
+function mapViewRowToConversa(row: ViewKanbanConversaRow): Conversa {
+  return {
+    key: row.conversa_key,
+    message: row.preview,
+    messatype: (row.messatype ?? null) as MessageType | null,
+    name: row.name,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    id_canal: row.id_canal,
+    phone: row.phone,
+    lid: row.lid,
+    connect_phone: row.connect_phone,
+    photo: row.photo,
+    from_me: row.from_me,
+    media_url: row.media_url,
+    conversa_aberta: row.conversa_aberta,
+    is_group: row.is_group,
+    id_group: row.id_group,
+    name_group: row.name_group,
+    nao_lidas: row.nao_lidas ?? 0,
+  }
+}
 
 function parseConversaAbertaFilter(raw: unknown): boolean | null | undefined {
   if (raw === undefined || raw === null || raw === '') return undefined
@@ -33,7 +79,7 @@ function parseIsGroupFilter(raw: unknown): boolean | undefined {
 
 /**
  * GET /api/conversas?id_canal=&page=&conversa_aberta=&is_group=
- * Lista mensagens/conversas do canal, paginadas (20 por página), apenas para o dono do canal.
+ * Lista conversas do canal via `view_kanban_conversas`, paginadas (20 por página).
  *
  * Query:
  * - `id_canal` (obrigatório): id do canal em `canais.id`
@@ -105,29 +151,24 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
 
   const admin = serverSupabaseServiceRole<any>(event)
   let query = admin
-    .from('conversas')
-    .select(SELECT, { count: 'exact' })
+    .from(VIEW_KANBAN_CONVERSAS)
+    .select(VIEW_SELECT, { count: 'exact' })
     .eq('id_canal', canalId)
-    .is('deleted_at', null)
 
   if (conversaAbertaFilter === true) {
-    // Registros legados com null continuam visíveis na lista de abertas.
     query = query.or('conversa_aberta.is.null,conversa_aberta.eq.true')
   } else if (conversaAbertaFilter === false) {
     query = query.eq('conversa_aberta', false)
   }
 
   if (isGroupFilter === false) {
-    // Registros legados com null continuam visíveis como conversas 1:1.
     query = query.or('is_group.is.null,is_group.eq.false')
   } else if (isGroupFilter === true) {
     query = query.eq('is_group', true)
   }
 
   const { data, error, count } = await query
-    // Mais recentes primeiro: conversa atualiza por `updated_at` (não por `created_at`)
     .order('updated_at', { ascending: false, nullsFirst: false })
-    .order('created_at', { ascending: false })
     .range(from, to)
 
   if (error) {
@@ -137,8 +178,10 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
     })
   }
 
+  const rows = (data ?? []) as ViewKanbanConversaRow[]
+
   return {
-    data: (data ?? []) as Conversa[],
+    data: rows.map(mapViewRowToConversa),
     page,
     perPage: PER_PAGE,
     total: count ?? 0

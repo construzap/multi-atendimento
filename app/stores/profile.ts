@@ -61,7 +61,31 @@ export const useProfileStore = defineStore('profile', {
       } finally {
         this.pending = false
       }
-    }
+    },
+
+    async updatePassword(input: {
+      new_password: string
+      new_password_confirm: string
+      revogar_outras_sessoes?: boolean
+    }) {
+      this.pending = true
+      this.error = null
+
+      try {
+        return await $fetch<{ ok: true; revogou_outras_sessoes: boolean; aviso?: string }>(
+          '/api/perfil/senha',
+          {
+            method: 'PATCH',
+            body: input,
+          },
+        )
+      } catch (err) {
+        this.error = err instanceof Error ? err.message : 'Falha ao alterar senha.'
+        throw err
+      } finally {
+        this.pending = false
+      }
+    },
   }
 })
 

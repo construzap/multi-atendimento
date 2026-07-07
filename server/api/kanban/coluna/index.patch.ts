@@ -1,7 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
-import { getAuthUserId } from '../../utils/getAuthUserId'
-import { checkWorkspace } from '../../utils/checkWorkspace'
+import { getAuthUserId } from '../../../utils/getAuthUserId'
+import { checkWorkspace } from '../../../utils/checkWorkspace'
 
 type Body = {
   workspace_id?: unknown

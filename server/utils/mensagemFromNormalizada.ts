@@ -29,5 +29,6 @@ export function mensagemFromNormalizada(n: MensagemNormalizada, conversa_key: st
     name: n.name,
     photo: n.is_group ? null : n.photo,
     ...(n.from_ia ? { from_ia: true } : {}),
+    ...(n.replyid?.trim() ? { replyid: n.replyid.trim() } : {}),
   }
 }

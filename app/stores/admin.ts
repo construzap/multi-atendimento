@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia'
-import type { AdminEmpresaRow } from '#shared/types/admin'
-import type { AdminPromptItem } from '~/components/admin/prompt/types'
+import type { AdminEmpresaRow, AdminWorkspace } from '#shared/types/admin'
 import type { AdminPromptListResponse, PromptWorkspaceComPrincipal } from '#shared/types/adminPrompt'
-import type { Workspace } from '#shared/types/workspace'
+import { PROMPT_WORKSPACE_TIPO_DEFAULT } from '#shared/types/adminPrompt'
+import type { AdminPromptItem } from '~/components/admin/prompt/types'
 import { mensagemErroFetch } from '~/stores/canais'
 
-let fetchWorkspacesEmCurso: Promise<Workspace[]> | null = null
+let fetchWorkspacesEmCurso: Promise<AdminWorkspace[]> | null = null
 const fetchPromptsEmCurso = new Map<string, Promise<PromptWorkspaceComPrincipal[]>>()
 
 type PromptsCacheEntry = {
@@ -19,6 +19,7 @@ function mapPromptParaItem(p: PromptWorkspaceComPrincipal): AdminPromptItem {
     id: String(p.id),
     titulo: p.nome,
     conteudo: p.prompt,
+    tipo: p.tipo || PROMPT_WORKSPACE_TIPO_DEFAULT,
     principal: p.principal,
     atualizadoEm: p.updated_at,
   }
@@ -29,6 +30,7 @@ function criarPromptNovoLocal(): AdminPromptItem {
     id: '',
     titulo: '',
     conteudo: '',
+    tipo: PROMPT_WORKSPACE_TIPO_DEFAULT,
     principal: false,
     atualizadoEm: '',
     isNovo: true,
@@ -37,7 +39,7 @@ function criarPromptNovoLocal(): AdminPromptItem {
 
 export const useAdminStore = defineStore('admin', {
   state: () => ({
-    workspaces: [] as Workspace[],
+    workspaces: [] as AdminWorkspace[],
     workspacesLoaded: false,
     workspacesPending: false,
     workspacesError: null as string | null,
@@ -55,6 +57,7 @@ export const useAdminStore = defineStore('admin', {
       state.workspaces.map((w) => ({
         id: String(w.id),
         name: w.nome,
+        user_id: w.user_id,
         instance_count: 0,
       })),
 
@@ -104,7 +107,7 @@ export const useAdminStore = defineStore('admin', {
       this.promptEmEdicaoId = null
     },
 
-    async fetchWorkspacesSeNecessario(): Promise<Workspace[]> {
+    async fetchWorkspacesSeNecessario(): Promise<AdminWorkspace[]> {
       if (this.workspacesLoaded) {
         return this.workspaces
       }
@@ -116,9 +119,9 @@ export const useAdminStore = defineStore('admin', {
       this.workspacesPending = true
       this.workspacesError = null
 
-      const promise = (async (): Promise<Workspace[]> => {
+      const promise = (async (): Promise<AdminWorkspace[]> => {
         try {
-          const data = await $fetch<Workspace[]>('/api/admin/puxawokspaces', { method: 'GET' })
+          const data = await $fetch<AdminWorkspace[]>('/api/admin/puxawokspaces', { method: 'GET' })
           this.workspaces = data
           this.workspacesLoaded = true
           return data
@@ -238,7 +241,7 @@ export const useAdminStore = defineStore('admin', {
       this.promptEmEdicaoId = null
     },
 
-    async salvarPrompt(payload: { titulo: string; conteudo: string; principal: boolean }) {
+    async salvarPrompt(payload: { titulo: string; conteudo: string; principal: boolean; tipo: string }) {
       const ws = this.selectedWorkspaceId
       if (!ws) {
         throw new Error('Selecione um workspace na barra lateral.')
@@ -257,6 +260,8 @@ export const useAdminStore = defineStore('admin', {
       const promptAtual = this.promptEmEdicao
       const eraPrincipal = Boolean(promptAtual?.principal)
 
+      const tipo = payload.tipo.trim() || PROMPT_WORKSPACE_TIPO_DEFAULT
+
       this.promptSalvando = true
       try {
         if (isNovo) {
@@ -266,6 +271,7 @@ export const useAdminStore = defineStore('admin', {
               workspace_id: wsId,
               nome: payload.titulo,
               prompt: payload.conteudo,
+              tipo,
             },
           })
 
@@ -292,6 +298,7 @@ export const useAdminStore = defineStore('admin', {
               id: promptId,
               nome: payload.titulo,
               prompt: payload.conteudo,
+              tipo,
               definir_principal: definirPrincipal,
             },
           })

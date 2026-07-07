@@ -11,6 +11,14 @@ export interface PromptWorkspace {
   updated_at: string
 }
 
+/** Default da coluna `prompt_workspace.tipo` (`default 'ESTOQUE'::text`). */
+export const PROMPT_WORKSPACE_TIPO_DEFAULT = 'ESTOQUE'
+
+export const PROMPT_WORKSPACE_TIPOS_OPCOES = [
+  { value: 'ESTOQUE', label: 'Estoque' },
+  { value: 'principal', label: 'Principal' },
+] as const
+
 /** Resposta de `GET /api/admin/prompt`. */
 export interface AdminPromptListResponse {
   items: PromptWorkspaceComPrincipal[]

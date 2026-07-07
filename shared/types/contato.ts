@@ -1,6 +1,6 @@
 import type { TipoCampoPersonalizado } from './camposPersonalizados'
 
-/** Campo personalizado embutido na view `view_conversas_com_detalhes_campos`. */
+/** Campo personalizado embutido na view `view_kanban_conversas`. */
 export type ContatoCampoPersonalizadoResumo = {
   id: number
   nome: string
@@ -8,7 +8,7 @@ export type ContatoCampoPersonalizadoResumo = {
   valor: string | null
 }
 
-/** Status no funil embutido na view `view_conversas_com_detalhes_campos`. */
+/** Status no funil (`conversas.coluna_id` / `funil_id` via `view_kanban_conversas`). */
 export type ContatoStatusFunil = {
   coluna_id: number
   coluna_nome: string | null

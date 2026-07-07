@@ -8,45 +8,22 @@ import type {
 } from '#shared/types/kanban'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 import { checkWorkspace } from '../../utils/checkWorkspace'
-import type { KanbanCampoPersonalizadoResumo } from '#shared/types/kanban'
-import type { TipoCampoPersonalizado } from '#shared/types/camposPersonalizados'
+import { parseCamposPersonalizadosView } from '../../utils/viewConversasDetalhes'
 
 const CARDS_PER_PAGE = 10
 
-const VIEW_RESOURCE = 'view_conversas_com_detalhes_campos'
+const VIEW_RESOURCE = 'view_kanban_conversas'
 
 const VIEW_SELECT =
-  'key, name, phone, photo, message, updated_at, id_canal, is_group, lid, nao_lidas, campos_personalizados, workspace_id, deleted_at'
+  'conversa_key, name, phone, photo, lid, preview, updated_at, id_canal, canal_nome, is_group, name_group, conversa_aberta, ia_ligada, nao_lidas, workspace_id, funil_id, coluna_id, atendente_id, prioridade, campos_personalizados'
+
+type SupabaseAdmin = ReturnType<typeof serverSupabaseServiceRole<any>>
 
 function parseSearchQuery(raw: unknown): string {
   if (raw === undefined || raw === null) return ''
   const s = String(raw).trim()
   return s.length > 100 ? s.slice(0, 100) : s
 }
-
-type ConvEmbed = {
-  key?: string | null
-  name: string | null
-  phone: string | null
-  photo: string | null
-  message: string | null
-  updated_at: string | null
-  id_canal: number | null
-  is_group: boolean | null
-  lid: string | null
-  nao_lidas: number | null
-  campos_personalizados: unknown
-}
-
-type StatusRow = {
-  conversa_key: string
-  coluna_id: number
-  prioridade: number | null
-  /** Dados da view `view_conversas_com_detalhes_campos` (join por `conversa_key` = `key`). */
-  view_conversas_com_detalhes_campos: ConvEmbed | ConvEmbed[] | null
-}
-
-type SupabaseAdmin = ReturnType<typeof serverSupabaseServiceRole<any>>
 
 function parsePositiveInt(raw: unknown, fallback: number): number {
   if (raw === undefined || raw === null || raw === '') return fallback
@@ -66,270 +43,257 @@ function parseColunaId(raw: unknown): number | null {
   return n
 }
 
-function unwrapConversa(raw: ConvEmbed | ConvEmbed[] | null): ConvEmbed | null {
-  if (!raw) return null
-  return Array.isArray(raw) ? raw[0] ?? null : raw
-}
-
-const TIPOS_CAMPO = new Set<TipoCampoPersonalizado>(['text', 'number', 'date', 'boolean'])
-
-function parseTipoCampo(raw: unknown): TipoCampoPersonalizado {
-  const s = String(raw ?? '').trim().toLowerCase()
-  return TIPOS_CAMPO.has(s as TipoCampoPersonalizado) ? (s as TipoCampoPersonalizado) : 'text'
-}
-
-function parseCamposPersonalizados(raw: unknown): KanbanCampoPersonalizadoResumo[] {
-  if (raw == null) return []
-
-  let lista: unknown = raw
-  if (typeof raw === 'string') {
-    try {
-      lista = JSON.parse(raw)
-    } catch {
-      return []
-    }
+/** `id_canal` ou alias `canal_id`. Omitido / vazio = todos os canais. */
+function parseIdCanalFilter(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+    throw createError({ statusCode: 400, statusMessage: 'id_canal inválido.' })
   }
-
-  if (!Array.isArray(lista)) return []
-
-  const out: KanbanCampoPersonalizadoResumo[] = []
-  for (const item of lista) {
-    if (!item || typeof item !== 'object') continue
-    const row = item as Record<string, unknown>
-    const id = typeof row.id === 'number' ? row.id : Number(row.id)
-    if (!Number.isFinite(id) || id < 1) continue
-    const nome = String(row.nome ?? '').trim()
-    const valorRaw = row.valor
-    const valor =
-      valorRaw === null || valorRaw === undefined ? null : String(valorRaw)
-    out.push({
-      id,
-      nome,
-      tipo: parseTipoCampo(row.tipo),
-      valor,
-    })
-  }
-
-  out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
-  return out
+  return n
 }
 
-function parseIsGroup(raw: unknown): boolean | null {
+/** Escapa `%` e `_` para uso em padrões `ilike` do PostgREST. */
+function escapeIlike(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+}
+
+function quotePostgrestFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+function parseBoolOrNull(raw: unknown): boolean | null {
   if (raw === true) return true
   if (raw === false) return false
   return null
 }
 
-function rowToCard(row: StatusRow, nomePorCanalId: Map<number, string>): KanbanCard {
-  const conv = unwrapConversa(row.view_conversas_com_detalhes_campos)
-  const rawCanalId =
-    conv && typeof conv === 'object' && 'id_canal' in conv
-      ? (conv as { id_canal: unknown }).id_canal
-      : null
-  const idCanal =
-    rawCanalId != null && Number.isFinite(Number(rawCanalId))
-      ? Number(rawCanalId)
-      : null
+function intOrNull(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? Math.trunc(raw) : Number.parseInt(String(raw), 10)
+  return Number.isFinite(n) && n >= 1 ? n : null
+}
+
+function viewRowToCard(row: Record<string, unknown>): KanbanCard | null {
+  const key = String(row.conversa_key ?? '').trim()
+  if (!key) return null
+
+  const colunaId = intOrNull(row.coluna_id)
+  if (colunaId == null) return null
+
+  const idCanal = intOrNull(row.id_canal)
+
+  const canalNomeRaw = row.canal_nome
   const canalNome =
-    idCanal != null && nomePorCanalId.has(idCanal)
-      ? nomePorCanalId.get(idCanal) ?? null
+    typeof canalNomeRaw === 'string' && canalNomeRaw.trim() ? canalNomeRaw.trim() : null
+
+  const naoLidasRaw = row.nao_lidas
+  const naoLidas =
+    naoLidasRaw != null && Number.isFinite(Number(naoLidasRaw))
+      ? Math.max(0, Math.trunc(Number(naoLidasRaw)))
+      : 0
+
+  const prioridadeRaw = row.prioridade
+  const prioridade =
+    prioridadeRaw != null && Number.isFinite(Number(prioridadeRaw))
+      ? Math.trunc(Number(prioridadeRaw))
       : null
 
   return {
-    conversa_key: row.conversa_key,
-    coluna_id: row.coluna_id,
-    prioridade:
-      row.prioridade != null && Number.isFinite(Number(row.prioridade))
-        ? Number(row.prioridade)
-        : null,
-    name: conv && typeof conv === 'object' && 'name' in conv ? (conv as { name: string | null }).name : null,
-    phone: conv && typeof conv === 'object' && 'phone' in conv ? (conv as { phone: string | null }).phone : null,
-    photo: conv && typeof conv === 'object' && 'photo' in conv ? (conv as { photo: string | null }).photo : null,
-    lid: conv && typeof conv === 'object' && 'lid' in conv ? (conv as { lid: string | null }).lid : null,
-    preview: conv && typeof conv === 'object' && 'message' in conv ? (conv as { message: string | null }).message : null,
-    updated_at: conv && typeof conv === 'object' && 'updated_at' in conv ? (conv as { updated_at: string | null }).updated_at : null,
+    conversa_key: key,
+    coluna_id: colunaId,
+    prioridade,
+    name: row.name != null ? String(row.name) : null,
+    phone: row.phone != null ? String(row.phone) : null,
+    photo: row.photo != null ? String(row.photo) : null,
+    lid: row.lid != null ? String(row.lid) : null,
+    preview: row.preview != null ? String(row.preview) : null,
+    updated_at: row.updated_at != null ? String(row.updated_at) : null,
     canal_nome: canalNome,
     id_canal: idCanal,
-    is_group:
-      conv && typeof conv === 'object' && 'is_group' in conv
-        ? parseIsGroup((conv as { is_group: unknown }).is_group)
-        : null,
-    nao_lidas: (() => {
-      const raw =
-        conv && typeof conv === 'object' && 'nao_lidas' in conv
-          ? (conv as { nao_lidas: unknown }).nao_lidas
-          : null
-      const n = raw != null && Number.isFinite(Number(raw)) ? Number(raw) : 0
-      return Math.max(0, Math.trunc(n))
-    })(),
-    campos_personalizados:
-      conv && typeof conv === 'object' && 'campos_personalizados' in conv
-        ? parseCamposPersonalizados((conv as { campos_personalizados: unknown }).campos_personalizados)
-        : [],
+    is_group: parseBoolOrNull(row.is_group),
+    name_group: row.name_group != null ? String(row.name_group) : null,
+    conversa_aberta: parseBoolOrNull(row.conversa_aberta),
+    ia_ligada: parseBoolOrNull(row.ia_ligada),
+    nao_lidas: naoLidas,
+    campos_personalizados: parseCamposPersonalizadosView(row.campos_personalizados),
   }
 }
 
-function collectCanalIds(rows: StatusRow[]): Set<number> {
-  const canalIds = new Set<number>()
+function parseIsGroupFilter(raw: unknown): boolean | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const s = String(raw).trim().toLowerCase()
+  if (s === 'false' || s === '0') return false
+  if (s === 'true' || s === '1') return true
+  throw createError({
+    statusCode: 400,
+    statusMessage: 'is_group inválido (use true ou false).',
+  })
+}
+
+function aplicarFiltroIsGroup<T extends { or: (filters: string) => T; eq: (col: string, val: boolean) => T }>(
+  query: T,
+  isGroupFilter: boolean | undefined,
+): T {
+  if (isGroupFilter === false) {
+    return query.or('is_group.is.null,is_group.eq.false')
+  }
+  if (isGroupFilter === true) {
+    return query.eq('is_group', true)
+  }
+  return query
+}
+
+function deduplicarViewRowsPorKey(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  const seen = new Set<string>()
+  const out: Record<string, unknown>[] = []
   for (const row of rows) {
-    const conv = unwrapConversa(row.view_conversas_com_detalhes_campos)
-    const rawId =
-      conv && typeof conv === 'object' && 'id_canal' in conv
-        ? (conv as { id_canal: unknown }).id_canal
-        : null
-    const id =
-      rawId != null && Number.isFinite(Number(rawId))
-        ? Number(rawId)
-        : null
-    if (id != null && id >= 1) {
-      canalIds.add(id)
-    }
+    const key = String(row.conversa_key ?? '').trim()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(row)
   }
-  return canalIds
+  return out
 }
 
-async function fetchNomePorCanalId(
+function aplicarFiltrosColunaView(
   admin: SupabaseAdmin,
   workspaceId: number,
-  canalIds: Set<number>,
-): Promise<Map<number, string>> {
-  const nomePorCanalId = new Map<number, string>()
-  if (canalIds.size === 0) return nomePorCanalId
-
-  const { data: canaisRows, error: canaisErr } = await admin
-    .from('canais')
-    .select('id, nome')
-    .eq('workspace_id', workspaceId)
-    .is('deleted_at', null)
-    .in('id', [...canalIds])
-
-  if (canaisErr) {
-    throw createError({ statusCode: 500, statusMessage: canaisErr.message })
-  }
-
-  for (const r of (canaisRows ?? []) as Array<{ id: unknown; nome: unknown }>) {
-    const id = typeof r.id === 'number' ? r.id : Number(r.id)
-    if (!Number.isFinite(id)) continue
-    const nome =
-      typeof r.nome === 'string' && r.nome.trim()
-        ? r.nome.trim()
-        : null
-    if (nome) {
-      nomePorCanalId.set(id, nome)
-    }
-  }
-
-  return nomePorCanalId
-}
-
-async function fetchViewPorKeys(
-  admin: SupabaseAdmin,
-  workspaceId: number,
-  keys: string[],
-): Promise<Map<string, ConvEmbed>> {
-  const map = new Map<string, ConvEmbed>()
-  if (keys.length === 0) return map
-
-  const { data, error } = await admin
+  colunaId: number,
+  funilId: number,
+  searchRaw: string,
+  isGroupFilter: boolean | undefined,
+  idCanalFilter: number | undefined,
+) {
+  let query = admin
     .from(VIEW_RESOURCE)
     .select(VIEW_SELECT)
     .eq('workspace_id', workspaceId)
-    .is('deleted_at', null)
-    .in('key', keys)
+    .eq('coluna_id', colunaId)
+    .eq('funil_id', funilId)
+    .not('coluna_id', 'is', null)
 
+  if (idCanalFilter != null) {
+    query = query.eq('id_canal', idCanalFilter)
+  }
+
+  query = aplicarFiltroIsGroup(query, isGroupFilter)
+
+  if (searchRaw.length > 0) {
+    const esc = escapeIlike(searchRaw)
+    const p = quotePostgrestFilterValue(`%${esc}%`)
+    query = query.or(`name.ilike.${p},phone.ilike.${p}`)
+  }
+
+  return query
+}
+
+async function contarCardsColuna(
+  admin: SupabaseAdmin,
+  workspaceId: number,
+  colunaId: number,
+  funilId: number,
+  searchRaw: string,
+  isGroupFilter: boolean | undefined,
+  idCanalFilter: number | undefined,
+): Promise<number> {
+  let query = admin
+    .from(VIEW_RESOURCE)
+    .select('conversa_key', { count: 'exact', head: true })
+    .eq('workspace_id', workspaceId)
+    .eq('coluna_id', colunaId)
+    .eq('funil_id', funilId)
+    .not('coluna_id', 'is', null)
+
+  if (idCanalFilter != null) {
+    query = query.eq('id_canal', idCanalFilter)
+  }
+
+  query = aplicarFiltroIsGroup(query, isGroupFilter)
+
+  if (searchRaw.length > 0) {
+    const esc = escapeIlike(searchRaw)
+    const p = quotePostgrestFilterValue(`%${esc}%`)
+    query = query.or(`name.ilike.${p},phone.ilike.${p}`)
+  }
+
+  const { count, error } = await query
   if (error) {
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
-
-  for (const row of (data ?? []) as ConvEmbed[]) {
-    const key = String(row.key ?? '').trim()
-    if (key) map.set(key, row)
-  }
-
-  return map
+  return count ?? 0
 }
 
 async function fetchCardsForColumn(
   admin: SupabaseAdmin,
   workspaceId: number,
+  funilId: number,
   colunaId: number,
   offset: number,
   limit: number,
   searchRaw: string = '',
-): Promise<{ rows: StatusRow[]; total: number }> {
-  const hasSearch = searchRaw.length > 0
-  const search = searchRaw.toLowerCase()
+  isGroupFilter: boolean | undefined = undefined,
+  idCanalFilter: number | undefined = undefined,
+): Promise<{ rows: Record<string, unknown>[]; total: number }> {
+  const [listResult, total] = await Promise.all([
+    aplicarFiltrosColunaView(
+      admin,
+      workspaceId,
+      colunaId,
+      funilId,
+      searchRaw,
+      isGroupFilter,
+      idCanalFilter,
+    )
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .order('conversa_key', { ascending: true })
+      .range(offset, offset + limit - 1),
+    contarCardsColuna(
+      admin,
+      workspaceId,
+      colunaId,
+      funilId,
+      searchRaw,
+      isGroupFilter,
+      idCanalFilter,
+    ),
+  ])
 
-  const { data: statusRows, error: statusErr } = await admin
-    .from('funil_conversa_status')
-    .select('conversa_key, coluna_id, prioridade')
-    .eq('workspace_id', workspaceId)
-    .eq('coluna_id', colunaId)
-
-  if (statusErr) {
-    throw createError({ statusCode: 500, statusMessage: statusErr.message })
+  if (listResult.error) {
+    throw createError({ statusCode: 500, statusMessage: listResult.error.message })
   }
 
-  const statuses = (statusRows ?? []) as Array<{
-    conversa_key: string
-    coluna_id: number
-    prioridade: number | null
-  }>
+  const rows = deduplicarViewRowsPorKey((listResult.data ?? []) as Record<string, unknown>[])
 
-  const keys = statuses.map((s) => s.conversa_key)
-  const viewMap = await fetchViewPorKeys(admin, workspaceId, keys)
-
-  let rows: StatusRow[] = statuses
-    .map((status) => ({
-      conversa_key: status.conversa_key,
-      coluna_id: status.coluna_id,
-      prioridade: status.prioridade,
-      view_conversas_com_detalhes_campos: viewMap.get(status.conversa_key) ?? null,
-    }))
-    .filter((row) => unwrapConversa(row.view_conversas_com_detalhes_campos) != null)
-
-  if (hasSearch) {
-    rows = rows.filter((row) => {
-      const view = unwrapConversa(row.view_conversas_com_detalhes_campos)
-      if (!view) return false
-      const name = String(view.name ?? '').toLowerCase()
-      const phone = String(view.phone ?? '').toLowerCase()
-      return name.includes(search) || phone.includes(search)
-    })
-  }
-
-  rows.sort((a, b) => {
-    const ta = unwrapConversa(a.view_conversas_com_detalhes_campos)?.updated_at ?? ''
-    const tb = unwrapConversa(b.view_conversas_com_detalhes_campos)?.updated_at ?? ''
-    if (ta !== tb) return tb.localeCompare(ta)
-    return a.conversa_key.localeCompare(b.conversa_key)
-  })
-
-  const total = rows.length
-  return {
-    rows: rows.slice(offset, offset + limit),
-    total,
-  }
+  return { rows, total }
 }
 
 async function buildCardsPage(
   admin: SupabaseAdmin,
   workspaceId: number,
+  funilId: number,
   colunaId: number,
   offset: number,
   limit: number,
   searchRaw: string = '',
+  isGroupFilter: boolean | undefined = undefined,
+  idCanalFilter: number | undefined = undefined,
 ): Promise<{ cards: KanbanCard[]; total_cards: number; has_more: boolean }> {
   const { rows, total } = await fetchCardsForColumn(
     admin,
     workspaceId,
+    funilId,
     colunaId,
     offset,
     limit,
     searchRaw,
+    isGroupFilter,
+    idCanalFilter,
   )
-  const nomePorCanalId = await fetchNomePorCanalId(admin, workspaceId, collectCanalIds(rows))
-  const cards = rows.map((row) => rowToCard(row, nomePorCanalId))
+  const cards = rows
+    .map((row) => viewRowToCard(row))
+    .filter((card): card is KanbanCard => card != null)
+
   return {
     cards,
     total_cards: total,
@@ -338,13 +302,16 @@ async function buildCardsPage(
 }
 
 /**
- * GET /api/kanban?workspace_id=&q=
+ * GET /api/kanban?workspace_id=&q=&is_group=&id_canal=
  *
- * Board completo; `q` filtra cards por nome ou telefone da conversa (ilike).
+ * Board completo: 10 cards por coluna via `view_kanban_conversas` (`conversas.coluna_id` / `funil_id`).
  *
- * GET /api/kanban?workspace_id=&coluna_id=&offset=&q=
+ * GET /api/kanban?workspace_id=&coluna_id=&offset=&q=&is_group=&id_canal=
  *
- * Paginação por coluna: retorna apenas os próximos cards da coluna informada.
+ * Paginação por coluna.
+ *
+ * `is_group=false` — só conversas 1:1 (inclui `is_group` null legado); omitido = todas.
+ * `id_canal` / `canal_id` — filtra por canal; omitido = todos os canais.
  */
 export default defineEventHandler(async (event): Promise<KanbanBoardResponse | KanbanColumnPageResponse> => {
   const client = await serverSupabaseClient(event)
@@ -376,6 +343,8 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
   const colunaIdFilter = parseColunaId(q.coluna_id)
   const offset = parsePositiveInt(q.offset, 0)
   const searchRaw = parseSearchQuery(q.q ?? q.busca)
+  const isGroupFilter = parseIsGroupFilter(q.is_group)
+  const idCanalFilter = parseIdCanalFilter(q.id_canal ?? q.canal_id)
 
   const admin = serverSupabaseServiceRole<any>(event)
 
@@ -430,10 +399,13 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
     const page = await buildCardsPage(
       admin,
       workspaceId,
+      funilId,
       colunaIdFilter,
       offset,
       CARDS_PER_PAGE,
       searchRaw,
+      isGroupFilter,
+      idCanalFilter,
     )
     return {
       coluna_id: colunaIdFilter,
@@ -443,7 +415,17 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
 
   const pages = await Promise.all(
     colunas.map((c) =>
-      buildCardsPage(admin, workspaceId, c.id, 0, CARDS_PER_PAGE, searchRaw),
+      buildCardsPage(
+        admin,
+        workspaceId,
+        funilId,
+        c.id,
+        0,
+        CARDS_PER_PAGE,
+        searchRaw,
+        isGroupFilter,
+        idCanalFilter,
+      ),
     ),
   )
 

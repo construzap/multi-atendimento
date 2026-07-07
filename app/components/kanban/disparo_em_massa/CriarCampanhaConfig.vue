@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type { CampanhaStatusCriacao, CampanhaListItem, CriarCampanhaResponse, EnfileirarFilaDisparoResponse } from '#shared/types/disparoEmMassa'
 import BaseButton from '~/components/BaseButton.vue'
-import BaseModal from '~/components/BaseModal.vue'
 import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
 import { useCanaisStore } from '~/stores/canais'
 import { useDisparoEmMassaStore } from '~/stores/disparoEmMassa'
@@ -16,19 +15,17 @@ export type CampanhaFiltroDestinatario = 'coluna'
 
 const props = withDefaults(
   defineProps<{
-    open: boolean
-    tituloModal?: string
-    /** Se informado, abre o modal em modo edição com dados do Pinia. */
+    titulo?: string
+    /** Se informado, preenche o formulário com dados do Pinia (modo edição). */
     campanhaId?: string | null
   }>(),
   {
-    tituloModal: 'Criar campanha',
+    titulo: 'Criar campanha',
     campanhaId: null,
   },
 )
 
 const emit = defineEmits<{
-  'update:open': [value: boolean]
   criado: [response: CriarCampanhaResponse]
   cancelar: []
 }>()
@@ -42,8 +39,22 @@ const { columns } = storeToRefs(kanban)
 
 const modoEdicao = computed(() => Boolean(props.campanhaId?.trim()))
 const tituloExibicao = computed(() =>
-  modoEdicao.value ? 'Editar campanha' : props.tituloModal,
+  modoEdicao.value ? 'Editar campanha' : props.titulo,
 )
+
+const TOTAL_ETAPAS = 8
+const etapaAtual = ref(0)
+const ehPrimeiraEtapa = computed(() => etapaAtual.value === 0)
+const ehUltimaEtapa = computed(() => etapaAtual.value === TOTAL_ETAPAS - 1)
+const rotuloEtapa = computed(() => `Etapa ${etapaAtual.value + 1} de ${TOTAL_ETAPAS}`)
+
+function irProximaEtapa() {
+  if (etapaAtual.value < TOTAL_ETAPAS - 1) etapaAtual.value += 1
+}
+
+function irEtapaAnterior() {
+  if (etapaAtual.value > 0) etapaAtual.value -= 1
+}
 
 function workspaceIdAtual(): number | null {
   const raw = (workspacesStore.currentWorkspaceId ?? String(route.params.id ?? '')).trim()
@@ -67,6 +78,10 @@ const intervaloMaximo = ref(60)
 const canaisSelecionados = ref<number[]>([])
 const filtroDestinatario = ref<CampanhaFiltroDestinatario>('coluna')
 const colunasSelecionadas = ref<number[]>([])
+const fonteCanaisSelecionados = ref<number[]>([])
+const enviaParaGrupo = ref(false)
+/** Coluna do funil para mover o contato após o disparo (`null` = não mover). */
+const colunaAposDisparoId = ref<number | null>(null)
 const submitPending = ref(false)
 
 const FILA_LOTE = 10
@@ -105,11 +120,15 @@ const sectionCls =
 const secaoIconCls =
   'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-inner'
 
-const totalConversasSelecionadas = computed(() =>
-  columns.value
-    .filter((c) => colunasSelecionadas.value.includes(c.id))
-    .reduce((acc, c) => acc + (c.total_cards ?? c.cards.length), 0),
-)
+function parseFonteCanaisIdsCsv(raw: string | null | undefined): number[] {
+  if (!raw?.trim()) return []
+  const ids: number[] = []
+  for (const part of raw.split(',')) {
+    const n = Number.parseInt(part.trim(), 10)
+    if (Number.isFinite(n) && Number.isInteger(n) && n > 0) ids.push(n)
+  }
+  return [...new Set(ids)]
+}
 
 function classeSegmento(ativo: boolean, compacto = false) {
   const base = [
@@ -410,6 +429,9 @@ function resetFormulario() {
   canaisSelecionados.value = []
   filtroDestinatario.value = 'coluna'
   colunasSelecionadas.value = []
+  fonteCanaisSelecionados.value = []
+  enviaParaGrupo.value = false
+  colunaAposDisparoId.value = null
   imagemNome.value = null
   audioNome.value = null
 }
@@ -417,7 +439,7 @@ function resetFormulario() {
 function horaBancoParaInput(hora: string | null | undefined): string {
   if (!hora) return '08:00'
   const match = /^(\d{1,2}):(\d{2})/.exec(hora.trim())
-  if (!match) return '08:00'
+  if (!match?.[1] || !match[2]) return '08:00'
   return `${match[1].padStart(2, '0')}:${match[2]}`
 }
 
@@ -471,7 +493,10 @@ function preencherFormulario(campanha: CampanhaListItem) {
     campanha.canais_ids?.filter((id) => Number.isFinite(id) && id > 0) ??
     (campanha.canal_id != null ? [campanha.canal_id] : [])
   canaisSelecionados.value = [...new Set(idsCanais)]
+  fonteCanaisSelecionados.value = parseFonteCanaisIdsCsv(campanha.fonte_canal_id)
+  enviaParaGrupo.value = campanha.envia_para_grupo === true
   colunasSelecionadas.value = []
+  colunaAposDisparoId.value = null
 
   imagemArquivo.value = null
   audioArquivo.value = null
@@ -488,6 +513,7 @@ function preencherFormulario(campanha: CampanhaListItem) {
 }
 
 function aplicarEstadoAoAbrir() {
+  etapaAtual.value = 0
   void carregarCanaisSeNecessario()
 
   if (props.campanhaId) {
@@ -511,6 +537,26 @@ function toggleCanal(canalId: number) {
     return
   }
   canaisSelecionados.value = [...canaisSelecionados.value, canalId]
+}
+
+function isFonteCanalSelecionado(canalId: number) {
+  return fonteCanaisSelecionados.value.includes(canalId)
+}
+
+function toggleFonteCanal(canalId: number) {
+  if (isFonteCanalSelecionado(canalId)) {
+    fonteCanaisSelecionados.value = fonteCanaisSelecionados.value.filter((id) => id !== canalId)
+    return
+  }
+  fonteCanaisSelecionados.value = [...fonteCanaisSelecionados.value, canalId]
+}
+
+function selecionarTodosFonteCanais() {
+  fonteCanaisSelecionados.value = canaisStore.items.map((c) => c.id)
+}
+
+function limparFonteCanaisSelecionados() {
+  fonteCanaisSelecionados.value = []
 }
 
 function selecionarTodosCanais() {
@@ -549,6 +595,18 @@ async function carregarCanaisSeNecessario() {
 
 function limparColunasSelecionadas() {
   colunasSelecionadas.value = []
+}
+
+function isColunaAposDisparo(colunaId: number) {
+  return colunaAposDisparoId.value === colunaId
+}
+
+function selecionarColunaAposDisparo(colunaId: number) {
+  colunaAposDisparoId.value = colunaId
+}
+
+function limparColunaAposDisparo() {
+  colunaAposDisparoId.value = null
 }
 
 function onImagemChange(e: Event) {
@@ -617,27 +675,19 @@ function cancelarProgresso() {
   abortController?.abort()
 }
 
-watch(
-  () => props.open,
-  (isOpen) => {
-    if (isOpen) {
-      aplicarEstadoAoAbrir()
-      return
-    }
-    abortarMidiaTemporariaNavegador()
-  },
-)
+onMounted(() => {
+  aplicarEstadoAoAbrir()
+})
 
 watch(
   () => props.campanhaId,
   () => {
-    if (props.open) aplicarEstadoAoAbrir()
+    aplicarEstadoAoAbrir()
   },
 )
 
 function fechar() {
   abortarMidiaTemporariaNavegador()
-  emit('update:open', false)
   emit('cancelar')
 }
 
@@ -667,6 +717,9 @@ function validar(): string | null {
   if (canaisSelecionados.value.length === 0) return 'Selecione pelo menos um canal de envio.'
   if (colunasSelecionadas.value.length === 0) {
     return 'Selecione pelo menos uma coluna do Kanban.'
+  }
+  if (fonteCanaisSelecionados.value.length === 0) {
+    return 'Selecione pelo menos um canal fonte para buscar destinatários.'
   }
   if (tipo.value === 'texto' && !mensagem.value.trim()) return 'Preencha a mensagem.'
   if (gravandoUi.value) return 'Finalize ou cancele a gravação antes de criar a campanha.'
@@ -730,6 +783,9 @@ async function salvar() {
         conteudo_texto: mensagem.value.trim() || null,
         canais_ids: [...canaisSelecionados.value],
         coluna_ids: [...colunasSelecionadas.value],
+        coluna_id: colunaAposDisparoId.value,
+        fonte_canais_ids: [...fonteCanaisSelecionados.value],
+        envia_para_grupo: enviaParaGrupo.value,
         intervalo_minimo_minutos: intervaloMinimo.value,
         intervalo_maximo_minutos: intervaloMaximo.value,
         data_local: dataCampo.value.trim(),
@@ -766,7 +822,6 @@ async function salvar() {
     }
 
     emit('criado', criarResponse)
-    emit('update:open', false)
     toast.success(
       conversa_keys.length === 0
         ? 'Campanha criada (nenhum contato na fila).'
@@ -790,16 +845,30 @@ async function salvar() {
 </script>
 
 <template>
-  <BaseModal
-    :open="open"
-    :title="tituloExibicao"
-    panel-class="w-full max-w-[760px] max-h-[92vh]"
-    @update:open="emit('update:open', $event)"
-    @close="emit('cancelar')"
-  >
-    <div class="campanha-form -mx-1 px-1 pb-2 font-body text-on-surface dark:text-dark-on-surface">
+  <div class="font-body text-on-surface dark:text-dark-on-surface">
+    <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
+      <div class="space-y-1">
+        <button
+          type="button"
+          class="inline-flex items-center gap-1 text-xs font-semibold text-primary-700 transition-colors hover:text-primary-800 dark:text-primary-300 dark:hover:text-primary-200"
+          :disabled="submitPending"
+          @click="fechar"
+        >
+          <span class="material-symbols-outlined text-[16px]" aria-hidden="true">close</span>
+          Fechar
+        </button>
+        <h2 class="font-headline text-xl font-bold text-on-surface dark:text-dark-on-surface">
+          {{ tituloExibicao }}
+        </h2>
+        <p class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+          {{ rotuloEtapa }}
+        </p>
+      </div>
+    </header>
+
+    <div class="campanha-form pb-2">
       <!-- Identificação -->
-      <section :class="sectionCls">
+      <section v-show="etapaAtual === 0" :class="sectionCls">
         <div class="flex items-start gap-3">
           <span
             :class="[
@@ -827,7 +896,7 @@ async function salvar() {
       </section>
 
       <!-- Comportamento -->
-      <section :class="sectionCls">
+      <section v-show="etapaAtual === 1" :class="sectionCls">
         <div class="flex items-start gap-3">
           <span
             :class="[
@@ -881,7 +950,7 @@ async function salvar() {
       </section>
 
       <!-- Conteúdo -->
-      <section :class="sectionCls">
+      <section v-show="etapaAtual === 2" :class="sectionCls">
         <div class="flex items-start gap-3">
           <span
             :class="[
@@ -1104,7 +1173,7 @@ async function salvar() {
       </section>
 
       <!-- Agendamento -->
-      <section :class="sectionCls">
+      <section v-show="etapaAtual === 3" :class="sectionCls">
         <div class="flex items-start gap-3">
           <span
             :class="[
@@ -1197,7 +1266,7 @@ async function salvar() {
       </section>
 
       <!-- Entrega -->
-      <section :class="sectionCls">
+      <section v-show="etapaAtual === 4" :class="sectionCls">
         <div class="flex items-start gap-3">
           <span
             :class="[
@@ -1208,23 +1277,103 @@ async function salvar() {
           >
             <span class="material-symbols-outlined text-[20px]">send</span>
           </span>
-          <div class="min-w-0 flex-1 space-y-4">
-            <div class="space-y-3">
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <p :class="labelCls">
-                  Canais de envio <span class="text-danger" aria-hidden="true">*</span>
-                  <span
-                    v-if="canaisSelecionados.length > 0"
-                    class="ml-2 text-[11px] font-semibold text-primary-700 dark:text-primary-300"
-                  >
-                    · {{ canaisSelecionados.length }} selecionado(s)
-                  </span>
-                </p>
-              </div>
+          <div class="min-w-0 flex-1 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p :class="labelCls">
+                Canais de envio <span class="text-danger" aria-hidden="true">*</span>
+                <span
+                  v-if="canaisSelecionados.length > 0"
+                  class="ml-2 text-[11px] font-semibold text-primary-700 dark:text-primary-300"
+                >
+                  · {{ canaisSelecionados.length }} selecionado(s)
+                </span>
+              </p>
+            </div>
 
-              <div
-                class="rounded-xl border border-outline/25 bg-surface-container-lowest/60 p-4 dark:border-dark-outline/20 dark:bg-dark-surface-container-low/50"
-              >
+            <div
+              class="rounded-xl border border-outline/25 bg-surface-container-lowest/60 p-4 dark:border-dark-outline/20 dark:bg-dark-surface-container-low/50"
+            >
+              <p v-if="canaisStore.listPending" :class="hintCls">Carregando canais…</p>
+
+              <template v-else>
+                <div class="mb-3 flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    :class="classeChipAcao()"
+                    :disabled="canaisStore.items.length === 0"
+                    @click="selecionarTodosCanais"
+                  >
+                    Selecionar todos
+                  </button>
+                  <button
+                    type="button"
+                    :class="classeChipAcao()"
+                    :disabled="canaisSelecionados.length === 0"
+                    @click="limparCanaisSelecionados"
+                  >
+                    Limpar
+                  </button>
+                </div>
+
+                <p v-if="canaisStore.items.length === 0" :class="hintCls">
+                  Nenhum canal neste workspace.
+                </p>
+
+                <ul v-else class="max-h-40 space-y-2 overflow-y-auto pr-0.5" role="list">
+                  <li v-for="c in canaisStore.items" :key="c.id">
+                    <label :class="classeColunaItem(isCanalSelecionado(c.id))">
+                      <span class="flex min-w-0 items-center gap-3">
+                        <input
+                          type="checkbox"
+                          class="h-4 w-4 rounded border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
+                          :checked="isCanalSelecionado(c.id)"
+                          @change="toggleCanal(c.id)"
+                        />
+                        <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                          {{ (c.nome ?? '').trim() || `Canal #${c.id}` }}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                </ul>
+              </template>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Filtros -->
+      <section v-show="etapaAtual === 5" :class="sectionCls">
+        <div class="flex items-start gap-3">
+          <span
+            :class="[
+              secaoIconCls,
+              'bg-gradient-to-br from-orange-500/15 to-amber-500/10 text-orange-600 dark:from-orange-400/20 dark:text-orange-300',
+            ]"
+            aria-hidden="true"
+          >
+            <span class="material-symbols-outlined text-[20px]">filter_alt</span>
+          </span>
+          <div class="min-w-0 flex-1 space-y-3">
+            <p :class="labelCls">Filtros</p>
+
+            <div
+              class="rounded-xl border border-outline/25 bg-surface-container-lowest/60 p-4 dark:border-dark-outline/20 dark:bg-dark-surface-container-low/50"
+            >
+              <div class="space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <p :class="hintCls">
+                    Marque de quais canais buscar as conversas que entrarão na fila do disparo.
+                    <span class="text-danger" aria-hidden="true">*</span>
+                    <span
+                      v-if="fonteCanaisSelecionados.length > 0"
+                      class="ml-2 text-[11px] font-semibold text-primary-700 dark:text-primary-300"
+                    >
+                      · {{ fonteCanaisSelecionados.length }} selecionado(s)
+                    </span>
+                  </p>
+                </div>
+
                 <p v-if="canaisStore.listPending" :class="hintCls">Carregando canais…</p>
 
                 <template v-else>
@@ -1233,15 +1382,15 @@ async function salvar() {
                       type="button"
                       :class="classeChipAcao()"
                       :disabled="canaisStore.items.length === 0"
-                      @click="selecionarTodosCanais"
+                      @click="selecionarTodosFonteCanais"
                     >
                       Selecionar todos
                     </button>
                     <button
                       type="button"
                       :class="classeChipAcao()"
-                      :disabled="canaisSelecionados.length === 0"
-                      @click="limparCanaisSelecionados"
+                      :disabled="fonteCanaisSelecionados.length === 0"
+                      @click="limparFonteCanaisSelecionados"
                     >
                       Limpar
                     </button>
@@ -1252,14 +1401,14 @@ async function salvar() {
                   </p>
 
                   <ul v-else class="max-h-40 space-y-2 overflow-y-auto pr-0.5" role="list">
-                    <li v-for="c in canaisStore.items" :key="c.id">
-                      <label :class="classeColunaItem(isCanalSelecionado(c.id))">
+                    <li v-for="c in canaisStore.items" :key="`fonte-${c.id}`">
+                      <label :class="classeColunaItem(isFonteCanalSelecionado(c.id))">
                         <span class="flex min-w-0 items-center gap-3">
                           <input
                             type="checkbox"
                             class="h-4 w-4 rounded border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
-                            :checked="isCanalSelecionado(c.id)"
-                            @change="toggleCanal(c.id)"
+                            :checked="isFonteCanalSelecionado(c.id)"
+                            @change="toggleFonteCanal(c.id)"
                           />
                           <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
                             {{ (c.nome ?? '').trim() || `Canal #${c.id}` }}
@@ -1270,97 +1419,201 @@ async function salvar() {
                   </ul>
                 </template>
               </div>
+
+              <div class="mt-4 border-t border-outline/20 pt-4 dark:border-dark-outline/20">
+                <label class="inline-flex cursor-pointer select-none items-start gap-2.5">
+                  <input
+                    v-model="enviaParaGrupo"
+                    type="checkbox"
+                    class="mt-0.5 h-4 w-4 rounded border-outline/50 text-primary-600 focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50"
+                  />
+                  <span class="space-y-1">
+                    <span class="block text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                      Enviar para grupos
+                    </span>
+                    <span :class="hintCls">
+                      Quando desmarcado, exclui conversas de grupo WhatsApp da fila.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Destinatários -->
+      <section v-show="etapaAtual === 6" :class="sectionCls">
+        <div class="flex items-start gap-3">
+          <span
+            :class="[
+              secaoIconCls,
+              'bg-gradient-to-br from-blue-500/15 to-indigo-500/10 text-blue-600 dark:from-blue-400/20 dark:text-blue-300',
+            ]"
+            aria-hidden="true"
+          >
+            <span class="material-symbols-outlined text-[20px]">groups</span>
+          </span>
+          <div class="min-w-0 flex-1 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <p :class="labelCls">
+                Destinatários <span class="text-danger" aria-hidden="true">*</span>
+              </p>
+              <button
+                type="button"
+                :class="classeSegmento(filtroDestinatario === 'coluna', true)"
+                aria-pressed="true"
+              >
+                <span class="material-symbols-outlined text-[16px]" aria-hidden="true">view_kanban</span>
+                Por coluna
+              </button>
             </div>
 
-            <div class="space-y-3">
-              <div class="flex flex-wrap items-center justify-between gap-3">
-                <p :class="labelCls">
-                  Destinatários <span class="text-danger" aria-hidden="true">*</span>
-                  <span
-                    v-if="colunasSelecionadas.length > 0"
-                    class="ml-2 text-[11px] font-semibold text-primary-700 dark:text-primary-300"
-                  >
-                    · {{ totalConversasSelecionadas }} contato(s)
-                  </span>
-                </p>
+            <div
+              class="rounded-xl border border-outline/25 bg-surface-container-lowest/60 p-4 dark:border-dark-outline/20 dark:bg-dark-surface-container-low/50"
+            >
+              <div class="mb-3 flex flex-wrap items-center justify-end gap-2">
                 <button
                   type="button"
-                  :class="classeSegmento(filtroDestinatario === 'coluna', true)"
-                  aria-pressed="true"
+                  :class="classeChipAcao()"
+                  :disabled="columns.length === 0"
+                  @click="selecionarTodasColunas"
                 >
-                  <span class="material-symbols-outlined text-[16px]" aria-hidden="true">view_kanban</span>
-                  Por coluna
+                  Selecionar todas
+                </button>
+                <button
+                  type="button"
+                  :class="classeChipAcao()"
+                  :disabled="colunasSelecionadas.length === 0"
+                  @click="limparColunasSelecionadas"
+                >
+                  Limpar
                 </button>
               </div>
 
-              <div
-                class="rounded-xl border border-outline/25 bg-surface-container-lowest/60 p-4 dark:border-dark-outline/20 dark:bg-dark-surface-container-low/50"
-              >
-                <div class="mb-3 flex flex-wrap items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    :class="classeChipAcao()"
-                    :disabled="columns.length === 0"
-                    @click="selecionarTodasColunas"
-                  >
-                    Selecionar todas
-                  </button>
-                  <button
-                    type="button"
-                    :class="classeChipAcao()"
-                    :disabled="colunasSelecionadas.length === 0"
-                    @click="limparColunasSelecionadas"
-                  >
-                    Limpar
-                  </button>
-                </div>
+              <p v-if="columns.length === 0" :class="hintCls">
+                Nenhuma coluna carregada no Kanban deste workspace.
+              </p>
 
-                <p v-if="columns.length === 0" :class="hintCls">
-                  Nenhuma coluna carregada no Kanban deste workspace.
-                </p>
-
-                <ul v-else class="max-h-52 space-y-2 overflow-y-auto pr-0.5" role="list">
-                  <li v-for="coluna in columns" :key="coluna.id">
-                    <label :class="classeColunaItem(isColunaSelecionada(coluna.id))">
-                      <span class="flex min-w-0 items-center gap-3">
-                        <input
-                          type="checkbox"
-                          class="h-4 w-4 rounded border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
-                          :checked="isColunaSelecionada(coluna.id)"
-                          @change="toggleColuna(coluna.id)"
-                        />
-                        <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
-                          {{ coluna.nome?.trim() || `Coluna #${coluna.id}` }}
-                        </span>
+              <ul v-else class="max-h-52 space-y-2 overflow-y-auto pr-0.5" role="list">
+                <li v-for="coluna in columns" :key="coluna.id">
+                  <label :class="classeColunaItem(isColunaSelecionada(coluna.id))">
+                    <span class="flex min-w-0 items-center gap-3">
+                      <input
+                        type="checkbox"
+                        class="h-4 w-4 rounded border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
+                        :checked="isColunaSelecionada(coluna.id)"
+                        @change="toggleColuna(coluna.id)"
+                      />
+                      <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                        {{ coluna.nome?.trim() || `Coluna #${coluna.id}` }}
                       </span>
-                      <span
-                        class="shrink-0 rounded-full bg-surface-container-high px-2 py-0.5 text-[11px] font-bold text-on-surface-variant dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant"
-                      >
-                        {{ coluna.total_cards ?? coluna.cards.length }}
-                      </span>
-                    </label>
-                  </li>
-                </ul>
+                    </span>
+                  </label>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
 
-                <p class="mt-3 text-xs font-semibold text-primary-700 dark:text-primary-300">
-                  {{ colunasSelecionadas.length }} coluna(s) · {{ totalConversasSelecionadas }} conversa(s)
-                </p>
+      <!-- Mover após o disparo -->
+      <section v-show="etapaAtual === 7" :class="sectionCls">
+        <div class="flex items-start gap-3">
+          <span
+            :class="[
+              secaoIconCls,
+              'bg-gradient-to-br from-fuchsia-500/15 to-pink-500/10 text-fuchsia-600 dark:from-fuchsia-400/20 dark:text-fuchsia-300',
+            ]"
+            aria-hidden="true"
+          >
+            <span class="material-symbols-outlined text-[20px]">move_down</span>
+          </span>
+          <div class="min-w-0 flex-1 space-y-3">
+            <div class="space-y-1">
+              <p :class="labelCls">Mover para etapa após o disparo</p>
+              <p :class="hintCls">
+                Selecione a coluna do funil para onde o contato será movido depois do envio.
+              </p>
+            </div>
+
+            <div
+              class="rounded-xl border border-outline/25 bg-surface-container-lowest/60 p-4 dark:border-dark-outline/20 dark:bg-dark-surface-container-low/50"
+            >
+              <div class="mb-3 flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  :class="classeChipAcao()"
+                  :disabled="colunaAposDisparoId == null"
+                  @click="limparColunaAposDisparo"
+                >
+                  Não mover
+                </button>
               </div>
+
+              <p v-if="columns.length === 0" :class="hintCls">
+                Nenhuma coluna carregada no Kanban deste workspace.
+              </p>
+
+              <ul v-else class="max-h-52 space-y-2 overflow-y-auto pr-0.5" role="listbox" aria-label="Etapa após o disparo">
+                <li v-for="coluna in columns" :key="`apos-${coluna.id}`">
+                  <label :class="classeColunaItem(isColunaAposDisparo(coluna.id))">
+                    <span class="flex min-w-0 items-center gap-3">
+                      <input
+                        type="radio"
+                        name="coluna-apos-disparo"
+                        class="h-4 w-4 border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
+                        :checked="isColunaAposDisparo(coluna.id)"
+                        @change="selecionarColunaAposDisparo(coluna.id)"
+                      />
+                      <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                        {{ coluna.nome?.trim() || `Coluna #${coluna.id}` }}
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              </ul>
             </div>
           </div>
         </div>
       </section>
     </div>
 
-    <template #footer>
-      <BaseButton variant="secondary" :block="false" class="w-full sm:mr-auto sm:w-auto" :disabled="submitPending" @click="fechar">
-        Cancelar
-      </BaseButton>
+    <div class="mt-6 flex flex-col-reverse gap-3 border-t border-outline/20 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-dark-outline/20">
       <BaseButton
-        v-if="!modoEdicao"
+        v-if="!ehPrimeiraEtapa"
+        variant="secondary"
+        :block="false"
+        class="w-full sm:w-auto"
+        :disabled="submitPending"
+        @click="irEtapaAnterior"
+      >
+        <span class="inline-flex items-center justify-center gap-2 font-semibold">
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_back</span>
+          Anterior
+        </span>
+      </BaseButton>
+      <div v-else class="hidden sm:block" />
+
+      <BaseButton
+        v-if="!ehUltimaEtapa"
         variant="primary"
         :block="false"
-        class="w-full !shadow-[0_4px_16px_rgba(37,99,235,0.35)] hover:!shadow-[0_6px_22px_rgba(37,99,235,0.42)] sm:w-auto"
+        class="w-full !shadow-[0_4px_16px_rgba(37,99,235,0.35)] hover:!shadow-[0_6px_22px_rgba(37,99,235,0.42)] sm:w-auto sm:ml-auto"
+        :disabled="submitPending"
+        @click="irProximaEtapa"
+      >
+        <span class="inline-flex items-center justify-center gap-2 font-bold">
+          Próximo
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">arrow_forward</span>
+        </span>
+      </BaseButton>
+
+      <BaseButton
+        v-else-if="!modoEdicao"
+        variant="primary"
+        :block="false"
+        class="w-full !shadow-[0_4px_16px_rgba(37,99,235,0.35)] hover:!shadow-[0_6px_22px_rgba(37,99,235,0.42)] sm:w-auto sm:ml-auto"
         :disabled="submitPending"
         @click="salvar()"
       >
@@ -1371,8 +1624,7 @@ async function salvar() {
           {{ submitPending ? 'Criando campanha…' : 'Criar campanha' }}
         </span>
       </BaseButton>
-    </template>
-  </BaseModal>
+    </div>
 
   <ModalEnvioProdutos
     v-model:open="progressoAberto"
@@ -1389,6 +1641,7 @@ async function salvar() {
       </p>
     </template>
   </ModalEnvioProdutos>
+  </div>
 </template>
 
 <style scoped>

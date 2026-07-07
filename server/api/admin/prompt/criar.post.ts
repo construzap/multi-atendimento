@@ -1,6 +1,7 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
 import type { AdminPromptCriarBody, PromptWorkspaceComPrincipal } from '#shared/types/adminPrompt'
+import { PROMPT_WORKSPACE_TIPO_DEFAULT } from '#shared/types/adminPrompt'
 import {
   assertAdminWorkspaceAtivo,
   getPromptPrincipalId,
@@ -17,7 +18,7 @@ function mapPromptRow(r: Record<string, unknown>): PromptWorkspaceComPrincipal {
     id: Number.isFinite(id) ? id : 0,
     workspace_id: Number.isFinite(workspaceId) ? workspaceId : 0,
     nome: String(r.nome ?? '').trim(),
-    tipo: String(r.tipo ?? 'secundario').trim(),
+    tipo: String(r.tipo ?? PROMPT_WORKSPACE_TIPO_DEFAULT).trim(),
     prompt: String(r.prompt ?? ''),
     created_at: String(r.created_at ?? ''),
     updated_at: String(r.updated_at ?? ''),
@@ -40,8 +41,8 @@ export default defineEventHandler(async (event): Promise<PromptWorkspaceComPrinc
 
   const nome = parseTextoObrigatorio(body?.nome, 'nome', 200)
   const prompt = parseTextoObrigatorio(body?.prompt, 'prompt')
-  const tipoRaw = String(body?.tipo ?? 'secundario').trim()
-  const tipo = tipoRaw || 'secundario'
+  const tipoRaw = String(body?.tipo ?? PROMPT_WORKSPACE_TIPO_DEFAULT).trim()
+  const tipo = tipoRaw || PROMPT_WORKSPACE_TIPO_DEFAULT
 
   const admin = serverSupabaseServiceRole<any>(event)
   const agora = new Date().toISOString()

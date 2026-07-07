@@ -188,6 +188,51 @@ function normalizarLinha(raw: unknown, idx: number): ContatoImportarLinha {
   return linha
 }
 
+function mesclarCamposPersonalizadosImportacao(
+  a: ContatoImportarLinha['campos_personalizados'],
+  b: ContatoImportarLinha['campos_personalizados'],
+): ContatoImportarLinha['campos_personalizados'] {
+  const map = new Map<number, NonNullable<ContatoImportarLinha['campos_personalizados']>[number]>()
+  for (const cp of a ?? []) map.set(cp.campo_id, cp)
+  for (const cp of b ?? []) map.set(cp.campo_id, cp)
+  return map.size ? [...map.values()] : undefined
+}
+
+function mesclarLinhasImportacao(prev: ContatoImportarLinha, next: ContatoImportarLinha): ContatoImportarLinha {
+  const merged: ContatoImportarLinha = { ...prev, ...next }
+  const cps = mesclarCamposPersonalizadosImportacao(prev.campos_personalizados, next.campos_personalizados)
+  if (cps?.length) merged.campos_personalizados = cps
+  else delete merged.campos_personalizados
+  if (next.status_funil) merged.status_funil = next.status_funil
+  else if (prev.status_funil) merged.status_funil = prev.status_funil
+  return merged
+}
+
+/** Evita duplicatas no mesmo lote (mesmo telefone → mesma conversa). */
+function deduplicarLinhasPorPhone(linhas: ContatoImportarLinha[]): ContatoImportarLinha[] {
+  const porPhone = new Map<string, ContatoImportarLinha>()
+  for (const linha of linhas) {
+    const prev = porPhone.get(linha.phone)
+    porPhone.set(linha.phone, prev ? mesclarLinhasImportacao(prev, linha) : linha)
+  }
+  return [...porPhone.values()]
+}
+
+type ValorCpRow = {
+  campo_id: number
+  conversa_key: string
+  valor: string | null
+  updated_at: string
+}
+
+function deduplicarValoresCp(rows: ValorCpRow[]): ValorCpRow[] {
+  const map = new Map<string, ValorCpRow>()
+  for (const row of rows) {
+    map.set(`${row.conversa_key}\x1f${row.campo_id}`, row)
+  }
+  return [...map.values()]
+}
+
 async function mapaTiposCamposPersonalizados(
   admin: ReturnType<typeof serverSupabaseServiceRole<any>>,
   workspaceId: number,
@@ -263,9 +308,9 @@ async function validarColunasFunilDoLote(
   admin: ReturnType<typeof serverSupabaseServiceRole<any>>,
   workspaceId: number,
   colunaIds: number[],
-) {
+): Promise<number | null> {
   const uniq = [...new Set(colunaIds.filter((x) => x > 0))]
-  if (!uniq.length) return
+  if (!uniq.length) return null
 
   const { data: funil, error: funilErr } = await admin
     .from('funil_workspace')
@@ -310,44 +355,51 @@ async function validarColunasFunilDoLote(
       })
     }
   }
+
+  return funilId
 }
 
+/** Resolve identificador (uuid user / email) → `atendentes.id` (bigint em `conversas.atendente_id`). */
 async function resolverAtendentesDoLote(
   admin: ReturnType<typeof serverSupabaseServiceRole<any>>,
   workspaceId: number,
   atendenteIds: string[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, number>> {
   const uniq = [...new Set(atendenteIds.map((x) => x.trim()).filter(Boolean))]
-  const resolvido = new Map<string, string>()
+  const resolvido = new Map<string, number>()
   if (!uniq.length) return resolvido
 
   const { data, error } = await admin
     .from('view_atendentes')
-    .select('atendente_user_id, email')
+    .select('id, atendente_user_id, email')
     .eq('workspace_id', workspaceId)
 
   if (error) {
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
 
-  const porIdentificador = new Map<string, string>()
+  const porIdentificador = new Map<string, number>()
   for (const row of data ?? []) {
+    const idRaw = (row as { id?: unknown }).id
+    const atendenteId = typeof idRaw === 'number' ? idRaw : Number(idRaw)
+    if (!Number.isFinite(atendenteId) || atendenteId < 1) continue
+
     const uidRaw = (row as { atendente_user_id?: unknown }).atendente_user_id
     const userId =
       typeof uidRaw === 'string' ? uidRaw.trim() : uidRaw != null ? String(uidRaw).trim() : ''
-    if (!userId) continue
-
-    porIdentificador.set(userId.toLowerCase(), userId)
+    if (userId) porIdentificador.set(userId.toLowerCase(), atendenteId)
 
     const emailRaw = (row as { email?: unknown }).email
     const email =
       typeof emailRaw === 'string' ? emailRaw.trim().toLowerCase() : emailRaw != null ? String(emailRaw).trim().toLowerCase() : ''
-    if (email) porIdentificador.set(email, userId)
+    if (email) porIdentificador.set(email, atendenteId)
+
+    porIdentificador.set(String(atendenteId), atendenteId)
   }
 
   for (const id of uniq) {
     const canonical = porIdentificador.get(id.toLowerCase())
-    if (!canonical) {
+    if (canonical == null) {
       throw createError({
         statusCode: 400,
         statusMessage: `Atendente "${id}" não encontrado neste workspace.`,
@@ -359,12 +411,68 @@ async function resolverAtendentesDoLote(
   return resolvido
 }
 
+type ConversaExistentePorPhone = {
+  key: string
+  id_canal: number | null
+}
+
+async function mapaConversasExistentesPorPhone(
+  admin: ReturnType<typeof serverSupabaseServiceRole<any>>,
+  workspaceId: number,
+  phones: string[],
+): Promise<Map<string, ConversaExistentePorPhone>> {
+  const uniq = [...new Set(phones.map((p) => p.trim()).filter(Boolean))]
+  const map = new Map<string, ConversaExistentePorPhone>()
+  if (!uniq.length) return map
+
+  const { data, error } = await admin
+    .from('conversas')
+    .select('key, phone, id_canal, updated_at')
+    .eq('workspace_id', workspaceId)
+    .in('phone', uniq)
+    .is('deleted_at', null)
+
+  if (error) {
+    throw createError({ statusCode: 500, statusMessage: error.message })
+  }
+
+  const rows = [...(data ?? [])] as Array<{
+    key?: unknown
+    phone?: unknown
+    id_canal?: unknown
+    updated_at?: unknown
+  }>
+
+  rows.sort((a, b) => {
+    const ta = typeof a.updated_at === 'string' ? Date.parse(a.updated_at) : 0
+    const tb = typeof b.updated_at === 'string' ? Date.parse(b.updated_at) : 0
+    return tb - ta
+  })
+
+  for (const row of rows) {
+    const phone = typeof row.phone === 'string' ? row.phone.trim() : ''
+    const key = typeof row.key === 'string' ? row.key.trim() : ''
+    if (!phone || !key || map.has(phone)) continue
+
+    const idCanalRaw = row.id_canal
+    const id_canal =
+      idCanalRaw != null && Number.isFinite(Number(idCanalRaw)) && Number(idCanalRaw) >= 1
+        ? Math.trunc(Number(idCanalRaw))
+        : null
+
+    map.set(phone, { key, id_canal })
+  }
+
+  return map
+}
+
 /**
  * POST /api/contatos/importar
  *
  * Body: `{ workspace_id, linhas }` — até {@link MAX_LINHAS_POR_REQUISICAO} linhas por pedido.
- * Para cada linha: upsert em `conversas` (por `id_canal` + `phone`) e, se houver,
- * upsert em `valores_campos_personalizados` e/ou `funil_conversa_status` com o `conversa_key` resolvido.
+ * Para cada linha: upsert em `conversas` reutilizando conversa existente pelo `phone` no workspace
+ * (evita duplicatas entre canais) e, se houver, upsert em `valores_campos_personalizados`
+ * e/ou `coluna_id` / `funil_id` / `atendente_id` em `conversas`.
  */
 export default defineEventHandler(async (event): Promise<ContatosImportarLoteResponse> => {
   assertMethod(event, 'POST')
@@ -400,7 +508,7 @@ export default defineEventHandler(async (event): Promise<ContatosImportarLoteRes
 
   await checkWorkspace(event, workspaceId, userId)
 
-  const linhas = linhasRaw.map((item, idx) => normalizarLinha(item, idx))
+  const linhas = deduplicarLinhasPorPhone(linhasRaw.map((item, idx) => normalizarLinha(item, idx)))
 
   const admin = serverSupabaseServiceRole<any>(event)
   await validarCanaisDoLote(
@@ -411,7 +519,7 @@ export default defineEventHandler(async (event): Promise<ContatosImportarLoteRes
     userId,
   )
 
-  await validarColunasFunilDoLote(
+  const funilId = await validarColunasFunilDoLote(
     admin,
     workspaceId,
     linhas.map((l) => l.status_funil?.coluna_id).filter((id): id is number => id != null && id > 0),
@@ -426,43 +534,24 @@ export default defineEventHandler(async (event): Promise<ContatosImportarLoteRes
   )
 
   const tiposCampos = await mapaTiposCamposPersonalizados(admin, workspaceId)
+  const conversasPorPhone = await mapaConversasExistentesPorPhone(
+    admin,
+    workspaceId,
+    linhas.map((l) => l.phone),
+  )
   const nowIso = new Date().toISOString()
 
   let inseridos = 0
   let atualizados = 0
-  const valoresCpRows: Array<{
-    campo_id: number
-    conversa_key: string
-    valor: string | null
-    updated_at: string
-  }> = []
-  const statusFunilRows: Array<{
-    conversa_key: string
-    workspace_id: number
-    coluna_id: number
-    atendente_id: string | null
-    updated_at: string
-  }> = []
+  let statusFunilGravados = 0
+  const valoresCpRows: ValorCpRow[] = []
 
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i]!
 
-    const { data: existente, error: selErr } = await admin
-      .from('conversas')
-      .select('key')
-      .eq('id_canal', linha.id_canal)
-      .eq('phone', linha.phone)
-      .is('deleted_at', null)
-      .maybeSingle()
+    const existente = conversasPorPhone.get(linha.phone) ?? null
 
-    if (selErr) {
-      throw createError({ statusCode: 500, statusMessage: selErr.message })
-    }
-
-    const conversaKey =
-      existente && typeof existente === 'object' && 'key' in existente
-        ? String((existente as { key: unknown }).key)
-        : randomUUID()
+    const conversaKey = existente?.key ?? randomUUID()
 
     const row: Record<string, unknown> = {
       key: conversaKey,
@@ -486,6 +575,16 @@ export default defineEventHandler(async (event): Promise<ContatosImportarLoteRes
     if (linha.latitude !== undefined) row.latitude = linha.latitude
     if (linha.longitude !== undefined) row.longitude = linha.longitude
 
+    if (linha.status_funil?.coluna_id) {
+      row.coluna_id = linha.status_funil.coluna_id
+      if (funilId != null) row.funil_id = funilId
+      const atendenteBruto = linha.status_funil.atendente_id?.trim() ?? ''
+      if (atendenteBruto) {
+        row.atendente_id = atendentesResolvidos.get(atendenteBruto) ?? null
+      }
+      statusFunilGravados += 1
+    }
+
     if (!existente) {
       row.created_at = linha.created_at ?? nowIso
       row.conversa_aberta = linha.conversa_aberta ?? true
@@ -506,7 +605,10 @@ export default defineEventHandler(async (event): Promise<ContatosImportarLoteRes
     }
 
     if (existente) atualizados += 1
-    else inseridos += 1
+    else {
+      inseridos += 1
+      conversasPorPhone.set(linha.phone, { key: conversaKey, id_canal: linha.id_canal })
+    }
 
     for (const cp of linha.campos_personalizados ?? []) {
       const tipo = tiposCampos.get(cp.campo_id)
@@ -524,41 +626,19 @@ export default defineEventHandler(async (event): Promise<ContatosImportarLoteRes
         updated_at: nowIso,
       })
     }
-
-    if (linha.status_funil?.coluna_id) {
-      const atendenteBruto = linha.status_funil.atendente_id?.trim() ?? ''
-      statusFunilRows.push({
-        conversa_key: conversaKey,
-        workspace_id: workspaceId,
-        coluna_id: linha.status_funil.coluna_id,
-        atendente_id: atendenteBruto ? (atendentesResolvidos.get(atendenteBruto) ?? null) : null,
-        updated_at: nowIso,
-      })
-    }
   }
 
   let camposPersonalizadosGravados = 0
-  if (valoresCpRows.length > 0) {
+  const valoresCpUnicos = deduplicarValoresCp(valoresCpRows)
+  if (valoresCpUnicos.length > 0) {
     const { error: cpErr } = await admin
       .from('valores_campos_personalizados')
-      .upsert(valoresCpRows, { onConflict: 'conversa_key,campo_id' })
+      .upsert(valoresCpUnicos, { onConflict: 'conversa_key,campo_id' })
 
     if (cpErr) {
       throw createError({ statusCode: 500, statusMessage: cpErr.message })
     }
-    camposPersonalizadosGravados = valoresCpRows.length
-  }
-
-  let statusFunilGravados = 0
-  if (statusFunilRows.length > 0) {
-    const { error: funilErr } = await admin
-      .from('funil_conversa_status')
-      .upsert(statusFunilRows, { onConflict: 'conversa_key' })
-
-    if (funilErr) {
-      throw createError({ statusCode: 500, statusMessage: funilErr.message })
-    }
-    statusFunilGravados = statusFunilRows.length
+    camposPersonalizadosGravados = valoresCpUnicos.length
   }
 
   return {

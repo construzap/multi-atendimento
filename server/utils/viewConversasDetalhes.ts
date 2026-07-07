@@ -88,6 +88,31 @@ export function parseStatusFunilView(raw: unknown): ContatoStatusFunil | null {
   }
 }
 
+/** Monta `status_funil` a partir das colunas planas de `view_kanban_conversas`. */
+export function statusFunilFromKanbanViewRow(row: Record<string, unknown>): ContatoStatusFunil | null {
+  const colunaId = intOrNull(row.coluna_id)
+  if (colunaId == null || colunaId < 1) return null
+
+  const atendenteRaw = row.atendente_id
+  const atendente_id =
+    atendenteRaw === null || atendenteRaw === undefined
+      ? null
+      : String(atendenteRaw).trim() || null
+
+  return {
+    coluna_id: colunaId,
+    coluna_nome: strOrNull(row.coluna_nome),
+    coluna_cor: strOrNull(row.coluna_cor),
+    funil_id: intOrNull(row.funil_id),
+    atendente_id,
+    prioridade: intOrNull(row.prioridade),
+    posicao: intOrNull(row.posicao),
+  }
+}
+
+/**
+ * Mapeia linha de `view_kanban_conversas` (ou legado `view_conversas_com_detalhes_campos`).
+ */
 export function mapViewRowToContato(row: Record<string, unknown>): Contato {
   const naoLidasRaw = row.nao_lidas
   const naoLidas =
@@ -95,8 +120,10 @@ export function mapViewRowToContato(row: Record<string, unknown>): Contato {
       ? Math.max(0, Math.trunc(Number(naoLidasRaw)))
       : 0
 
+  const key = String(row.conversa_key ?? row.key ?? '').trim()
+
   return {
-    key: String(row.key ?? ''),
+    key,
     name: strOrNull(row.name),
     created_at: strOrNull(row.created_at),
     updated_at: strOrNull(row.updated_at),
@@ -117,7 +144,7 @@ export function mapViewRowToContato(row: Record<string, unknown>): Contato {
     ia_ligada: row.ia_ligada === true ? true : row.ia_ligada === false ? false : null,
     nao_lidas: naoLidas,
     campos_personalizados: parseCamposPersonalizadosView(row.campos_personalizados),
-    status_funil: parseStatusFunilView(row.status_funil),
+    status_funil: parseStatusFunilView(row.status_funil) ?? statusFunilFromKanbanViewRow(row),
   }
 }
 

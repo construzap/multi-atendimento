@@ -2,9 +2,10 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
+import AreaChatRespostaPreview from '~/components/chat/area-chat/AreaChatRespostaPreview.vue'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
-import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
+import type { Mensagem, PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import type { MessageType } from '#shared/types/messageType'
 import { mensagemErroFetch } from '~/stores/canais'
 
@@ -45,7 +46,13 @@ const conversasStore = useConversasStore()
 const canaisStore = useCanaisStore()
 const mensagensStore = useMensagensStore()
 const workspacesStore = useWorkspacesStore()
-const { conversaAtual, items } = storeToRefs(conversasStore)
+const { items } = storeToRefs(conversasStore)
+const { conversaKeyAtiva } = useConversaKeyAtiva()
+const { mensagemEmResposta } = storeToRefs(mensagensStore)
+
+const conversaKeyResolvida = computed(
+  () => props.contextoExterno?.conversaKey ?? conversaKeyAtiva.value ?? null,
+)
 
 const fileInputImage = ref<HTMLInputElement | null>(null)
 const fileInputVideo = ref<HTMLInputElement | null>(null)
@@ -59,7 +66,7 @@ function focarInputMensagem() {
 }
 
 watch(
-  () => props.contextoExterno?.conversaKey ?? conversaAtual.value,
+  () => conversaKeyResolvida.value,
   (key, prev) => {
     if (!key || key === prev) return
     focarInputMensagem()
@@ -67,8 +74,20 @@ watch(
 )
 
 onMounted(() => {
-  const key = props.contextoExterno?.conversaKey ?? conversaAtual.value
+  const key = conversaKeyResolvida.value
   if (key) focarInputMensagem()
+})
+
+watch(mensagemEmResposta, (msg) => {
+  if (msg) focarInputMensagem()
+})
+
+const nomeContatoResposta = computed(() => {
+  const key = conversaKeyResolvida.value
+  if (!key) return null
+  const ext = props.contextoExterno
+  if (ext?.name) return ext.name
+  return items.value.find((c) => c.key === key)?.name ?? null
 })
 
 type ConversaCtx = {
@@ -90,7 +109,7 @@ const conversaSelecionada = computed((): ConversaCtx | null => {
       photo: ext.photo ?? null,
     }
   }
-  const key = conversaAtual.value
+  const key = conversaKeyResolvida.value
   if (!key) return null
   const list = items.value
   if (!list?.length) return null
@@ -139,7 +158,7 @@ function ensureCanSend(): {
     toast.error('Esta conversa não tem telefone nem LID para enviar.')
     return null
   }
-  const conversaKey = ext?.conversaKey ?? String(conversaAtual.value ?? '')
+  const conversaKey = ext?.conversaKey ?? String(conversaKeyResolvida.value ?? '')
   if (!conversaKey) return null
   return {
     idCanal,
@@ -156,6 +175,8 @@ function enviarMensagem() {
   if (!ctx) return
   const { idCanal, conversaKey, telefone, lid } = ctx
 
+  const emResposta = mensagemEmResposta.value
+
   const tempId = mensagensStore.addOptimisticTextMessage({
     id_canal: idCanal,
     conversa_key: conversaKey,
@@ -165,7 +186,11 @@ function enviarMensagem() {
     text: t,
     name: conversaSelecionada.value?.name ?? null,
     photo: conversaSelecionada.value?.photo ?? null,
+    replyid: emResposta?.message_id ?? null,
+    mensagem_citada: emResposta ?? null,
   })
+
+  const replyid = emResposta?.message_id?.trim() || null
 
   mensagem.value = ''
 
@@ -179,12 +204,16 @@ function enviarMensagem() {
       conteudo: t,
       temp_id: tempId,
       conversa_sessao: conversaKey,
+      ...(replyid ? { replyid } : {}),
     },
   })
     .then((res) => {
+      if (replyid) mensagensStore.cancelarResposta()
       confirmOptimisticAfterSend(idCanal, conversaKey, tempId, res, conversaSelecionada.value, {
         fallbackText: t,
         messagetype: 'conversation',
+        ...(replyid ? { replyid } : {}),
+        ...(emResposta ? { mensagem_citada: emResposta } : {}),
       })
     })
     .catch((err: unknown) => {
@@ -475,6 +504,8 @@ function confirmOptimisticAfterSend(
     media_url?: string | null
     caption?: string | null
     filename?: string | null
+    replyid?: string | null
+    mensagem_citada?: Mensagem | null
   } = {},
 ) {
   const rawId = res?.messageid
@@ -517,6 +548,8 @@ function confirmOptimisticAfterSend(
       filename: opts.filename ?? null,
       name: conv?.name ?? null,
       photo: conv?.photo ?? null,
+      ...(opts.replyid?.trim() ? { replyid: opts.replyid.trim() } : {}),
+      ...(opts.mensagem_citada ? { mensagem_citada: opts.mensagem_citada } : {}),
     },
   }
 
@@ -529,6 +562,13 @@ function confirmOptimisticAfterSend(
     class="shrink-0 border-t border-outline-variant/10 bg-surface-container-lowest dark:bg-slate-900"
     :class="compact ? 'p-3' : 'p-6'"
   >
+    <AreaChatRespostaPreview
+      v-if="mensagemEmResposta"
+      :mensagem="mensagemEmResposta"
+      :nome-contato="nomeContatoResposta"
+      @cancelar="mensagensStore.cancelarResposta()"
+    />
+
     <div class="flex items-end gap-3" :class="compact ? 'gap-2' : 'gap-4'">
       <BaseDropdown title="Enviar mídia" align="left" side="top" panel-class="w-60 min-w-[14rem]">
         <template #trigger>

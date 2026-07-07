@@ -5,6 +5,7 @@ import type {
   PromptWorkspace,
   PromptWorkspaceComPrincipal,
 } from '#shared/types/adminPrompt'
+import { PROMPT_WORKSPACE_TIPO_DEFAULT } from '#shared/types/adminPrompt'
 import {
   assertAdminWorkspaceAtivo,
   getPromptPrincipalId,
@@ -20,7 +21,7 @@ function mapPromptRow(r: Record<string, unknown>): PromptWorkspace {
     id: Number.isFinite(id) ? id : 0,
     workspace_id: Number.isFinite(workspaceId) ? workspaceId : 0,
     nome: String(r.nome ?? '').trim(),
-    tipo: String(r.tipo ?? 'principal').trim(),
+    tipo: String(r.tipo ?? PROMPT_WORKSPACE_TIPO_DEFAULT).trim(),
     prompt: String(r.prompt ?? ''),
     created_at: String(r.created_at ?? ''),
     updated_at: String(r.updated_at ?? ''),

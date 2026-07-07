@@ -9,7 +9,7 @@ type DisparoEmMassaState = {
   pending: boolean
   error: string | null
   loadedAt: number | null
-  /** Campanha aberta no modal de edição (`null` = criar nova). */
+  /** Campanha aberta na tela de configuração (`null` = criar nova). */
   campanhaEdicaoId: string | null
 }
 

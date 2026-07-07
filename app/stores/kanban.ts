@@ -1,10 +1,11 @@
 import { defineStore } from 'pinia'
 import { toast } from 'vue-sonner'
-import type { KanbanBoardResponse, KanbanCard, KanbanColumn, KanbanColumnPageResponse } from '#shared/types/kanban'
+import type { KanbanBoardResponse, KanbanCard, KanbanColumn, KanbanColumnPageResponse, KanbanConversaAtualizarResponse, KanbanConversaPatch } from '#shared/types/kanban'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useCamposPersonalizadosStore } from '~/stores/camposPersonalizados'
 import { useConversasStore } from '~/stores/conversas'
+import { useMensagensStore } from '~/stores/mensagens'
 import { toRaw } from 'vue'
 
 function cloneColumns(cols: KanbanColumn[]): KanbanColumn[] {
@@ -23,6 +24,14 @@ function normalizeKanbanCard(card: KanbanCard): KanbanCard {
   if (card.is_group === true) is_group = true
   else if (card.is_group === false) is_group = false
 
+  let conversa_aberta: boolean | null = null
+  if (card.conversa_aberta === true) conversa_aberta = true
+  else if (card.conversa_aberta === false) conversa_aberta = false
+
+  let ia_ligada: boolean | null = null
+  if (card.ia_ligada === true) ia_ligada = true
+  else if (card.ia_ligada === false) ia_ligada = false
+
   const rawNaoLidas = card.nao_lidas
   const nao_lidas =
     rawNaoLidas != null && Number.isFinite(Number(rawNaoLidas))
@@ -33,6 +42,9 @@ function normalizeKanbanCard(card: KanbanCard): KanbanCard {
     ...card,
     id_canal,
     is_group,
+    name_group: typeof card.name_group === 'string' && card.name_group.trim() ? card.name_group.trim() : card.name_group ?? null,
+    conversa_aberta,
+    ia_ligada,
     lid: typeof card.lid === 'string' && card.lid.trim() ? card.lid.trim() : null,
     nao_lidas,
     campos_personalizados: Array.isArray(card.campos_personalizados)
@@ -75,6 +87,10 @@ export const useKanbanStore = defineStore('kanban', {
     infoContatoConversaKey: null as string | null,
     /** Filtro atual por nome ou telefone (GET /api/kanban?q=). */
     busca: '' as string,
+    /** Quando true, GET usa `is_group=false` (oculta grupos WhatsApp). */
+    ocultarGrupos: true,
+    /** Filtro por canal (`id_canal`); `null` = todos os canais. */
+    filtroCanalId: null as number | null,
   }),
   getters: {
     infoContatoCard(state) {
@@ -106,13 +122,17 @@ export const useKanbanStore = defineStore('kanban', {
     },
   },
   actions: {
-    kanbanQuery(workspaceId: number, extra: Record<string, string | number> = {}) {
-      const query: Record<string, string | number> = {
+    kanbanQuery(workspaceId: number, extra: Record<string, string | number | boolean> = {}) {
+      const query: Record<string, string | number | boolean> = {
         workspace_id: workspaceId,
         ...extra,
       }
       const q = this.busca.trim()
       if (q) query.q = q
+      if (this.ocultarGrupos) query.is_group = false
+      if (this.filtroCanalId != null && this.filtroCanalId > 0) {
+        query.id_canal = this.filtroCanalId
+      }
       return query
     },
 
@@ -209,6 +229,21 @@ export const useKanbanStore = defineStore('kanban', {
       await this.fetchBoard(workspaceId)
     },
 
+    async setOcultarGrupos(workspaceId: number, ocultar: boolean) {
+      this.ocultarGrupos = ocultar
+      this.loadingMoreByColumn = {}
+      await this.fetchBoard(workspaceId)
+    },
+
+    /** `null` = todos os canais. */
+    async setFiltroCanalId(workspaceId: number, canalId: number | null) {
+      const id =
+        canalId != null && Number.isFinite(canalId) && canalId > 0 ? Math.trunc(canalId) : null
+      this.filtroCanalId = id
+      this.loadingMoreByColumn = {}
+      await this.fetchBoard(workspaceId)
+    },
+
     openInfoContatoConversa(conversaKey: string) {
       const key = conversaKey?.trim()
       if (!key) return
@@ -243,6 +278,69 @@ export const useKanbanStore = defineStore('kanban', {
         break
       }
       if (changed) this.columns = next
+    },
+
+    atualizarNomeNoCard(conversaKey: string, name: string | null) {
+      this.aplicarConversaAtualizadaNoCard({ conversa_key: conversaKey, name } as KanbanConversaAtualizarResponse)
+    },
+
+    aplicarConversaAtualizadaNoCard(
+      res: KanbanConversaAtualizarResponse,
+      extras?: { canal_nome?: string | null },
+    ) {
+      const key = res.conversa_key?.trim()
+      if (!key) return
+
+      let changed = false
+      const next = cloneColumns(this.columns)
+      for (const col of next) {
+        const idx = col.cards.findIndex((c) => c.conversa_key === key)
+        if (idx === -1) continue
+
+        const cur = col.cards[idx]!
+        col.cards[idx] = normalizeKanbanCard({
+          ...cur,
+          ...(res.name !== undefined ? { name: res.name } : {}),
+          ...(res.phone !== undefined ? { phone: res.phone } : {}),
+          ...(res.lid !== undefined ? { lid: res.lid } : {}),
+          ...(res.photo !== undefined ? { photo: res.photo } : {}),
+          ...(res.updated_at !== undefined ? { updated_at: res.updated_at } : {}),
+          ...(res.id_canal !== undefined ? { id_canal: res.id_canal } : {}),
+          ...(extras?.canal_nome !== undefined ? { canal_nome: extras.canal_nome } : {}),
+          ...(res.is_group !== undefined ? { is_group: res.is_group } : {}),
+          ...(res.name_group !== undefined ? { name_group: res.name_group } : {}),
+          ...(res.conversa_aberta !== undefined ? { conversa_aberta: res.conversa_aberta } : {}),
+          ...(res.ia_ligada !== undefined ? { ia_ligada: res.ia_ligada } : {}),
+        })
+        changed = true
+        break
+      }
+      if (changed) this.columns = next
+    },
+
+    async atualizarConversa(
+      workspaceId: number,
+      conversaKey: string,
+      patch: KanbanConversaPatch,
+      extras?: { canal_nome?: string | null },
+    ): Promise<KanbanConversaAtualizarResponse> {
+      const key = conversaKey?.trim()
+      if (!workspaceId || !key) {
+        throw new Error('workspace_id e conversa_key são obrigatórios.')
+      }
+
+      const res = await $fetch<KanbanConversaAtualizarResponse>('/api/kanban/conversa', {
+        method: 'PATCH',
+        body: {
+          workspace_id: workspaceId,
+          conversa_key: key,
+          patch,
+        },
+      })
+
+      this.aplicarConversaAtualizadaNoCard(res, extras)
+
+      return res
     },
 
     /** Atualiza um valor de campo personalizado no card do board (espelha POST sem novo GET). */
@@ -562,6 +660,44 @@ export const useKanbanStore = defineStore('kanban', {
         return true
       } catch (err: unknown) {
         const msg = mensagemErroFetch(err, 'Não foi possível excluir a coluna.')
+        toast.error(msg, { duration: 8000 })
+        return false
+      }
+    },
+
+    /**
+     * Remove conversa do board e do banco (`POST /api/conversas/deletar`).
+     */
+    async deleteCard(conversaKey: string): Promise<boolean> {
+      const key = conversaKey.trim()
+      if (!key) return false
+
+      try {
+        await $fetch('/api/conversas/deletar', {
+          method: 'POST',
+          body: { key },
+        })
+
+        const next = cloneColumns(this.columns)
+        for (const col of next) {
+          const idx = col.cards.findIndex((c) => c.conversa_key === key)
+          if (idx === -1) continue
+          col.cards.splice(idx, 1)
+          col.total_cards = Math.max(0, (col.total_cards ?? col.cards.length + 1) - 1)
+        }
+        this.columns = next
+
+        if (this.infoContatoConversaKey === key) {
+          this.infoContatoConversaKey = null
+        }
+
+        useConversasStore().removeConversaByDbKey(key)
+        useMensagensStore().afterConversaDeleted(key)
+
+        toast.success('Conversa excluída permanentemente.')
+        return true
+      } catch (err: unknown) {
+        const msg = mensagemErroFetch(err, 'Não foi possível excluir a conversa.')
         toast.error(msg, { duration: 8000 })
         return false
       }

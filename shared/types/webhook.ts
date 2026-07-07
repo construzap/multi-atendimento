@@ -54,7 +54,7 @@ export interface UazapiMessage {
   mediaType: string
   messageTimestamp: number
   wasSentByApi: boolean
-  quoted: string
+  quoted?: unknown
   reaction: string
   edited: string
   track_id?: string
@@ -90,5 +90,7 @@ export interface MensagemNormalizada {
   /** Nome do grupo — gravado em `conversas.name`. */
   name_group: string | null
   /** `true` quando `message.track_id === "ia"` (resposta automatizada). */
-  from_ia: boolean
+  from_ia?: boolean
+  /** `message_id` da mensagem citada (reply). */
+  replyid?: string | null
 }

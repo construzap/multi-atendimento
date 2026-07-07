@@ -5,6 +5,7 @@ import BaseButton from '~/components/BaseButton.vue'
 import WorkspaceConfiguracoesForm from '~/components/configuracoes/WorkspaceConfiguracoesForm.vue'
 import WorkspaceConfiguracoesIa from '~/components/configuracoes/WorkspaceConfiguracoesIa.vue'
 import WorkspaceConfiguracoesNotificacoes from '~/components/configuracoes/WorkspaceConfiguracoesNotificacoes.vue'
+import WorkspaceConfiguracoesTempos from '~/components/configuracoes/WorkspaceConfiguracoesTempos.vue'
 import { useConfiguracoesStore } from '~/stores/configuracoes'
 
 definePageMeta({
@@ -42,14 +43,13 @@ watch(
 )
 
 async function onSalvarTudo() {
-  const id = workspaceId.value
-  if (!id) {
+  if (workspaceId.value == null) {
     toast.error('Workspace não encontrado.')
     return
   }
 
   try {
-    await configuracoes.salvar(id)
+    await configuracoes.salvar()
     toast.success('Configurações salvas com sucesso.')
   } catch (err) {
     toast.error(err instanceof Error ? err.message : 'Falha ao salvar configurações.')
@@ -73,6 +73,8 @@ async function onSalvarTudo() {
     <WorkspaceConfiguracoesNotificacoes />
 
     <WorkspaceConfiguracoesIa />
+
+    <WorkspaceConfiguracoesTempos />
 
     <div v-if="workspaceId" class="pt-2">
       <BaseButton

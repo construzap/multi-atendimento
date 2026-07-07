@@ -1,10 +1,10 @@
 /**
- * Kanban / funil por workspace (`funil_workspace`, `funil_workspace_colunas`, `funil_conversa_status`).
+ * Kanban / funil por workspace (`funil_workspace`, `funil_workspace_colunas`, `conversas.coluna_id`).
  */
 
 import type { TipoCampoPersonalizado } from './camposPersonalizados'
 
-/** Campo personalizado embutido na view `view_conversas_com_detalhes_campos`. */
+/** Campo personalizado embutido na view `view_kanban_conversas`. */
 export type KanbanCampoPersonalizadoResumo = {
   id: number
   nome: string
@@ -13,8 +13,9 @@ export type KanbanCampoPersonalizadoResumo = {
 }
 
 export type KanbanCard = {
-  /** PK em `funil_conversa_status` / FK para `conversas.key`. */
+  /** `conversas.key`. */
   conversa_key: string
+  /** Coluna do funil (`conversas.coluna_id`). */
   coluna_id: number
   /** 1=baixa, 2=média, 3=alta (smallint no DB). */
   prioridade: number | null
@@ -31,9 +32,15 @@ export type KanbanCard = {
   id_canal: number | null
   /** Grupo WhatsApp (`conversas.is_group`). */
   is_group: boolean | null
+  /** Nome do grupo (`conversas.name_group`). */
+  name_group: string | null
+  /** Conversa aberta (`conversas.conversa_aberta`). */
+  conversa_aberta: boolean | null
+  /** I.A. ligada (`conversas.ia_ligada`). */
+  ia_ligada: boolean | null
   /** Mensagens não lidas (`conversas.nao_lidas`). */
   nao_lidas: number
-  /** Valores dos campos personalizados (view `view_conversas_com_detalhes_campos`). */
+  /** Valores dos campos personalizados (view `view_kanban_conversas`). */
   campos_personalizados: KanbanCampoPersonalizadoResumo[]
 }
 
@@ -61,4 +68,46 @@ export type KanbanColumnPageResponse = {
   cards: KanbanCard[]
   total_cards: number
   has_more: boolean
+}
+
+export type KanbanConversaPatch = {
+  name?: string | null
+  photo?: string | null
+  phone?: string | null
+  conversa_aberta?: boolean
+  is_group?: boolean
+  name_group?: string | null
+  ia_ligada?: boolean
+  id_canal?: number | null
+}
+
+export type KanbanConversaAtualizarResponse = {
+  conversa_key: string
+  name: string | null
+  phone: string | null
+  /** Sempre `null` quando o patch alterou `phone`. */
+  lid: string | null
+  photo: string | null
+  updated_at: string | null
+  id_canal: number | null
+  conversa_aberta: boolean | null
+  is_group: boolean | null
+  name_group: string | null
+  ia_ligada: boolean | null
+}
+
+/** Corpo de `POST /api/kanban/contato`. */
+export type KanbanCriarContatoBody = {
+  workspace_id: number
+  nome: string
+  telefone: string
+  coluna_id: number
+  id_canal: number
+}
+
+/** Resposta de `POST /api/kanban/contato`. */
+export type KanbanCriarContatoResponse = {
+  ok: true
+  conversa_key: string
+  coluna_id: number
 }

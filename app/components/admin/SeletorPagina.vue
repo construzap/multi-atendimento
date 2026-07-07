@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-type AdminEditArea = 'prompt' | 'produtos'
+type AdminPagina = 'prompt' | 'produtos' | 'ia'
 
 const emit = defineEmits<{
-  select: [area: AdminEditArea]
+  select: [pagina: AdminPagina]
 }>()
 
-const selected = ref<AdminEditArea | null>(null)
+const selected = ref<AdminPagina | null>(null)
 
 const opcoes = [
   {
@@ -16,7 +16,7 @@ const opcoes = [
     descricao: 'Configure o comportamento, tom e instruções da IA para os atendimentos.',
     detalhe: 'System prompt, regras e contexto do assistente',
     gradient: 'bg-gradient-to-br from-info to-tertiary shadow-[0_10px_30px_rgba(0,99,154,0.25)]',
-    icon: 'prompt'
+    icon: 'prompt',
   },
   {
     id: 'produtos' as const,
@@ -24,20 +24,30 @@ const opcoes = [
     descricao: 'Gerencie catálogo, importações e configurações de produtos do workspace.',
     detalhe: 'Catálogo, categorias, termos de pesquisa e mídias',
     gradient: 'bg-gradient-to-br from-primary-500 to-primary-700 shadow-[0_10px_30px_rgba(26,123,45,0.25)]',
-    icon: 'produtos'
-  }
+    icon: 'produtos',
+  },
+  {
+    id: 'ia' as const,
+    titulo: 'I.A',
+    descricao: 'Configure modelos, parâmetros e integrações de inteligência artificial.',
+    detalhe: 'Modelos, temperatura, tokens e provedores',
+    gradient: 'bg-gradient-to-br from-violet-500 to-purple-700 shadow-[0_10px_30px_rgba(124,58,237,0.25)]',
+    icon: 'ia',
+  },
 ] as const
 
 const opcaoSelecionada = computed(() =>
-  opcoes.find((o) => o.id === selected.value) ?? null
+  opcoes.find((o) => o.id === selected.value) ?? null,
 )
 
-async function selecionar(area: AdminEditArea) {
-  selected.value = area
-  emit('select', area)
+async function selecionar(pagina: AdminPagina) {
+  selected.value = pagina
+  emit('select', pagina)
 
-  if (area === 'prompt') {
+  if (pagina === 'prompt') {
     await navigateTo('/admin/prompt')
+  } else if (pagina === 'ia') {
+    await navigateTo('/admin/ia')
   }
 }
 </script>
@@ -53,7 +63,7 @@ async function selecionar(area: AdminEditArea) {
       </p>
     </header>
 
-    <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+    <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
       <button
         v-for="opcao in opcoes"
         :key="opcao.id"
@@ -73,7 +83,6 @@ async function selecionar(area: AdminEditArea) {
               :class="opcao.gradient"
               aria-hidden="true"
             >
-              <!-- Prompt -->
               <svg
                 v-if="opcao.icon === 'prompt'"
                 class="h-7 w-7"
@@ -88,9 +97,8 @@ async function selecionar(area: AdminEditArea) {
                   stroke-linejoin="round"
                 />
               </svg>
-              <!-- Produtos -->
               <svg
-                v-else
+                v-else-if="opcao.icon === 'produtos'"
                 class="h-7 w-7"
                 viewBox="0 0 24 24"
                 fill="none"
@@ -103,6 +111,21 @@ async function selecionar(area: AdminEditArea) {
                   stroke-linejoin="round"
                 />
                 <path d="M9 7V5a3 3 0 0 1 6 0v2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <svg
+                v-else
+                class="h-7 w-7"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M12 3a6 6 0 0 0-3 10.5V17a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-3.5A6 6 0 0 0 12 3z"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+                <path d="M9 21h6M10 17h4" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
             </div>
 
@@ -153,7 +176,7 @@ async function selecionar(area: AdminEditArea) {
     </div>
 
     <div
-      v-if="opcaoSelecionada"
+      v-if="opcaoSelecionada && opcaoSelecionada.id === 'produtos'"
       class="rounded-2xl border border-dashed border-primary-300 bg-primary-50/50 p-6 dark:border-primary-800/50 dark:bg-primary-950/20"
     >
       <p class="text-xs font-semibold uppercase tracking-wide text-primary-700 dark:text-primary-300">

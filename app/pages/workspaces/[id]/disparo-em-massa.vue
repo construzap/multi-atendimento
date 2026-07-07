@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import BaseButton from '~/components/BaseButton.vue'
-import CriarCampanhaModal from '~/components/kanban/disparo_em_massa/CriarCampanhaModal.vue'
+import CriarCampanhaConfig from '~/components/kanban/disparo_em_massa/CriarCampanhaConfig.vue'
 import ListaCampanhas from '~/components/kanban/disparo_em_massa/ListaCampanhas.vue'
 import type { CriarCampanhaResponse } from '#shared/types/disparoEmMassa'
 import { useDisparoEmMassaStore } from '~/stores/disparoEmMassa'
@@ -18,7 +18,7 @@ const disparoEmMassa = useDisparoEmMassaStore()
 const { columns, pending, error } = storeToRefs(kanban)
 const { campanhaEdicaoId } = storeToRefs(disparoEmMassa)
 
-const modalAberto = ref(false)
+const configAberto = ref(false)
 
 const workspaceId = computed(() => {
   const raw = route.params.id
@@ -35,28 +35,23 @@ watch(
   { immediate: true },
 )
 
-function abrirModalCampanha() {
+function abrirNovaCampanha() {
   disparoEmMassa.setCampanhaEdicao(null)
-  modalAberto.value = true
+  configAberto.value = true
 }
 
 function abrirEdicaoCampanha(campanhaId: string) {
   disparoEmMassa.setCampanhaEdicao(campanhaId)
-  modalAberto.value = true
+  configAberto.value = true
 }
 
-function fecharModalCampanha() {
+function fecharConfigCampanha() {
+  configAberto.value = false
   disparoEmMassa.setCampanhaEdicao(null)
 }
 
-watch(
-  modalAberto,
-  (open) => {
-    if (!open) disparoEmMassa.setCampanhaEdicao(null)
-  },
-)
-
 function onCampanhaCriada(_response: CriarCampanhaResponse) {
+  configAberto.value = false
   disparoEmMassa.invalidarCampanhas()
   if (workspaceId.value) {
     void disparoEmMassa.fetchCampanhas(workspaceId.value, { force: true })
@@ -110,7 +105,8 @@ function onCampanhaCriada(_response: CriarCampanhaResponse) {
             variant="primary"
             :block="false"
             class="!shadow-[0_4px_16px_rgba(37,99,235,0.35)]"
-            @click="abrirModalCampanha"
+            :disabled="configAberto && !campanhaEdicaoId"
+            @click="abrirNovaCampanha"
           >
             <span class="inline-flex items-center gap-2 font-bold">
               <span class="material-symbols-outlined text-[20px]" aria-hidden="true">rocket_launch</span>
@@ -120,18 +116,19 @@ function onCampanhaCriada(_response: CriarCampanhaResponse) {
         </div>
       </div>
 
+      <CriarCampanhaConfig
+        v-if="configAberto"
+        :key="campanhaEdicaoId ?? 'nova'"
+        :campanha-id="campanhaEdicaoId"
+        @criado="onCampanhaCriada"
+        @cancelar="fecharConfigCampanha"
+      />
+
       <ListaCampanhas
         v-if="workspaceId"
         :workspace-id="workspaceId"
         @editar="abrirEdicaoCampanha"
       />
     </div>
-
-    <CriarCampanhaModal
-      v-model:open="modalAberto"
-      :campanha-id="campanhaEdicaoId"
-      @criado="onCampanhaCriada"
-      @cancelar="fecharModalCampanha"
-    />
   </div>
 </template>

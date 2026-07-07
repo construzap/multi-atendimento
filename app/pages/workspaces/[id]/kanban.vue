@@ -26,6 +26,11 @@ watch(
   workspaceId,
   (id) => {
     if (!import.meta.client || !id) return
+    const conversas = useConversasStore()
+    const canalId = useCanaisStore().currentCanalId
+    if (canalId != null) {
+      conversas.setConversaAtual(null, canalId)
+    }
     void kanban.ensureBoardLoaded(id)
     void useCanaisStore().ensureCanaisLoaded(id).catch(() => {})
   },

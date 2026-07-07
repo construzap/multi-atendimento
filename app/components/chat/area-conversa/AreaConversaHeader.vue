@@ -13,14 +13,19 @@ import ModalAddCanal from '~/components/workspaces/canais/ModalAddCanal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
 import { useWorkspacesStore } from '~/stores/workspaces'
-import { useConversasStore } from '~/stores/conversas'
+import {
+  isColunaOrigemLeadsNaoConfiguradaError,
+  useConversasStore,
+} from '~/stores/conversas'
 import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
 
 const pesquisa = ref('')
 const modalNovaConversaAberto = ref(false)
+const modalColunaOrigemAberto = ref(false)
 const novoTelefoneLocal = ref('')
 const paisDdi = ref<'BR' | 'PT' | 'US' | 'AR' | 'CL' | 'MX'>('BR')
 const criandoNovaConversa = ref(false)
+const router = useRouter()
 
 const canaisStore = useCanaisStore()
 const workspacesStore = useWorkspacesStore()
@@ -164,6 +169,17 @@ function validateAndNormalizeTelefone(localRaw: string): string | null {
   return normalizeWhatsappBr(digits)
 }
 
+const caminhoConfiguracoes = computed(() => {
+  const wid = workspaceIdNumero.value
+  return wid != null ? `/workspaces/${wid}/configuracoes` : '/workspaces'
+})
+
+function irParaConfiguracoesColunaOrigem() {
+  modalColunaOrigemAberto.value = false
+  modalNovaConversaAberto.value = false
+  void router.push(caminhoConfiguracoes.value)
+}
+
 async function criarNovaConversa() {
   const canalId = currentCanal.value?.id
   if (!canalId) {
@@ -183,6 +199,10 @@ async function criarNovaConversa() {
     modalNovaConversaAberto.value = false
     novoTelefoneLocal.value = ''
   } catch (err: unknown) {
+    if (isColunaOrigemLeadsNaoConfiguradaError(err)) {
+      modalColunaOrigemAberto.value = true
+      return
+    }
     const msg = mensagemErroFetch(err, 'Não foi possível criar/abrir a conversa.')
     toast.error(msg, { duration: 8000 })
   } finally {
@@ -560,6 +580,50 @@ async function atualizarListaConversas() {
           @click="criarNovaConversa"
         >
           Abrir conversa
+        </BaseButton>
+      </template>
+    </BaseModal>
+
+    <BaseModal
+      v-model:open="modalColunaOrigemAberto"
+      title="Coluna origem dos leads"
+      panel-class="w-full max-w-md"
+    >
+      <template #icon>
+        <span class="material-symbols-outlined text-[22px]" aria-hidden="true">settings</span>
+      </template>
+      <template #subtitle>
+        Configuração necessária para criar conversas.
+      </template>
+
+      <p class="text-sm text-on-surface dark:text-dark-on-surface">
+        É preciso definir a
+        <strong>Coluna origem dos leads</strong>
+        nas configurações do workspace antes de criar uma nova conversa.
+      </p>
+      <p class="mt-2 text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+        Caminho:
+        <span class="font-mono text-xs">{{ caminhoConfiguracoes }}</span>
+      </p>
+
+      <template #footer>
+        <BaseButton
+          type="button"
+          variant="secondary"
+          size="sm"
+          :block="false"
+          @click="modalColunaOrigemAberto = false"
+        >
+          Fechar
+        </BaseButton>
+        <BaseButton
+          type="button"
+          variant="primary"
+          size="sm"
+          :block="false"
+          @click="irParaConfiguracoesColunaOrigem"
+        >
+          Ir para configurações
         </BaseButton>
       </template>
     </BaseModal>

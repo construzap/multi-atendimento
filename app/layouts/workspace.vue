@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useColorMode } from '~/composables/useColorMode'
+import type { AdminVerificarResponse } from '#shared/types/profile'
 
 /** Recolhida por padrão; expande enquanto o ponteiro estiver sobre a sidebar. */
 const sidebarHovered = ref(false)
@@ -24,28 +25,40 @@ type NavItem = {
     | 'atendentes'
     | 'frete'
     | 'agendamento'
+    | 'logs'
     | 'configuracoes'
 }
 
 const route = useRoute()
 const workspaces = useWorkspacesStore()
 
+const { data: verificarAdmin } = await useFetch<AdminVerificarResponse>('/api/admin/verificar', {
+  server: false,
+})
+const isAdmin = computed(() => verificarAdmin.value?.isAdmin === true)
+
 const workspaceId = computed(() => workspaces.currentWorkspaceId ?? String(route.params.id ?? ''))
 const base = computed(() => `/workspaces/${workspaceId.value}`)
 const enviarIaBase = computed(() => `${base.value}/produtos/enviar-para-ia`)
 
-const items = computed<NavItem[]>(() => [
-  { label: 'Kanban', to: `${base.value}/kanban`, icon: 'dashboard' },
-  { label: 'Chat', to: `${base.value}/chat`, icon: 'chat' },
-  { label: 'Contato', to: `${base.value}/contato`, icon: 'contato' },
-  { label: 'Canais', to: `${base.value}/canais`, icon: 'canais' },
-  { label: 'Produtos', to: `${base.value}/produtos`, icon: 'produtos' },
-  { label: 'Vector Store (IA)', to: `${enviarIaBase.value}/vector-store`, icon: 'vectorStore' },
-  { label: 'Atendentes', to: `${base.value}/atendentes`, icon: 'atendentes' },
-  { label: 'Frete', to: `${base.value}/frete`, icon: 'frete' },
-  { label: 'Agendamento de mensagens', to: `${base.value}/agendamento-mensagens`, icon: 'agendamento' },
-  { label: 'Configurações', to: `${base.value}/configuracoes`, icon: 'configuracoes' }
-])
+const items = computed<NavItem[]>(() => {
+  const nav: NavItem[] = [
+    { label: 'Kanban', to: `${base.value}/kanban`, icon: 'dashboard' },
+    { label: 'Chat', to: `${base.value}/chat`, icon: 'chat' },
+    { label: 'Contato', to: `${base.value}/contato`, icon: 'contato' },
+    { label: 'Canais', to: `${base.value}/canais`, icon: 'canais' },
+    { label: 'Produtos', to: `${base.value}/produtos`, icon: 'produtos' },
+    { label: 'Vector Store (IA)', to: `${enviarIaBase.value}/vector-store`, icon: 'vectorStore' },
+    { label: 'Atendentes', to: `${base.value}/atendentes`, icon: 'atendentes' },
+    { label: 'Frete', to: `${base.value}/frete`, icon: 'frete' },
+    { label: 'Agendamento de mensagens', to: `${base.value}/agendamento-mensagens`, icon: 'agendamento' },
+  ]
+  if (isAdmin.value) {
+    nav.push({ label: 'Logs de webhook', to: `${base.value}/logs`, icon: 'logs' })
+  }
+  nav.push({ label: 'Configurações', to: `${base.value}/configuracoes`, icon: 'configuracoes' })
+  return nav
+})
 
 function isActive(to: string) {
   const path = route.path
@@ -182,6 +195,10 @@ function closeMobileSidebar() {
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <path d="M16 2v4M8 2v4M3 10h18" />
                 <path d="M12 14v3M10.5 15.5h3" />
+              </svg>
+              <svg v-else-if="it.icon === 'logs'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
               </svg>
               <svg v-else-if="it.icon === 'configuracoes'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
@@ -328,6 +345,10 @@ function closeMobileSidebar() {
               <rect x="3" y="4" width="18" height="18" rx="2" />
               <path d="M16 2v4M8 2v4M3 10h18" />
               <path d="M12 14v3M10.5 15.5h3" />
+            </svg>
+            <svg v-else-if="it.icon === 'logs'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
             </svg>
             <svg v-else-if="it.icon === 'configuracoes'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />

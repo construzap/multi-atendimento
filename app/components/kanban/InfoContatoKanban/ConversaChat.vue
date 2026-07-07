@@ -4,21 +4,21 @@ import { computed, nextTick, ref, watch } from 'vue'
 
 import { storeToRefs } from 'pinia'
 
-import AreaChatHeader from '~/components/chat/area-chat/AreaChatHeader.vue'
+import AreaChatHeader from '../../chat/area-chat/AreaChatHeader.vue'
 
-import BalaoMensagem from '~/components/chat/area-chat/BalaoMensagens/BalaoMensagem.vue'
+import BalaoMensagem from '../../chat/area-chat/BalaoMensagens/BalaoMensagem.vue'
 
-import KanbanInfoContatoConversaRodape from './KanbanInfoContatoConversaRodape.vue'
+import ConversaRodape from './ConversaRodape.vue'
 
 import type { Conversa } from '#shared/types/conversa'
 
 import type { KanbanCard } from '#shared/types/kanban'
 
-import { useConversasStore } from '~/stores/conversas'
+import { useConversasStore } from '../../../stores/conversas'
 
-import { useKanbanStore } from '~/stores/kanban'
+import { useKanbanStore } from '../../../stores/kanban'
 
-import { useMensagensStore, mensagensBucketKey } from '~/stores/mensagens'
+import { useMensagensStore, mensagensBucketKey } from '../../../stores/mensagens'
 
 
 
@@ -449,7 +449,7 @@ watch(
 
         ref="scroller"
 
-        class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-2"
+        class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 py-2 pl-10"
 
         @scroll="onScrollerScroll"
 
@@ -517,9 +517,9 @@ watch(
 
 
 
-        <div v-else class="flex min-h-full flex-col justify-end">
+        <div v-else class="flex min-h-full min-w-0 flex-col justify-end">
 
-          <div class="flex flex-col">
+          <div class="flex min-w-0 flex-col">
 
             <BalaoMensagem
 
@@ -593,7 +593,7 @@ watch(
 
 
 
-    <KanbanInfoContatoConversaRodape />
+    <ConversaRodape />
 
   </aside>
 

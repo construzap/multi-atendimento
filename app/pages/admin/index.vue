@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import AdminAcessoNegado from '~/components/admin/AdminAcessoNegado.vue'
-import PromptWorkspaceSeletor from '~/components/admin/PromptWorkspaceSeletor.vue'
+import SeletorPagina from '~/components/admin/SeletorPagina.vue'
 import type { AdminVerificarResponse } from '#shared/types/profile'
 
 definePageMeta({
@@ -66,7 +66,7 @@ const erroTexto = computed(() => {
       <section
         class="rounded-2xl border border-outline/40 bg-surface-container-lowest p-6 shadow-sm dark:border-dark-outline/40 dark:bg-dark-surface-container-low md:p-8"
       >
-        <PromptWorkspaceSeletor />
+        <SeletorPagina />
       </section>
     </div>
   </div>

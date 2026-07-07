@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import BaseAvatar from '~/components/BaseAvatar.vue'
 import type { MessageType } from '#shared/types/messageType'
+import { useConversasStore } from '~/stores/conversas'
 
 const props = withDefaults(
   defineProps<{
@@ -33,6 +34,7 @@ const emit = defineEmits<{
 }>()
 
 const conversas = useConversasStore()
+const route = useRoute()
 
 function emojiByType(t: MessageType | null | undefined): string {
   if (!t || t === 'conversation') return ''
@@ -102,6 +104,15 @@ const naoLidasLabel = computed(() => {
 function onSelect() {
   conversas.setConversaAtual(props.conversaId)
   emit('select')
+
+  const workspaceId = route.params.id
+  const canalId = route.params.canalId
+  if (!workspaceId || !canalId) return
+
+  void navigateTo(
+    `/workspaces/${workspaceId}/chat/${canalId}/${encodeURIComponent(props.conversaId)}`,
+    { replace: true },
+  )
 }
 </script>
 

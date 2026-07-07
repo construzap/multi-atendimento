@@ -1,15 +1,20 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import WorkspaceDescricaoRichText from '~/components/configuracoes/WorkspaceDescricaoRichText.vue'
 import { useConfiguracoesStore } from '~/stores/configuracoes'
+import { useKanbanStore } from '~/stores/kanban'
+import { useWorkspacesStore } from '~/stores/workspaces'
 
 const route = useRoute()
 const workspaces = useWorkspacesStore()
 const configuracoes = useConfiguracoesStore()
+const kanbanStore = useKanbanStore()
+const { columns: colunasKanban, pending: kanbanPending } = storeToRefs(kanbanStore)
 
 const workspaceId = computed(() => {
   const raw = workspaces.currentWorkspaceId ?? String(route.params.id ?? '')
@@ -53,6 +58,31 @@ const descricao = computed({
     if (id != null) configuracoes.atualizarCampo(id, 'descricao', v)
   },
 })
+
+const colunaOrigemLeads = computed({
+  get: () => {
+    const id = workspaceId.value
+    return id != null ? configuracoes.doWorkspace(id)?.coluna_origem_leads ?? '' : ''
+  },
+  set: (v: string) => {
+    const id = workspaceId.value
+    if (id != null) configuracoes.atualizarCampo(id, 'coluna_origem_leads', v.trim() || null)
+  },
+})
+
+const colunaSalvaValida = computed(() => {
+  const valor = colunaOrigemLeads.value
+  if (!valor) return true
+  return colunasKanban.value.some((col) => String(col.id) === valor)
+})
+
+watch(
+  workspaceId,
+  (wid) => {
+    if (wid != null) void kanbanStore.ensureBoardLoaded(wid).catch(() => {})
+  },
+  { immediate: true },
+)
 
 const createdAtLabel = computed(() => {
   const raw = workspace.value?.created_at
@@ -158,6 +188,48 @@ async function confirmarExclusaoWorkspace() {
               />
             </template>
           </ClientOnly>
+        </div>
+
+        <div>
+          <label
+            class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface"
+            for="ws-config-coluna-origem-leads"
+          >
+            Coluna origem dos leads
+          </label>
+          <p class="mb-3 text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+            Coluna do funil em que novos leads serão registrados pela IA.
+          </p>
+          <select
+            id="ws-config-coluna-origem-leads"
+            v-model="colunaOrigemLeads"
+            name="coluna_origem_leads"
+            class="w-full rounded-xl border border-outline/40 bg-white px-4 py-3 text-sm text-on-surface outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+            :disabled="desabilitado || kanbanPending"
+          >
+            <option value="">Nenhuma coluna selecionada</option>
+            <option
+              v-if="colunaOrigemLeads && !colunaSalvaValida"
+              :value="colunaOrigemLeads"
+            >
+              Coluna ID {{ colunaOrigemLeads }} (não listada)
+            </option>
+            <option v-for="col in colunasKanban" :key="col.id" :value="String(col.id)">
+              {{ col.nome }}
+            </option>
+          </select>
+          <p
+            v-if="kanbanPending"
+            class="mt-2 text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+          >
+            Carregando colunas do funil…
+          </p>
+          <p
+            v-else-if="!colunasKanban.length"
+            class="mt-2 text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+          >
+            Nenhuma coluna encontrada. Crie colunas no kanban do workspace.
+          </p>
         </div>
 
         <div>

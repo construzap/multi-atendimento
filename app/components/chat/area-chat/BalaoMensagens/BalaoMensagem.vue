@@ -59,19 +59,57 @@ const isLocation = computed(
 )
 
 const ehIaEnvio = computed(() => Boolean(props.mensagem.from_ia && props.mensagem.from_me))
+
+const mensagensStore = useMensagensStore()
+
+const mensagemCitada = computed(() => {
+  if (props.mensagem.mensagem_citada) return props.mensagem.mensagem_citada
+  const id = props.mensagem.replyid?.trim()
+  if (!id) return null
+  return mensagensStore.mensagemPorId(id)
+})
+
+function onResponder() {
+  mensagensStore.iniciarResposta(props.mensagem)
+}
 </script>
 
 <template>
-  <div v-if="ehIaEnvio" class="mb-1 ml-auto flex max-w-[70%] justify-end self-end">
-    <IaMensagemSelo />
+  <div
+    class="group relative flex w-full"
+    :class="mensagem.from_me ? 'justify-end' : 'justify-start'"
+  >
+    <div
+      class="relative flex w-full min-w-0 max-w-[70%] flex-col"
+      :class="mensagem.from_me ? 'items-end' : 'items-start'"
+    >
+      <button
+        type="button"
+        class="absolute top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-500 opacity-0 shadow-sm transition hover:bg-slate-50 hover:text-primary group-hover:opacity-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-primary-300"
+        :class="mensagem.from_me ? '-left-9' : '-right-9'"
+        aria-label="Responder mensagem"
+        @click="onResponder"
+      >
+        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">reply</span>
+      </button>
+
+      <div v-if="ehIaEnvio" class="mb-1 flex justify-end self-end">
+        <IaMensagemSelo />
+      </div>
+      <MessageText
+        v-if="isText"
+        :mensagem="mensagem"
+        :eh-grupo="props.ehGrupo"
+        :mensagem-citada="mensagemCitada"
+      />
+      <MessageLocation v-else-if="isLocation" :mensagem="mensagem" />
+      <MessageImage v-else-if="isImage" :mensagem="mensagem" />
+      <MessageVideo v-else-if="isVideo" :mensagem="mensagem" />
+      <MessageDocument v-else-if="isDoc" :mensagem="mensagem" />
+      <MessageAudio v-else-if="isAudio" :mensagem="mensagem" />
+      <MessageSticker v-else-if="isSticker" :mensagem="mensagem" />
+      <MessageUnsupported v-else :mensagem="mensagem" />
+    </div>
   </div>
-  <MessageText v-if="isText" :mensagem="mensagem" :eh-grupo="props.ehGrupo" />
-  <MessageLocation v-else-if="isLocation" :mensagem="mensagem" />
-  <MessageImage v-else-if="isImage" :mensagem="mensagem" />
-  <MessageVideo v-else-if="isVideo" :mensagem="mensagem" />
-  <MessageDocument v-else-if="isDoc" :mensagem="mensagem" />
-  <MessageAudio v-else-if="isAudio" :mensagem="mensagem" />
-  <MessageSticker v-else-if="isSticker" :mensagem="mensagem" />
-  <MessageUnsupported v-else :mensagem="mensagem" />
 </template>
 

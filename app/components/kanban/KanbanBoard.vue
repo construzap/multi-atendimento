@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
-import type { KanbanColumn as KanbanColumnData } from '#shared/types/kanban'
+import type { KanbanCard as KanbanCardModel, KanbanColumn as KanbanColumnData } from '#shared/types/kanban'
 import BaseInput from '~/components/BaseInput.vue'
 import KanbanColumn from './KanbanColumn.vue'
 import ModalNovaColuna from './ModalNovaColuna.vue'
 import InfoContatoKanban from './InfoContatoKanban/InfoContatoKanban.vue'
+import FerramentaImportarContato from './importar-contatos/FerramentaImportarContato.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
+import { useCanaisStore } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 
 type DragState = {
@@ -21,10 +23,45 @@ const props = defineProps<{
 
 const router = useRouter()
 const kanban = useKanbanStore()
-const { columns, reorderingColumnId, loadingMoreByColumn, busca, pending } = storeToRefs(kanban)
+const canaisStore = useCanaisStore()
+const {
+  columns,
+  reorderingColumnId,
+  loadingMoreByColumn,
+  busca,
+  pending,
+  ocultarGrupos,
+  filtroCanalId,
+} = storeToRefs(kanban)
 
 const buscaInput = ref('')
+const alternandoOcultarGrupos = ref(false)
+const alternandoFiltroCanal = ref(false)
 let buscaTimer: ReturnType<typeof setTimeout> | null = null
+
+const canaisDoWorkspace = computed(() =>
+  canaisStore.items.filter((c) => c.id != null && c.id > 0),
+)
+
+const filtroCanalSelect = computed({
+  get: () => (filtroCanalId.value != null ? String(filtroCanalId.value) : ''),
+  set: (v: string) => {
+    void onFiltroCanalChange(v)
+  },
+})
+
+onMounted(() => {
+  if (props.workspaceId) {
+    void canaisStore.ensureCanaisLoaded(props.workspaceId).catch(() => {})
+  }
+})
+
+watch(
+  () => props.workspaceId,
+  (wid) => {
+    if (wid) void canaisStore.ensureCanaisLoaded(wid).catch(() => {})
+  },
+)
 
 watch(
   busca,
@@ -48,12 +85,40 @@ function limparBusca() {
   agendarBusca()
 }
 
+async function onOcultarGruposChange(e: Event) {
+  if (!props.workspaceId || alternandoOcultarGrupos.value) return
+  const checked = (e.target as HTMLInputElement).checked
+  alternandoOcultarGrupos.value = true
+  try {
+    await kanban.setOcultarGrupos(props.workspaceId, checked)
+  } finally {
+    alternandoOcultarGrupos.value = false
+  }
+}
+
+async function onFiltroCanalChange(raw: string) {
+  if (!props.workspaceId || alternandoFiltroCanal.value) return
+  const v = String(raw ?? '').trim()
+  const canalId = v ? Number.parseInt(v, 10) : null
+  const next =
+    canalId != null && Number.isFinite(canalId) && canalId > 0 ? canalId : null
+  if (next === filtroCanalId.value) return
+
+  alternandoFiltroCanal.value = true
+  try {
+    await kanban.setFiltroCanalId(props.workspaceId, next)
+  } finally {
+    alternandoFiltroCanal.value = false
+  }
+}
+
 onUnmounted(() => {
   if (buscaTimer) clearTimeout(buscaTimer)
 })
 
 const dragging = ref<DragState>(null)
 const dragOverColumnId = ref<string | number | null>(null)
+const dragOverLixeira = ref(false)
 
 const modalColunaOpen = ref(false)
 const modalColunaMode = ref<'create' | 'edit'>('create')
@@ -62,6 +127,31 @@ const colunaEmEdicao = ref<KanbanColumnData | null>(null)
 const modalExcluirColuna = ref(false)
 const colunaParaExcluir = ref<KanbanColumnData | null>(null)
 const excluindoColuna = ref(false)
+
+const modalExcluirCard = ref(false)
+const cardParaExcluir = ref<string | null>(null)
+const excluindoCard = ref(false)
+
+const textoConfirmarExclusaoCard = computed(() => {
+  const key = cardParaExcluir.value
+  let nome = ''
+  if (key) {
+    for (const col of columns.value) {
+      const card = col.cards.find((c) => c.conversa_key === key)
+      if (!card) continue
+      nome = card.name?.trim() || card.phone?.trim() || ''
+      break
+    }
+  }
+  const quem = nome ? ` "${nome}"` : ''
+  return `A conversa${quem} e todas as mensagens serão apagadas permanentemente do banco. Esta ação não poderá ser desfeita.`
+})
+
+const ferramentaImportarRef = ref<{ abrirSeletorImportacao: () => void } | null>(null)
+
+function aoClicarImportarContatos() {
+  ferramentaImportarRef.value?.abrirSeletorImportacao()
+}
 
 const textoConfirmarExclusao = computed(() => {
   const n = colunaParaExcluir.value?.nome?.trim() || 'esta etapa'
@@ -160,11 +250,13 @@ function moveCard(fromColumnId: string, cardId: string, toColumnId: string) {
 
 function onCardDragStart(payload: { cardId: string; fromColumnId: string }) {
   dragging.value = payload
+  dragOverLixeira.value = false
 }
 
 function onCardDragEnd() {
   dragging.value = null
   dragOverColumnId.value = null
+  dragOverLixeira.value = false
 }
 
 function parseRaw(raw: string): { fromColumnId: string; cardId: string } | null {
@@ -176,6 +268,7 @@ function parseRaw(raw: string): { fromColumnId: string; cardId: string } | null 
 }
 
 function onDrop(payload: { toColumnId: string | number; raw: string }) {
+  if (dragOverLixeira.value) return
   const parsed = parseRaw(payload.raw)
   const state = dragging.value
 
@@ -187,8 +280,81 @@ function onDrop(payload: { toColumnId: string | number; raw: string }) {
   onCardDragEnd()
 }
 
-function onCardOpen(card: { conversa_key: string }) {
-  kanban.openInfoContatoConversa(card.conversa_key)
+function onLixeiraDragOver(e: DragEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  dragOverLixeira.value = true
+  dragOverColumnId.value = null
+}
+
+function onLixeiraDragLeave(e: DragEvent) {
+  e.preventDefault()
+  const related = e.relatedTarget as Node | null
+  const current = e.currentTarget as HTMLElement | null
+  if (current && related && current.contains(related)) return
+  dragOverLixeira.value = false
+}
+
+function onLixeiraDrop(e: DragEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  const raw = e.dataTransfer?.getData('text/plain') ?? ''
+  const parsed = parseRaw(raw)
+  const cardId = dragging.value?.cardId ?? parsed?.cardId ?? ''
+  dragOverLixeira.value = false
+  onCardDragEnd()
+  if (!cardId) return
+  cardParaExcluir.value = cardId
+  modalExcluirCard.value = true
+}
+
+async function confirmarExcluirCard() {
+  const key = cardParaExcluir.value
+  if (!key) {
+    modalExcluirCard.value = false
+    return
+  }
+  excluindoCard.value = true
+  try {
+    const ok = await kanban.deleteCard(key)
+    if (ok) {
+      modalExcluirCard.value = false
+      cardParaExcluir.value = null
+    }
+  } finally {
+    excluindoCard.value = false
+  }
+}
+
+function findCardNoPinia(conversaKey: string): KanbanCardModel | null {
+  const key = conversaKey.trim()
+  if (!key) return null
+  for (const col of columns.value) {
+    const card = col.cards.find((c) => c.conversa_key === key)
+    if (card) return card
+  }
+  return null
+}
+
+function onCardOpen(card: KanbanCardModel) {
+  const fromStore = findCardNoPinia(card.conversa_key) ?? card
+  const conversaKey = fromStore.conversa_key?.trim()
+  const canalId = fromStore.id_canal
+
+  if (!conversaKey) return
+  if (!props.workspaceId) {
+    toast.error('Workspace não informado.')
+    return
+  }
+  if (canalId == null || !Number.isFinite(canalId) || canalId < 1) {
+    toast.error('Esta conversa não tem canal vinculado.')
+    return
+  }
+
+  void navigateTo(
+    `/workspaces/${props.workspaceId}/chat/${Math.trunc(canalId)}/${encodeURIComponent(conversaKey)}`,
+  )
 }
 </script>
 
@@ -236,7 +402,60 @@ function onCardOpen(card: { conversa_key: string }) {
             <span class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           </span>
         </div>
+        <label
+          class="inline-flex min-w-[11rem] flex-col gap-0.5 text-xs font-medium text-slate-600 dark:text-slate-300"
+        >
+          <span class="sr-only">Filtrar por canal</span>
+          <select
+            v-model="filtroCanalSelect"
+            class="h-[42px] w-full min-w-[11rem] rounded-xl border border-outline/40 bg-white px-3 text-sm font-medium text-slate-800 shadow-sm outline-none transition-colors focus:border-primary dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+            :disabled="alternandoFiltroCanal || pending"
+            aria-label="Filtrar por canal"
+          >
+            <option value="">Todos os canais</option>
+            <option
+              v-for="canal in canaisDoWorkspace"
+              :key="canal.id"
+              :value="String(canal.id)"
+            >
+              {{ canal.nome?.trim() || `Canal #${canal.id}` }}
+            </option>
+          </select>
+        </label>
+        <label
+          class="inline-flex cursor-pointer select-none items-center gap-2 rounded-xl border border-outline/40 bg-white px-3 py-2 text-sm font-medium text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:hover:bg-dark-surface-container"
+          :class="alternandoOcultarGrupos ? 'pointer-events-none opacity-60' : ''"
+        >
+          <input
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary dark:border-slate-600"
+            :checked="ocultarGrupos"
+            :disabled="alternandoOcultarGrupos"
+            @change="onOcultarGruposChange"
+          />
+          <span
+            v-if="alternandoOcultarGrupos"
+            class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"
+            aria-hidden="true"
+          />
+          <span
+            v-else
+            class="material-symbols-outlined text-[18px] text-slate-500 dark:text-slate-400"
+            aria-hidden="true"
+          >
+            group_off
+          </span>
+          Ocultar grupos
+        </label>
         <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-xl border border-outline/40 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:hover:bg-dark-surface-container"
+          @click="aoClicarImportarContatos"
+        >
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">file_upload</span>
+          Importar contatos
+        </button>
         <button
           type="button"
           class="inline-flex items-center gap-2 rounded-xl border border-outline/40 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:hover:bg-dark-surface-container"
@@ -274,7 +493,24 @@ function onCardOpen(card: { conversa_key: string }) {
       @confirmar="confirmarExcluirColuna"
     />
 
+    <ModalAlerta
+      v-model:open="modalExcluirCard"
+      title="Excluir conversa?"
+      :texto="textoConfirmarExclusaoCard"
+      variante="perigo"
+      texto-confirmar="Excluir"
+      texto-cancelar="Cancelar"
+      :confirmar-desabilitado="excluindoCard"
+      :cancelar-desabilitado="excluindoCard"
+      @confirmar="confirmarExcluirCard"
+    />
+
     <InfoContatoKanban />
+
+    <FerramentaImportarContato
+      ref="ferramentaImportarRef"
+      :workspace-id="workspaceId"
+    />
 
     <div
       v-if="columns.length > 0"
@@ -284,6 +520,7 @@ function onCardOpen(card: { conversa_key: string }) {
       <KanbanColumn
         v-for="(c, i) in columns"
         :key="c.id"
+        :workspace-id="workspaceId"
         :column="c"
         :pode-mover-esquerda="i > 0"
         :pode-mover-direita="i < columns.length - 1"
@@ -315,5 +552,50 @@ function onCardOpen(card: { conversa_key: string }) {
         Configure colunas em `funil_workspace_colunas` ou verifique se o workspace tem funil criado.
       </p>
     </div>
+
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0 translate-y-3"
+      enter-to-class="opacity-100 translate-y-0"
+      leave-active-class="transition duration-150 ease-in"
+      leave-from-class="opacity-100 translate-y-0"
+      leave-to-class="opacity-0 translate-y-3"
+    >
+      <div
+        v-if="dragging"
+        class="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-6"
+      >
+        <div
+          class="pointer-events-auto flex min-h-[4.5rem] w-full max-w-md items-center justify-center gap-3 rounded-2xl border-2 border-dashed px-6 py-4 shadow-lg backdrop-blur-sm transition-colors"
+          :class="
+            dragOverLixeira
+              ? 'border-rose-500 bg-rose-100 text-rose-800 dark:border-rose-400 dark:bg-rose-950/80 dark:text-rose-100'
+              : 'border-rose-300 bg-white/95 text-rose-700 dark:border-rose-800 dark:bg-dark-surface-container-low/95 dark:text-rose-200'
+          "
+          role="button"
+          aria-label="Solte aqui para excluir a conversa"
+          @dragenter.prevent="onLixeiraDragOver"
+          @dragover.prevent="onLixeiraDragOver"
+          @dragleave="onLixeiraDragLeave"
+          @drop.prevent="onLixeiraDrop"
+        >
+          <span
+            class="material-symbols-outlined text-[28px]"
+            :class="dragOverLixeira ? 'scale-110' : ''"
+            aria-hidden="true"
+          >
+            delete
+          </span>
+          <div class="text-left">
+            <p class="text-sm font-semibold">
+              {{ dragOverLixeira ? 'Solte para excluir' : 'Arraste para a lixeira' }}
+            </p>
+            <p class="text-xs opacity-80">
+              A exclusão é permanente.
+            </p>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
