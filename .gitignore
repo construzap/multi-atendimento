@@ -9,9 +9,11 @@ dist
 # Node dependencies
 node_modules
 
-# Logs
-logs
+# Logs (pasta na raiz do projeto; não ignora app/components/logs nem server/api/logs)
+/logs
 *.log
+!app/components/logs/
+!server/api/logs/
 
 # Misc
 .DS_Store
