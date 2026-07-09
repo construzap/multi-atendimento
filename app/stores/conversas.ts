@@ -110,6 +110,10 @@ type FetchOptions = {
   conversaAberta?: boolean
   /** Quando false, API retorna só conversas 1:1 (`is_group` null/false). */
   isGroup?: boolean
+  /** Termo de busca server-side (name/phone). */
+  q?: string
+  /** Filtro opcional de coluna do kanban. */
+  colunaId?: number
 }
 
 export const useConversasStore = defineStore('conversas', {
@@ -187,6 +191,8 @@ export const useConversasStore = defineStore('conversas', {
       const opts: FetchOptions = { append }
       if (!this.mostrarConversasFechadas) opts.conversaAberta = true
       if (!this.mostrarGrupos) opts.isGroup = false
+      const q = this.termoPesquisa?.trim()
+      if (q) opts.q = q
       return opts
     },
 
@@ -333,8 +339,11 @@ export const useConversasStore = defineStore('conversas', {
       if (!this.byCanal[id]) this.byCanal[id] = emptyCanalState()
     },
 
-    aplicarPesquisa(termo: string) {
+    async aplicarPesquisa(termo: string) {
       this.termoPesquisa = termo.trim()
+      const idCanal = this.activeCanalId
+      if (idCanal == null) return
+      await this.fetchPage(1, idCanal, this.listFetchOptions())
     },
 
     limparPesquisa() {
@@ -385,6 +394,8 @@ export const useConversasStore = defineStore('conversas', {
         if (options.conversaAberta === true) query.conversa_aberta = true
         else if (options.conversaAberta === false) query.conversa_aberta = false
         if (options.isGroup === false) query.is_group = false
+        if (options.colunaId != null) query.coluna_id = options.colunaId
+        if (options.q) query.q = options.q
 
         const res = await $fetch<ConversasListResponse>('/api/conversas', {
           method: 'GET',

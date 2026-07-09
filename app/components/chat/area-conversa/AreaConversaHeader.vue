@@ -231,7 +231,7 @@ const iconeToggleGrupos = computed(() =>
 )
 
 function executarPesquisa() {
-  conversasStore.aplicarPesquisa(pesquisa.value)
+  void conversasStore.aplicarPesquisa(pesquisa.value)
 }
 
 watch(

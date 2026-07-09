@@ -83,6 +83,24 @@ function parseIsGroupFilter(raw: unknown): boolean | undefined {
   })
 }
 
+function parseColunaIdFilter(raw: unknown): number | null | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'coluna_id inválido (use inteiro ≥ 1).'
+    })
+  }
+  return n
+}
+
+function parseSearchTerm(raw: unknown): string | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const q = String(raw).trim()
+  return q ? q : undefined
+}
+
 /**
  * GET /api/conversas?id_canal=&page=&conversa_aberta=&is_group=
  * Lista conversas do canal via `view_kanban_conversas`, paginadas (20 por página).
@@ -92,6 +110,8 @@ function parseIsGroupFilter(raw: unknown): boolean | undefined {
  * - `page` (opcional, padrão 1): página 1-based
  * - `conversa_aberta` (opcional): `true` = só abertas (inclui null legado); `false` = só fechadas; omitido = todas
  * - `is_group` (opcional): `false` = só 1:1 (inclui null legado); omitido = todas (inclui grupos)
+ * - `coluna_id` (opcional): restringe à coluna específica do kanban
+ * - `q` (opcional): termo de busca em `name` OU `phone` (parcial, case-insensitive)
  */
 export default defineEventHandler(async (event): Promise<ConversasListResponse> => {
   const client = await serverSupabaseClient(event)
@@ -151,6 +171,8 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
 
   const conversaAbertaFilter = parseConversaAbertaFilter(q.conversa_aberta)
   const isGroupFilter = parseIsGroupFilter(q.is_group)
+  const colunaIdFilter = parseColunaIdFilter(q.coluna_id)
+  const searchTerm = parseSearchTerm(q.q)
 
   const from = (page - 1) * PER_PAGE
   const to = from + PER_PAGE - 1
@@ -171,6 +193,16 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
     query = query.or('is_group.is.null,is_group.eq.false')
   } else if (isGroupFilter === true) {
     query = query.eq('is_group', true)
+  }
+
+  if (colunaIdFilter != null) {
+    query = query.eq('coluna_id', colunaIdFilter)
+  }
+
+  if (searchTerm) {
+    // Busca parcial (case-insensitive) em name ou phone.
+    const like = `%${searchTerm}%`
+    query = query.or(`name.ilike.${like},phone.ilike.${like}`)
   }
 
   const { data, error, count } = await query
