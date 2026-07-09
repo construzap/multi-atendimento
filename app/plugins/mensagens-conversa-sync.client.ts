@@ -5,12 +5,10 @@ import { useKanbanStore } from '~/stores/kanban'
 import { useMensagensStore } from '~/stores/mensagens'
 
 /**
- * Quando o usuário seleciona uma conversa (`conversas.key`) dentro de um canal,
- * garante mensagens carregadas e zera `nao_lidas`.
+ * Quando o painel de info do kanban abre uma conversa, garante mensagens carregadas.
+ * Marcar como lida no chat principal ocorre ao abrir a rota `[conversaKey]`.
  */
 export default defineNuxtPlugin(() => {
-  const canais = useCanaisStore()
-  const conversas = useConversasStore()
   const mensagens = useMensagensStore()
   const kanban = useKanbanStore()
 
@@ -18,28 +16,13 @@ export default defineNuxtPlugin(() => {
     [
       () => kanban.infoContatoConversaKey,
       () => kanban.infoContatoIdCanal,
-      () => canais.currentCanalId,
-      () => conversas.conversaAtual,
     ],
-    async ([kanbanKey, kanbanCanalId, canalId, conversaKey]) => {
-      if (kanbanKey != null) {
-        if (!kanbanCanalId || String(kanbanKey).startsWith('temp:')) return
-        await mensagens.ensureLoaded(kanbanCanalId, kanbanKey, 1, { force: true }).catch(() => {
-          /* erro fica em mensagens.error */
-        })
-        return
-      }
-
-      if (!canalId || !conversaKey) return
-      if (String(conversaKey).startsWith('temp:')) return
-      await Promise.all([
-        mensagens.ensureLoaded(canalId, conversaKey, 1).catch(() => {
-          /* erro fica em mensagens.error */
-        }),
-        conversas.marcarComoLida(conversaKey).catch(() => {
-          /* falha silenciosa; badge pode voltar no próximo fetch */
-        }),
-      ])
+    async ([kanbanKey, kanbanCanalId]) => {
+      if (kanbanKey == null) return
+      if (!kanbanCanalId || String(kanbanKey).startsWith('temp:')) return
+      await mensagens.ensureLoaded(kanbanCanalId, kanbanKey, 1, { force: true }).catch(() => {
+        /* erro fica em mensagens.error */
+      })
     },
     { immediate: true },
   )

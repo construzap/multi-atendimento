@@ -7,12 +7,15 @@ const props = defineProps<{
   card: KanbanCardModel
   columnId: number | string
   draggingId?: string | null
+  selected?: boolean
+  forceShowCheckbox?: boolean
 }>()
 
 const emit = defineEmits<{
   cardDragStart: [payload: { cardId: string; fromColumnId: string }]
   cardDragEnd: []
   cardOpen: [card: KanbanCardModel]
+  cardToggleSelected: [payload: { conversa_key: string; nextSelected: boolean }]
 }>()
 
 let lastDragEndAt = 0
@@ -47,6 +50,14 @@ function onDragEnd() {
 function onCardClick() {
   if (Date.now() - lastDragEndAt < 250) return
   emit('cardOpen', props.card)
+}
+
+function onToggleSelected(e: Event) {
+  e.stopPropagation()
+  const key = props.card.conversa_key?.trim()
+  if (!key) return
+  const nextSelected = !(props.selected === true)
+  emit('cardToggleSelected', { conversa_key: key, nextSelected })
 }
 
 function initials(name: string): string {
@@ -120,7 +131,7 @@ const timeLabel = computed(() => {
 
 <template>
   <article
-    class="group cursor-pointer rounded-2xl border border-outline/40 bg-white p-4 shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+    class="group relative cursor-pointer rounded-2xl border border-outline/40 bg-white p-4 shadow-sm transition-all hover:-translate-y-[1px] hover:shadow-md dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
     :class="draggingId === card.conversa_key ? 'opacity-60 ring-2 ring-primary/25' : ''"
     draggable="true"
     role="button"
@@ -133,6 +144,53 @@ const timeLabel = computed(() => {
     @dragover="onDragOverCard"
     @dragend="onDragEnd"
   >
+    <label
+      class="absolute right-3 top-3 z-10"
+      :class="
+        props.forceShowCheckbox || props.selected
+          ? 'opacity-100'
+          : 'opacity-0 group-hover:opacity-100'
+      "
+      :title="props.selected ? 'Remover da seleção' : 'Selecionar'"
+      @click.stop
+      @mousedown.stop
+    >
+      <input
+        type="checkbox"
+        class="peer sr-only"
+        :checked="props.selected === true"
+        @change="onToggleSelected"
+      />
+      <span
+        class="flex h-8 w-8 items-center justify-center rounded-xl border border-outline/45 bg-white/90 text-slate-700 shadow-sm backdrop-blur transition-colors hover:bg-slate-50 dark:border-dark-outline/45 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:bg-slate-900"
+        :class="props.selected ? 'ring-2 ring-primary/25' : ''"
+        aria-hidden="true"
+      >
+        <span
+          class="flex h-4 w-4 items-center justify-center rounded-md border-2 transition-colors"
+          :class="
+            props.selected
+              ? 'border-primary bg-primary text-white'
+              : 'border-slate-300 bg-transparent dark:border-slate-600'
+          "
+        >
+          <svg
+            class="h-3.5 w-3.5"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            :class="props.selected ? 'opacity-100' : 'opacity-0'"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.25 7.31a1 1 0 0 1-1.42-.002l-3.25-3.29a1 1 0 1 1 1.422-1.406l2.54 2.57 6.54-6.59a1 1 0 0 1 1.412-.006Z"
+              clip-rule="evenodd"
+            />
+          </svg>
+        </span>
+      </span>
+      <span class="sr-only">Selecionar card</span>
+    </label>
+
     <div class="flex items-start justify-between gap-3">
       <div class="flex min-w-0 items-start gap-3">
         <BaseAvatar

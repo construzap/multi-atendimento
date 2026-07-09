@@ -173,6 +173,29 @@ function resolveGroupPhoto(payload: UazapiWebhookPayload): string | null {
   return firstNonEmpty(chat?.imagePreview, chat?.image)
 }
 
+/** Extrai `messageid` da mensagem uazapi (`messageid` ou sufixo de `id`). */
+function extractMessageId(msg: UazapiMessage): string {
+  const rawMessageId = msg.messageid
+  if (typeof rawMessageId === 'string' && rawMessageId.trim()) {
+    return rawMessageId.trim()
+  }
+  if (typeof rawMessageId === 'number' && Number.isFinite(rawMessageId)) {
+    return String(Math.trunc(rawMessageId))
+  }
+
+  const rawId = msg.id
+  if (typeof rawId === 'string' && rawId.trim()) {
+    const id = rawId.trim()
+    const colon = id.lastIndexOf(':')
+    if (colon >= 0 && colon < id.length - 1) {
+      return id.slice(colon + 1).trim()
+    }
+    return id
+  }
+
+  return ''
+}
+
 function isMensagemIa(msg: UazapiMessage): boolean {
   const trackId = typeof msg.track_id === 'string' ? msg.track_id.trim().toLowerCase() : ''
   return trackId === 'ia'
@@ -247,6 +270,8 @@ export function normalizarMensagem(
   if (payload.EventType !== 'messages') return null
 
   const msg = payload.message
+  const message_id = extractMessageId(msg)
+  if (!message_id) return null
 
   // 2. Phone, LID e nome (grupo vs contato individual)
   const { chatid: resolvedChatid, chatlid: resolvedChatlid } = resolveChatIdentifiers(payload)
@@ -284,7 +309,7 @@ export function normalizarMensagem(
 
   return {
     // ── mensagens ──────────────────────────────────────────────────────────
-    message_id:      msg.messageid,
+    message_id,
     from_me:         msg.fromMe || msg.wasSentByApi === true,
     message:         msg.text?.trim() || null,
     phone,

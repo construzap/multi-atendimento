@@ -28,6 +28,8 @@ export type CriarCampanhaBody = {
   data_local: string
   /** `HH:mm` no mesmo fuso. */
   hora_local: string
+  /** IANA do fuso escolhido para data/hora de início (`timezone_escolhido`). */
+  timezone_escolhido: string
   /** Janela diária permitida para disparos (`HH:mm`). */
   hora_permitida_inicio: string
   /** Janela diária permitida para disparos (`HH:mm`). */
@@ -67,6 +69,7 @@ export type CampanhaRow = {
   envia_para_grupo: boolean | null
   /** Coluna do funil para mover o contato após o disparo. */
   coluna_id: number | null
+  timezone_escolhido: string | null
 }
 
 /** Item retornado por `GET /api/kanban/disparo_em_massa`. */

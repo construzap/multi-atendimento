@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { toast } from 'vue-sonner'
 import type { KanbanBoardResponse, KanbanCard, KanbanColumn, KanbanColumnPageResponse, KanbanConversaAtualizarResponse, KanbanConversaPatch } from '#shared/types/kanban'
+import type { Conversa } from '#shared/types/conversa'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useCamposPersonalizadosStore } from '~/stores/camposPersonalizados'
@@ -316,6 +317,61 @@ export const useKanbanStore = defineStore('kanban', {
         break
       }
       if (changed) this.columns = next
+    },
+
+    /**
+     * Espelha conversa salva via chat no board já carregado no Pinia.
+     * Não faz nada se o kanban deste workspace ainda não estiver em cache.
+     */
+    espelharConversaAtualizadaNoBoard(workspaceId: number, conversa: Conversa) {
+      const key = conversa.key?.trim()
+      if (!key || !workspaceId) return
+      if (this.loadedAt == null || this.workspaceIdLoaded !== workspaceId) return
+
+      const next = cloneColumns(this.columns)
+      let fromColIdx = -1
+      let cardIdx = -1
+
+      for (let i = 0; i < next.length; i++) {
+        const idx = next[i]!.cards.findIndex((c) => c.conversa_key === key)
+        if (idx !== -1) {
+          fromColIdx = i
+          cardIdx = idx
+          break
+        }
+      }
+
+      if (fromColIdx === -1 || cardIdx === -1) return
+
+      const fromCol = next[fromColIdx]!
+      const current = fromCol.cards[cardIdx]!
+      const novoColunaId =
+        conversa.coluna_id != null && conversa.coluna_id > 0
+          ? conversa.coluna_id
+          : current.coluna_id
+
+      const updatedCard = normalizeKanbanCard({
+        ...current,
+        name: conversa.name,
+        phone: conversa.phone,
+        lid: conversa.lid,
+        updated_at: conversa.updated_at,
+        coluna_id: novoColunaId,
+      })
+
+      const targetColIdx = next.findIndex((c) => c.id === novoColunaId)
+
+      if (targetColIdx !== -1 && targetColIdx !== fromColIdx) {
+        fromCol.cards.splice(cardIdx, 1)
+        fromCol.total_cards = Math.max(0, (fromCol.total_cards ?? fromCol.cards.length + 1) - 1)
+        const toCol = next[targetColIdx]!
+        toCol.cards.unshift(updatedCard)
+        toCol.total_cards = (toCol.total_cards ?? toCol.cards.length - 1) + 1
+      } else {
+        fromCol.cards[cardIdx] = updatedCard
+      }
+
+      this.columns = next
     },
 
     async atualizarConversa(

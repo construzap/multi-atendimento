@@ -1,8 +1,11 @@
 import { defineStore } from 'pinia'
-import type { Conversa, ConversasListResponse } from '#shared/types/conversa'
+import type { CampoPersonalizado, ValorCampoPersonalizado } from '#shared/types/camposPersonalizados'
+import type { Conversa, ConversaAtualizarResponse, ConversaCampoPersonalizado, ConversaPatch, ConversasListResponse } from '#shared/types/conversa'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { useCanaisStore } from '~/stores/canais'
+import { useCamposPersonalizadosStore } from '~/stores/camposPersonalizados'
 import { useConfiguracoesStore } from '~/stores/configuracoes'
+import { useKanbanStore } from '~/stores/kanban'
 import { useWorkspacesStore } from '~/stores/workspaces'
 
 export const CODIGO_COLUNA_ORIGEM_LEADS_NAO_CONFIGURADA = 'COLUNA_ORIGEM_LEADS_NAO_CONFIGURADA'
@@ -85,6 +88,19 @@ function emptyCanalState(): CanalConversasState {
     loadedAt: null,
     conversaAtual: null
   }
+}
+
+function mergeCamposPersonalizados(
+  campos: CampoPersonalizado[],
+  valores: ValorCampoPersonalizado[],
+): ConversaCampoPersonalizado[] {
+  const map = new Map(valores.map((v) => [v.campo_id, v.valor]))
+  return campos.map((c) => ({
+    id: c.id,
+    nome: c.nome,
+    tipo: c.tipo,
+    valor: map.get(c.id) ?? null,
+  }))
 }
 
 type FetchOptions = {
@@ -213,7 +229,12 @@ export const useConversasStore = defineStore('conversas', {
         return
       }
 
-      const merged = { ...bucket.items[idx]!, ...conversa }
+      const merged = {
+        ...bucket.items[idx]!,
+        ...conversa,
+        campos_personalizados:
+          conversa.campos_personalizados ?? bucket.items[idx]!.campos_personalizados,
+      }
       bucket.items = [merged, ...bucket.items.filter((_, i) => i !== idx)]
     },
 
@@ -275,6 +296,9 @@ export const useConversasStore = defineStore('conversas', {
         id_group: null,
         name_group: null,
         nao_lidas: 0,
+        funil_id: null,
+        coluna_id: null,
+        atendente_id: null,
       }
 
       this.addOrUpdateLocalConversa(temp, idCanal)
@@ -420,9 +444,152 @@ export const useConversasStore = defineStore('conversas', {
 
       const nextPage = bucket.page + 1
       await this.fetchPage(nextPage, idCanal, this.listFetchOptions(true))
-    }
+    },
 
-    ,
+    /** Atualiza dados da conversa no banco e espelha no cache do canal. */
+    async atualizarConversa(workspaceId: number, key: string, patch: ConversaPatch): Promise<Conversa> {
+      const conversaKey = key?.trim()
+      if (!workspaceId || !conversaKey) {
+        throw new Error('workspace_id e key são obrigatórios.')
+      }
+
+      const res = await $fetch<ConversaAtualizarResponse>('/api/conversas/atualizar', {
+        method: 'PATCH',
+        body: {
+          workspace_id: workspaceId,
+          key: conversaKey,
+          patch,
+        },
+      })
+
+      const atualizada = res.data
+      const canalId = atualizada.id_canal ?? this.activeCanalId
+      if (canalId != null) {
+        this.addOrUpdateLocalConversa(atualizada, canalId)
+      }
+
+      useKanbanStore().espelharConversaAtualizadaNoBoard(workspaceId, atualizada)
+
+      return atualizada
+    },
+
+    _aplicarCamposPersonalizadosNaConversa(
+      conversaKey: string,
+      campos: ConversaCampoPersonalizado[],
+    ) {
+      const key = conversaKey.trim()
+      if (!key) return
+
+      for (const bucket of Object.values(this.byCanal)) {
+        const idx = bucket.items.findIndex((c) => c.key === key)
+        if (idx === -1) continue
+        bucket.items[idx] = { ...bucket.items[idx]!, campos_personalizados: campos }
+      }
+    },
+
+    /**
+     * Carrega definições (workspace) e valores (conversa) dos campos personalizados.
+     * Cache-first via `camposPersonalizados` store; grava em `items[].campos_personalizados`.
+     */
+    async ensureCamposPersonalizadosNaConversa(workspaceId: number, conversaKey: string) {
+      const key = conversaKey.trim()
+      if (!workspaceId || !key || key.startsWith('temp:')) return []
+
+      const existente = this.findConversaByKey(key)
+      if (existente?.campos_personalizados !== undefined) {
+        return existente.campos_personalizados
+      }
+
+      const camposStore = useCamposPersonalizadosStore()
+
+      let campos: CampoPersonalizado[] = []
+      let valores: ValorCampoPersonalizado[] = []
+
+      try {
+        campos = await camposStore.fetchCampos(workspaceId)
+      } catch {
+        campos = camposStore.camposPorWorkspace[workspaceId] ?? []
+      }
+
+      try {
+        valores = await camposStore.fetchValores(workspaceId, key)
+      } catch {
+        valores = camposStore.getValores(workspaceId, key)
+      }
+
+      const merged = mergeCamposPersonalizados(campos, valores)
+      this._aplicarCamposPersonalizadosNaConversa(key, merged)
+      return merged
+    },
+
+    adicionarCampoPersonalizadoNasConversas(campo: CampoPersonalizado) {
+      const novo: ConversaCampoPersonalizado = {
+        id: campo.id,
+        nome: campo.nome,
+        tipo: campo.tipo,
+        valor: null,
+      }
+
+      for (const bucket of Object.values(this.byCanal)) {
+        bucket.items = bucket.items.map((item) => {
+          if (item.campos_personalizados === undefined) return item
+          if (item.campos_personalizados.some((c) => c.id === campo.id)) return item
+          const next = [...item.campos_personalizados, novo]
+          next.sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
+          return { ...item, campos_personalizados: next }
+        })
+      }
+    },
+
+    atualizarCampoPersonalizadoNasConversas(campo: CampoPersonalizado) {
+      for (const bucket of Object.values(this.byCanal)) {
+        bucket.items = bucket.items.map((item) => {
+          if (!item.campos_personalizados?.length) return item
+          const idx = item.campos_personalizados.findIndex((c) => c.id === campo.id)
+          if (idx === -1) return item
+          const next = [...item.campos_personalizados]
+          next[idx] = {
+            ...next[idx]!,
+            nome: campo.nome,
+            tipo: campo.tipo,
+          }
+          return { ...item, campos_personalizados: next }
+        })
+      }
+    },
+
+    atualizarValorCampoPersonalizadoNasConversas(
+      conversaKey: string,
+      campoId: number,
+      valor: string | null,
+    ) {
+      const key = conversaKey.trim()
+      if (!key) return
+
+      for (const bucket of Object.values(this.byCanal)) {
+        bucket.items = bucket.items.map((item) => {
+          if (item.key !== key || !item.campos_personalizados?.length) return item
+          const idx = item.campos_personalizados.findIndex((c) => c.id === campoId)
+          if (idx === -1) return item
+          const next = [...item.campos_personalizados]
+          next[idx] = { ...next[idx]!, valor }
+          return { ...item, campos_personalizados: next }
+        })
+      }
+    },
+
+    removerCampoPersonalizadoDasConversas(campoId: number) {
+      for (const bucket of Object.values(this.byCanal)) {
+        bucket.items = bucket.items.map((item) => {
+          if (!item.campos_personalizados?.length) return item
+          return {
+            ...item,
+            campos_personalizados: item.campos_personalizados.filter((c) => c.id !== campoId),
+          }
+        })
+      }
+    },
+
     /**
      * Marca a conversa como fechada no banco e remove da lista local (só abertas).
      */
@@ -491,6 +658,13 @@ export const useConversasStore = defineStore('conversas', {
       bucket.conversaAtual = key && key.trim() ? key.trim() : null
     },
 
+    /** Zera a seleção em todos os canais (ex.: ao sair do chat). */
+    clearAllConversaAtual() {
+      for (const bucket of Object.values(this.byCanal)) {
+        bucket.conversaAtual = null
+      }
+    },
+
     /**
      * Evento Pusher `nova-mensagem`: atualiza preview na lista ou cria a conversa.
      * `name` / `photo` vêm do payload quando existirem (inclui `from_me === true`, teste — pode voltar a preservar só foto depois).
@@ -543,6 +717,9 @@ export const useConversasStore = defineStore('conversas', {
           id_group: null,
           name_group: null,
           nao_lidas: msg.from_me === false ? 1 : 0,
+          funil_id: null,
+          coluna_id: null,
+          atendente_id: null,
         }
 
         if (payload.is_group) {

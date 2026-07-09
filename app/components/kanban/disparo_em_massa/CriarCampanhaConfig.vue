@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type { CampanhaStatusCriacao, CampanhaListItem, CriarCampanhaResponse, EnfileirarFilaDisparoResponse } from '#shared/types/disparoEmMassa'
+import { OPCOES_FUSO_CAMPANHA, defaultFusoCampanhaDoNavegador } from '#shared/constants/ianaTimezonesBrasil'
 import BaseButton from '~/components/BaseButton.vue'
 import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
 import { useCanaisStore } from '~/stores/canais'
@@ -47,6 +48,10 @@ const etapaAtual = ref(0)
 const ehPrimeiraEtapa = computed(() => etapaAtual.value === 0)
 const ehUltimaEtapa = computed(() => etapaAtual.value === TOTAL_ETAPAS - 1)
 const rotuloEtapa = computed(() => `Etapa ${etapaAtual.value + 1} de ${TOTAL_ETAPAS}`)
+const rotuloBotaoSalvar = computed(() => {
+  if (submitPending.value) return modoEdicao.value ? 'Salvando alterações…' : 'Criando campanha…'
+  return modoEdicao.value ? 'Salvar alterações' : 'Criar campanha'
+})
 
 function irProximaEtapa() {
   if (etapaAtual.value < TOTAL_ETAPAS - 1) etapaAtual.value += 1
@@ -71,6 +76,8 @@ const mensagem = ref('')
 const visualizacaoUnica = ref(false)
 const dataCampo = ref('')
 const horaCampo = ref('')
+const ianaTimezone = ref<string>(defaultFusoCampanhaDoNavegador())
+const opcoesFusoBrasil = OPCOES_FUSO_CAMPANHA
 const horaPermitidaInicio = ref('08:00')
 const horaPermitidaFim = ref('18:00')
 const intervaloMinimo = ref(30)
@@ -107,6 +114,24 @@ const tiposOpcoes = [
   { id: 'texto' as const, label: 'Texto', icon: 'chat' },
   { id: 'imagem' as const, label: 'Imagem', icon: 'image' },
   { id: 'audio' as const, label: 'Áudio', icon: 'mic' },
+] as const
+
+const variaveisMensagem = [
+  {
+    id: 'saudacao',
+    label: 'Saudação',
+    hint: 'Bom dia, Boa tarde ou Boa noite',
+  },
+  {
+    id: 'primeiro_nome',
+    label: 'Primeiro nome',
+    hint: 'Primeiro nome do cliente (ex.: João de "João Silva")',
+  },
+  {
+    id: 'data_atual',
+    label: 'Data atual',
+    hint: 'Data de hoje formatada (ex.: 08/07/2026)',
+  },
 ] as const
 
 const labelCls =
@@ -166,6 +191,27 @@ function classeChipAcao() {
   ].join(' ')
 }
 
+function inserirVariavelMensagem(variavelId: string) {
+  const token = `{{${variavelId}}}`
+  const el = mensagemTextareaRef.value
+  if (!el) {
+    mensagem.value += token
+    return
+  }
+  const start = el.selectionStart ?? mensagem.value.length
+  const end = el.selectionEnd ?? start
+  mensagem.value = mensagem.value.slice(0, start) + token + mensagem.value.slice(end)
+  void nextTick(() => {
+    el.focus()
+    const pos = start + token.length
+    el.setSelectionRange(pos, pos)
+  })
+}
+
+function rotuloVariavelMensagem(variavelId: string) {
+  return `{{${variavelId}}}`
+}
+
 function classeColunaItem(selecionada: boolean) {
   const base = [
     'flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3.5 py-3',
@@ -188,6 +234,7 @@ function classeColunaItem(selecionada: boolean) {
 
 const imagemInputRef = ref<HTMLInputElement | null>(null)
 const audioInputRef = ref<HTMLInputElement | null>(null)
+const mensagemTextareaRef = ref<HTMLTextAreaElement | null>(null)
 const imagemNome = ref<string | null>(null)
 const audioNome = ref<string | null>(null)
 const imagemArquivo = ref<File | null>(null)
@@ -422,6 +469,7 @@ function resetFormulario() {
   visualizacaoUnica.value = false
   dataCampo.value = ''
   horaCampo.value = ''
+  ianaTimezone.value = defaultFusoCampanhaDoNavegador()
   horaPermitidaInicio.value = '08:00'
   horaPermitidaFim.value = '18:00'
   intervaloMinimo.value = 30
@@ -790,6 +838,7 @@ async function salvar() {
         intervalo_maximo_minutos: intervaloMaximo.value,
         data_local: dataCampo.value.trim(),
         hora_local: horaCampo.value.trim(),
+        timezone_escolhido: ianaTimezone.value,
         hora_permitida_inicio: horaPermitidaInicio.value.trim(),
         hora_permitida_fim: horaPermitidaFim.value.trim(),
         mime,
@@ -845,8 +894,11 @@ async function salvar() {
 </script>
 
 <template>
-  <div class="font-body text-on-surface dark:text-dark-on-surface">
-    <header class="mb-6 flex flex-wrap items-start justify-between gap-3">
+  <div
+    class="overflow-hidden rounded-2xl border border-outline/30 bg-surface-container-lowest/90 font-body text-on-surface shadow-sm dark:border-dark-outline/30 dark:bg-dark-surface-container-low/85"
+  >
+    <div class="flex min-h-[min(62vh,600px)] flex-col p-4 md:p-6">
+    <header class="mb-4 shrink-0 flex flex-wrap items-start justify-between gap-3">
       <div class="space-y-1">
         <button
           type="button"
@@ -866,7 +918,7 @@ async function salvar() {
       </div>
     </header>
 
-    <div class="campanha-form pb-2">
+    <div class="campanha-form flex-1 pb-2">
       <!-- Identificação -->
       <section v-show="etapaAtual === 0" :class="sectionCls">
         <div class="flex items-start gap-3">
@@ -984,8 +1036,22 @@ async function salvar() {
         >
           <template v-if="tipo === 'texto'">
             <label :class="labelCls" for="campanha-mensagem">Mensagem</label>
+            <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="Variáveis da mensagem">
+              <button
+                v-for="v in variaveisMensagem"
+                :key="v.id"
+                type="button"
+                :class="classeChipAcao()"
+                :title="v.hint"
+                @click="inserirVariavelMensagem(v.id)"
+              >
+                <span class="font-mono text-[11px] text-primary-700 dark:text-violet-300">{{ rotuloVariavelMensagem(v.id) }}</span>
+                <span class="ml-1.5 text-on-surface-variant dark:text-dark-on-surface-variant">{{ v.label }}</span>
+              </button>
+            </div>
             <textarea
               id="campanha-mensagem"
+              ref="mensagemTextareaRef"
               v-model="mensagem"
               rows="5"
               placeholder="Insira a mensagem da campanha"
@@ -995,8 +1061,22 @@ async function salvar() {
 
           <template v-else-if="tipo === 'imagem'">
             <label :class="labelCls" for="campanha-legenda">Legenda (opcional)</label>
+            <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="Variáveis da legenda">
+              <button
+                v-for="v in variaveisMensagem"
+                :key="v.id"
+                type="button"
+                :class="classeChipAcao()"
+                :title="v.hint"
+                @click="inserirVariavelMensagem(v.id)"
+              >
+                <span class="font-mono text-[11px] text-primary-700 dark:text-violet-300">{{ rotuloVariavelMensagem(v.id) }}</span>
+                <span class="ml-1.5 text-on-surface-variant dark:text-dark-on-surface-variant">{{ v.label }}</span>
+              </button>
+            </div>
             <textarea
               id="campanha-legenda"
+              ref="mensagemTextareaRef"
               v-model="mensagem"
               rows="3"
               placeholder="Legenda da imagem"
@@ -1206,6 +1286,24 @@ async function salvar() {
               </div>
             </div>
 
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant" for="campanha-fuso">
+                Fuso horário do agendamento
+              </label>
+              <p class="text-[11px] leading-relaxed text-on-surface-variant dark:text-dark-on-surface-variant">
+                A data e a hora acima são interpretadas neste fuso (lista Brasil).
+              </p>
+              <select
+                id="campanha-fuso"
+                v-model="ianaTimezone"
+                :class="inputCls"
+              >
+                <option v-for="op in opcoesFusoBrasil" :key="op.value" :value="op.value">
+                  {{ op.label }}
+                </option>
+              </select>
+            </div>
+
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div class="space-y-2">
                 <label :class="labelCls" for="campanha-hora-permitida-inicio">
@@ -1319,7 +1417,7 @@ async function salvar() {
                   Nenhum canal neste workspace.
                 </p>
 
-                <ul v-else class="max-h-40 space-y-2 overflow-y-auto pr-0.5" role="list">
+                <ul v-else class="max-h-72 space-y-2 overflow-y-auto pr-0.5" role="list">
                   <li v-for="c in canaisStore.items" :key="c.id">
                     <label :class="classeColunaItem(isCanalSelecionado(c.id))">
                       <span class="flex min-w-0 items-center gap-3">
@@ -1400,7 +1498,7 @@ async function salvar() {
                     Nenhum canal neste workspace.
                   </p>
 
-                  <ul v-else class="max-h-40 space-y-2 overflow-y-auto pr-0.5" role="list">
+                  <ul v-else class="max-h-72 space-y-2 overflow-y-auto pr-0.5" role="list">
                     <li v-for="c in canaisStore.items" :key="`fonte-${c.id}`">
                       <label :class="classeColunaItem(isFonteCanalSelecionado(c.id))">
                         <span class="flex min-w-0 items-center gap-3">
@@ -1495,7 +1593,7 @@ async function salvar() {
                 Nenhuma coluna carregada no Kanban deste workspace.
               </p>
 
-              <ul v-else class="max-h-52 space-y-2 overflow-y-auto pr-0.5" role="list">
+              <ul v-else class="max-h-80 space-y-2 overflow-y-auto pr-0.5" role="list">
                 <li v-for="coluna in columns" :key="coluna.id">
                   <label :class="classeColunaItem(isColunaSelecionada(coluna.id))">
                     <span class="flex min-w-0 items-center gap-3">
@@ -1555,7 +1653,7 @@ async function salvar() {
                 Nenhuma coluna carregada no Kanban deste workspace.
               </p>
 
-              <ul v-else class="max-h-52 space-y-2 overflow-y-auto pr-0.5" role="listbox" aria-label="Etapa após o disparo">
+              <ul v-else class="max-h-80 space-y-2 overflow-y-auto pr-0.5" role="listbox" aria-label="Etapa após o disparo">
                 <li v-for="coluna in columns" :key="`apos-${coluna.id}`">
                   <label :class="classeColunaItem(isColunaAposDisparo(coluna.id))">
                     <span class="flex min-w-0 items-center gap-3">
@@ -1579,7 +1677,9 @@ async function salvar() {
       </section>
     </div>
 
-    <div class="mt-6 flex flex-col-reverse gap-3 border-t border-outline/20 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-dark-outline/20">
+    <div
+      class="-mx-4 mt-4 flex shrink-0 flex-col-reverse gap-3 border-t border-outline/20 bg-surface-container-lowest/95 px-4 py-4 backdrop-blur-md sm:flex-row sm:items-center sm:justify-between dark:border-dark-outline/20 dark:bg-dark-surface-container-low/95 md:-mx-6 md:px-6"
+    >
       <BaseButton
         v-if="!ehPrimeiraEtapa"
         variant="secondary"
@@ -1610,7 +1710,7 @@ async function salvar() {
       </BaseButton>
 
       <BaseButton
-        v-else-if="!modoEdicao"
+        v-else
         variant="primary"
         :block="false"
         class="w-full !shadow-[0_4px_16px_rgba(37,99,235,0.35)] hover:!shadow-[0_6px_22px_rgba(37,99,235,0.42)] sm:w-auto sm:ml-auto"
@@ -1619,11 +1719,12 @@ async function salvar() {
       >
         <span class="inline-flex items-center justify-center gap-2 font-bold">
           <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
-            {{ submitPending ? 'hourglass_top' : 'rocket_launch' }}
+            {{ submitPending ? 'hourglass_top' : modoEdicao ? 'save' : 'rocket_launch' }}
           </span>
-          {{ submitPending ? 'Criando campanha…' : 'Criar campanha' }}
+          {{ rotuloBotaoSalvar }}
         </span>
       </BaseButton>
+    </div>
     </div>
 
   <ModalEnvioProdutos
@@ -1648,7 +1749,11 @@ async function salvar() {
 .campanha-form {
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 1.5rem;
+  overflow-y: auto;
   scroll-behavior: smooth;
 }
 

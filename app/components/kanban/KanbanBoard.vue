@@ -9,6 +9,7 @@ import ModalNovaColuna from './ModalNovaColuna.vue'
 import InfoContatoKanban from './InfoContatoKanban/InfoContatoKanban.vue'
 import FerramentaImportarContato from './importar-contatos/FerramentaImportarContato.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
+import SelecaoMultiplaBar from '~/components/kanban/SelecaoMultiplaBar.vue'
 import { useCanaisStore } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 
@@ -38,6 +39,38 @@ const buscaInput = ref('')
 const alternandoOcultarGrupos = ref(false)
 const alternandoFiltroCanal = ref(false)
 let buscaTimer: ReturnType<typeof setTimeout> | null = null
+
+const selectedKeys = ref<string[]>([])
+const selectedCount = computed(() => selectedKeys.value.length)
+const selectionActive = computed(() => selectedCount.value > 0)
+
+function isSelected(key: string): boolean {
+  const k = key.trim()
+  if (!k) return false
+  return selectedKeys.value.includes(k)
+}
+
+function toggleSelected(key: string, nextSelected?: boolean) {
+  const k = key.trim()
+  if (!k) return
+  const cur = isSelected(k)
+  const next = nextSelected ?? !cur
+  if (next === cur) return
+  if (next) {
+    selectedKeys.value = [...selectedKeys.value, k]
+    return
+  }
+  selectedKeys.value = selectedKeys.value.filter((x) => x !== k)
+}
+
+function clearSelection() {
+  selectedKeys.value = []
+}
+
+function onAlterarCampos() {
+  // Somente UI por enquanto (pedido: nenhuma chamada).
+  toast.info('Ação: Alterar campos (UI apenas).')
+}
 
 const canaisDoWorkspace = computed(() =>
   canaisStore.items.filter((c) => c.id != null && c.id > 0),
@@ -352,9 +385,17 @@ function onCardOpen(card: KanbanCardModel) {
     return
   }
 
+  const kanban = useKanbanStore()
+  kanban.closeInfoContatoConversa()
+  useCanaisStore().setCurrentCanalId(Math.trunc(canalId))
+
   void navigateTo(
     `/workspaces/${props.workspaceId}/chat/${Math.trunc(canalId)}/${encodeURIComponent(conversaKey)}`,
   )
+}
+
+function onCardToggleSelected(payload: { conversa_key: string; nextSelected: boolean }) {
+  toggleSelected(payload.conversa_key, payload.nextSelected)
 }
 </script>
 
@@ -507,6 +548,13 @@ function onCardOpen(card: KanbanCardModel) {
 
     <InfoContatoKanban />
 
+    <SelecaoMultiplaBar
+      v-if="selectedCount > 0"
+      :count="selectedCount"
+      @limpar="clearSelection"
+      @alterar-campos="onAlterarCampos"
+    />
+
     <FerramentaImportarContato
       ref="ferramentaImportarRef"
       :workspace-id="workspaceId"
@@ -528,6 +576,8 @@ function onCardOpen(card: KanbanCardModel) {
         :carregando-mais="!!loadingMoreByColumn[c.id]"
         :dragging-id="dragging?.cardId ?? null"
         :drag-over-column-id="dragOverColumnId"
+        :selected-keys="selectedKeys"
+        :force-show-checkboxes="selectionActive"
         @card-drag-start="onCardDragStart"
         @card-drag-end="onCardDragEnd"
         @column-drag-over="dragOverColumnId = $event.toColumnId"
@@ -538,6 +588,7 @@ function onCardOpen(card: KanbanCardModel) {
         @column-reorder="onColumnReorder"
         @load-more="onLoadMore"
         @card-open="onCardOpen"
+        @card-toggle-selected="onCardToggleSelected"
       />
     </div>
 

@@ -440,32 +440,42 @@ export default defineEventHandler(async (event) => {
 
     const { data: mensagemSalva, error: mensagemSalvaErr } = await admin
       .from('mensagens')
-      .select('message_id')
+      .select('message_id, key_conversa, id_canal')
       .eq('message_id', message_id)
+      .eq('id_canal', canalId)
       .maybeSingle()
 
     if (mensagemSalvaErr) {
       throw createError({ statusCode: 500, statusMessage: mensagemSalvaErr.message })
     }
 
-    if (!mensagemSalva) {
-      const { error: insertMsgErr } = await admin.from('mensagens').insert({
-        message_id,
-        created_at: createdAt,
-        from_me: true,
-        message: messageText || null,
-        phone: phoneParaPersist,
-        lid: lidParaPersist,
-        connected_phone: null,
-        messagetype,
-        from_api: true,
-        id_canal: canalId,
-        media_url,
-        caption: isMedia && messageText ? messageText : null,
-        filename: null,
-        key_conversa: conversa_key,
-        ...(replyidValido ? { replyid: replyidValido } : {}),
-      })
+    const keyCorreta = conversa_key?.trim() || ''
+    const precisaGravarMensagem =
+      !mensagemSalva ||
+      !keyCorreta ||
+      mensagemSalva.key_conversa?.trim() !== keyCorreta
+
+    if (precisaGravarMensagem) {
+      const { error: insertMsgErr } = await admin.from('mensagens').upsert(
+        {
+          message_id,
+          created_at: createdAt,
+          from_me: true,
+          message: messageText || null,
+          phone: phoneParaPersist,
+          lid: lidParaPersist,
+          connected_phone: null,
+          messagetype,
+          from_api: true,
+          id_canal: canalId,
+          media_url,
+          caption: isMedia && messageText ? messageText : null,
+          filename: null,
+          key_conversa: keyCorreta,
+          ...(replyidValido ? { replyid: replyidValido } : {}),
+        },
+        { onConflict: 'message_id,id_canal' },
+      )
 
       if (insertMsgErr) {
         throw createError({

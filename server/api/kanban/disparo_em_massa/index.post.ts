@@ -10,6 +10,7 @@ import { checkChannels } from '../../../utils/checkChannel'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { uploadMidiaDisparoEmMassa } from '../../../utils/disparoEmMassaUploadMidia'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
+import { isTimezoneCampanhaPermitido } from '#shared/constants/ianaTimezonesBrasil'
 
 const WEBHOOK_URL_CAMPANHA = 'https://nwebhook.construzap.com/webhook/28d7sdasd132a-ae0s444132s5'
 
@@ -226,6 +227,17 @@ function parseDataInicio(dataLocal: string | null, horaLocal: string | null): st
   return d.toISOString()
 }
 
+function parseTimezoneEscolhido(raw: unknown): string {
+  if (raw === undefined || raw === null || raw === '') {
+    throw createError({ statusCode: 400, statusMessage: 'timezone_escolhido é obrigatório.' })
+  }
+  const tz = String(raw).trim()
+  if (!isTimezoneCampanhaPermitido(tz)) {
+    throw createError({ statusCode: 400, statusMessage: 'timezone_escolhido inválido.' })
+  }
+  return tz
+}
+
 function safeMime(raw: unknown): string {
   const s = typeof raw === 'string' ? raw.trim() : ''
   return (s.split(';')[0] ?? '').trim().toLowerCase()
@@ -384,6 +396,7 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
 
   const data_local = trimOrNull(body.data_local)
   const hora_local = trimOrNull(body.hora_local)
+  const timezone_escolhido = parseTimezoneEscolhido(body.timezone_escolhido)
   const data_inicio = parseDataInicio(data_local, hora_local)
 
   const hora_permitida_inicio = parseHoraPermitida(
@@ -423,13 +436,14 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     fonte_canal_id,
     envia_para_grupo,
     coluna_id,
+    timezone_escolhido,
   }
 
   const { data: campanhaInsert, error: campanhaErr } = await admin
     .from('campanhas')
     .insert(insertCampanha)
     .select(
-      'id, nome, tipo_mensagem, conteudo_texto, url_midia, webhook_url, intervalo_minimo_minutos, intervalo_maximo_minutos, status, criado_em, canal_id, canais_ids, ultimo_canal_id, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id',
+      'id, nome, tipo_mensagem, conteudo_texto, url_midia, webhook_url, intervalo_minimo_minutos, intervalo_maximo_minutos, status, criado_em, canal_id, canais_ids, ultimo_canal_id, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id, timezone_escolhido',
     )
     .single()
 

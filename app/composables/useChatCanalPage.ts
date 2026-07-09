@@ -36,6 +36,12 @@ function isSameCanalChatPath(toPath: string, wid: number | null, cid: number | n
   return toPath === base || toPath.startsWith(`${base}/`)
 }
 
+function isWorkspaceChatPath(path: string, wid: number | null): boolean {
+  if (wid == null) return false
+  const base = `/workspaces/${wid}/chat`
+  return path === base || path.startsWith(`${base}/`)
+}
+
 export function useChatCanalPage(options: Options = {}) {
   const {
     syncConversaFromRoute = false,
@@ -46,6 +52,7 @@ export function useChatCanalPage(options: Options = {}) {
   const route = useRoute()
   const canaisStore = useCanaisStore()
   const conversasStore = useConversasStore()
+  const mensagensStore = useMensagensStore()
 
   const canalId = computed(() => parsePositiveInt(route.params.canalId))
   const workspaceId = computed(() => parsePositiveInt(route.params.id))
@@ -60,6 +67,12 @@ export function useChatCanalPage(options: Options = {}) {
   const mobilePane = useState<'list' | 'chat' | 'info'>('chat_mobile_pane', () => 'list')
   /** Evita redirect para `/chat/:canal` ao sair do chat (ex.: voltar ao kanban). */
   const suppressConversaUrlSync = ref(false)
+  /** Invalida handlers async antigos ao trocar `conversaKey` na URL. */
+  let routeConversaSyncGen = 0
+
+  function isRouteConversaSyncStale(expectedKey: string, gen: number): boolean {
+    return gen !== routeConversaSyncGen || conversaKeyFromRoute.value !== expectedKey
+  }
 
   watch(
     () => conversasStore.conversaAtual,
@@ -116,11 +129,28 @@ export function useChatCanalPage(options: Options = {}) {
   if (syncConversaFromRoute) {
     watch(
       conversaKeyFromRoute,
-      (key) => {
+      async (key) => {
+        const gen = ++routeConversaSyncGen
         const id = canalId.value
         if (id == null) return
         if (key) {
           conversasStore.setConversaAtual(key, id)
+          if (key.startsWith('temp:')) return
+
+          mensagensStore.setActiveKey(key)
+          await mensagensStore.ensureLoaded(id, key, 1, { activate: false }).catch(() => {
+            /* erro fica em mensagens.error */
+          })
+          if (isRouteConversaSyncStale(key, gen)) return
+
+          await conversasStore.ensureLoaded(id).catch(() => {
+            /* erro fica em conversas.error */
+          })
+          if (isRouteConversaSyncStale(key, gen)) return
+
+          await conversasStore.marcarComoLida(key).catch(() => {
+            /* falha silenciosa; badge pode voltar no próximo fetch */
+          })
           return
         }
         conversasStore.setConversaAtual(null, id)
@@ -161,13 +191,26 @@ export function useChatCanalPage(options: Options = {}) {
     )
   }
 
-  onBeforeRouteLeave((to) => {
-    const id = canalIdSnapshot.value
-    const wid = workspaceId.value
-    if (id == null) return
-    if (isSameCanalChatPath(to.path, wid, id)) return
+  function limparConversaAoSairDoChat() {
     suppressConversaUrlSync.value = true
-    conversasStore.setConversaAtual(null, id)
+    conversasStore.clearAllConversaAtual()
+    mensagensStore.setActiveKey(null)
+  }
+
+  onBeforeRouteLeave((to) => {
+    const wid = workspaceId.value
+    if (wid == null) return
+    if (isWorkspaceChatPath(to.path, wid)) return
+    limparConversaAoSairDoChat()
+  })
+
+  onBeforeUnmount(() => {
+    const wid = workspaceId.value
+    if (wid == null) return
+    const router = useRouter()
+    const destino = router.currentRoute.value.path
+    if (isWorkspaceChatPath(destino, wid)) return
+    limparConversaAoSairDoChat()
   })
 
   onMounted(async () => {

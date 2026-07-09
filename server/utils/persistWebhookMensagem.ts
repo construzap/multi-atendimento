@@ -350,6 +350,32 @@ function buildConversaUpdateRow(
   return row
 }
 
+/** Atualiza preview da conversa quando a mensagem já existe (eco do webhook / idempotência). */
+async function updateConversaPreviewExistente(
+  admin: SupabaseAdmin,
+  conversa_key: string,
+  normalizada: MensagemNormalizada,
+  updatedAt: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { data, error } = await admin
+    .from('conversas')
+    .select('key, name, photo, phone, lid, nao_lidas, id_canal')
+    .eq('key', conversa_key)
+    .maybeSingle()
+
+  if (error) return { ok: false, message: error.message }
+  if (!data || typeof data !== 'object') return { ok: true }
+
+  const existing = data as ConversaRow
+  const { error: convErr } = await admin
+    .from('conversas')
+    .update(buildConversaUpdateRow(normalizada, existing, updatedAt))
+    .eq('key', conversa_key)
+
+  if (convErr) return { ok: false, message: convErr.message }
+  return { ok: true }
+}
+
 /** Conversa nova: insert completo em `conversas`. */
 function buildConversaInsertRow(
   normalizada: MensagemNormalizada,
@@ -425,10 +451,17 @@ async function persistIndividual(
 
   if (mensagemNoCanal) {
     const keyExistente = mensagemNoCanal.key_conversa?.trim() || ''
-    return { ok: true, conversa_key: keyExistente, message_persisted: false }
+    if (keyExistente) {
+      const sync = await updateConversaPreviewExistente(admin, keyExistente, normalizada, updatedAt)
+      if (!sync.ok) {
+        return { ok: false, step: 'conversa', message: sync.message }
+      }
+      return { ok: true, conversa_key: keyExistente, message_persisted: false }
+    }
+    // Mensagem órfã (sem key_conversa) — reparar abaixo.
   }
 
-  // Não existe neste canal → grava (mesmo que o message_id exista em outro canal).
+  // Não existe neste canal (ou está órfã) → grava.
   const hint = options.conversa_key_hint?.trim() || null
   let existing: ConversaRow | null = null
   let usarHintComoKey = false
@@ -464,16 +497,10 @@ async function persistIndividual(
   const conversa_key =
     usarHintComoKey && hint ? hint : existing?.key ?? randomUUID()
 
-  if (existing) {
-    const { error: convErr } = await admin
-      .from('conversas')
-      .update(buildConversaUpdateRow(normalizada, existing, updatedAt))
-      .eq('key', conversa_key)
+  const replyid = normalizada.replyid?.trim() || null
+  const mensagemRow = buildMensagemRow(normalizada, conversa_key, replyid, updatedAt)
 
-    if (convErr) {
-      return { ok: false, step: 'conversa', message: convErr.message }
-    }
-  } else {
+  if (!existing) {
     const { error: convErr } = await admin
       .from('conversas')
       .insert(buildConversaInsertRow(normalizada, conversa_key, updatedAt))
@@ -485,14 +512,23 @@ async function persistIndividual(
     await ensureFunilLeadNoWebhook(admin, conversa_key, normalizada.workspace_id, updatedAt)
   }
 
-  const replyid = normalizada.replyid?.trim() || null
-  const mensagemRow = buildMensagemRow(normalizada, conversa_key, replyid, updatedAt)
-
-  // PK global em message_id: se existir só em outro canal, upsert associa ao canal atual.
-  const { error: msgErr } = await admin.from('mensagens').upsert(mensagemRow, { onConflict: 'message_id' })
+  // Grava mensagem antes de atualizar preview (evita conversa com última msg sem linha em `mensagens`).
+  // onConflict composto: mesmo message_id pode existir em canais diferentes (mesmo WhatsApp ID visto dos dois lados).
+  const { error: msgErr } = await admin.from('mensagens').upsert(mensagemRow, { onConflict: 'message_id,id_canal' })
 
   if (msgErr) {
     return { ok: false, step: 'mensagem', message: msgErr.message }
+  }
+
+  if (existing) {
+    const { error: convErr } = await admin
+      .from('conversas')
+      .update(buildConversaUpdateRow(normalizada, existing, updatedAt))
+      .eq('key', conversa_key)
+
+    if (convErr) {
+      return { ok: false, step: 'conversa', message: convErr.message }
+    }
   }
 
   return { ok: true, conversa_key, message_persisted: true }
@@ -518,7 +554,13 @@ async function persistGrupo(
 
   if (mensagemNoCanal) {
     const keyExistente = mensagemNoCanal.key_conversa?.trim() || ''
-    return { ok: true, conversa_key: keyExistente, message_persisted: false }
+    if (keyExistente) {
+      const sync = await updateConversaPreviewExistente(admin, keyExistente, normalizada, updatedAt)
+      if (!sync.ok) {
+        return { ok: false, step: 'conversa', message: sync.message }
+      }
+      return { ok: true, conversa_key: keyExistente, message_persisted: false }
+    }
   }
 
   const idGroup = normalizada.id_group!
@@ -532,27 +574,13 @@ async function persistGrupo(
 
   const conversa_key = existing?.key ?? randomUUID()
 
-  if (existing) {
-    const updateRow: Record<string, unknown> = {
-      message: normalizada.message,
-      messatype: normalizada.messagetype,
-      updated_at: updatedAt,
-      ...patchNaoLidas(normalizada, existing),
-    }
-    if (!normalizada.from_me) {
-      const photo = coalesceStr(normalizada.photo, existing.photo)
-      if (photo) updateRow.photo = photo
-    }
+  const replyid = normalizada.replyid?.trim() || null
+  const mensagemRow = {
+    ...buildMensagemRow(normalizada, conversa_key, replyid, updatedAt),
+    name: normalizada.from_me ? null : normalizada.name,
+  }
 
-    const { error: convErr } = await admin
-      .from('conversas')
-      .update(updateRow)
-      .eq('key', conversa_key)
-
-    if (convErr) {
-      return { ok: false, step: 'conversa', message: convErr.message }
-    }
-  } else {
+  if (!existing) {
     const { error: convErr } = await admin.from('conversas').insert({
       key: conversa_key,
       message: normalizada.message,
@@ -582,16 +610,32 @@ async function persistGrupo(
     await ensureFunilLeadNoWebhook(admin, conversa_key, normalizada.workspace_id, updatedAt)
   }
 
-  const replyid = normalizada.replyid?.trim() || null
-  const mensagemRow = {
-    ...buildMensagemRow(normalizada, conversa_key, replyid, updatedAt),
-    name: normalizada.from_me ? null : normalizada.name,
-  }
-
-  const { error: msgErr } = await admin.from('mensagens').upsert(mensagemRow, { onConflict: 'message_id' })
+  const { error: msgErr } = await admin.from('mensagens').upsert(mensagemRow, { onConflict: 'message_id,id_canal' })
 
   if (msgErr) {
     return { ok: false, step: 'mensagem', message: msgErr.message }
+  }
+
+  if (existing) {
+    const updateRow: Record<string, unknown> = {
+      message: normalizada.message,
+      messatype: normalizada.messagetype,
+      updated_at: updatedAt,
+      ...patchNaoLidas(normalizada, existing),
+    }
+    if (!normalizada.from_me) {
+      const photo = coalesceStr(normalizada.photo, existing.photo)
+      if (photo) updateRow.photo = photo
+    }
+
+    const { error: convErr } = await admin
+      .from('conversas')
+      .update(updateRow)
+      .eq('key', conversa_key)
+
+    if (convErr) {
+      return { ok: false, step: 'conversa', message: convErr.message }
+    }
   }
 
   return { ok: true, conversa_key, message_persisted: true }

@@ -160,7 +160,7 @@ function onEditar() {
     <BaseButton variant="secondary" :block="false" class="shrink-0" @click="onEditar">
       <span class="inline-flex items-center gap-1.5 text-xs font-semibold">
         <span class="material-symbols-outlined text-[16px]" aria-hidden="true">edit</span>
-        Editar
+        Duplicar
       </span>
     </BaseButton>
   </article>

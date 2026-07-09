@@ -72,6 +72,8 @@ type FetchOptions = {
   append?: boolean
   /** Ignora cache e refaz GET (ex.: ao abrir chat no kanban). */
   force?: boolean
+  /** Quando false, não altera `activeKey` (evita corrida entre trocas rápidas de conversa). */
+  activate?: boolean
 }
 
 /** Mantém a primeira ocorrência de cada `message_id` (lista já vem da mais nova para a mais antiga). */
@@ -408,7 +410,6 @@ export const useMensagensStore = defineStore('mensagens', {
 
     async fetchPage(idCanal: number, conversaKey: string, page: number = 1, options: FetchOptions = {}) {
       const key = mensagensBucketKey(conversaKey)
-      this.setActiveKey(key)
       const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
 
       bucket.pending = true
@@ -460,7 +461,9 @@ export const useMensagensStore = defineStore('mensagens', {
       options: FetchOptions = {},
     ) {
       const key = mensagensBucketKey(conversaKey)
-      this.setActiveKey(key)
+      if (options.activate !== false) {
+        this.setActiveKey(key)
+      }
       let bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
 
       const cacheValido =
@@ -490,18 +493,21 @@ export const useMensagensStore = defineStore('mensagens', {
       return promise
     },
 
-    async fetchNextPage() {
+    /** Retorna quantas mensagens novas foram adicionadas (0 = não há mais). */
+    async fetchNextPage(): Promise<number> {
       const key = this.activeKey
-      if (!key) return
+      if (!key) return 0
       const bucket = this.byKey[key] ?? (this.byKey[key] = emptyKeyState())
-      if (bucket.pending) return
-      if (!(bucket.page * bucket.perPage < bucket.total)) return
+      if (bucket.pending) return 0
+      if (!(bucket.page * bucket.perPage < bucket.total)) return 0
 
       const idCanal = bucket.id_canal
-      if (idCanal == null) return
+      if (idCanal == null) return 0
 
+      const countBefore = bucket.items.length
       const nextPage = bucket.page + 1
       await this.fetchPage(idCanal, key, nextPage, { append: true })
+      return bucket.items.length - countBefore
     },
   },
 })

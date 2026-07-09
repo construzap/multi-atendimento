@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import BaseModal from '../../BaseModal.vue'
-import BaseInput from '../../BaseInput.vue'
+import BaseModal from '~/components/BaseModal.vue'
+import BaseInput from '~/components/BaseInput.vue'
 import type { CampoPersonalizado, TipoCampoPersonalizado } from '#shared/types/camposPersonalizados'
-import { useCamposPersonalizadosStore } from '../../../stores/camposPersonalizados'
+import { useCamposPersonalizadosStore } from '~/stores/camposPersonalizados'
 
 const TIPOS: { value: TipoCampoPersonalizado; label: string }[] = [
   { value: 'text', label: 'Texto' },

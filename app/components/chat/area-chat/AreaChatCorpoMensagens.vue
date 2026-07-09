@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
+import { toast } from 'vue-sonner'
 import BalaoMensagem from '~/components/chat/area-chat/BalaoMensagens/BalaoMensagem.vue'
 
 const conversas = useConversasStore()
@@ -72,22 +73,25 @@ async function onFabScrollToBottom() {
   updateIsAtTop()
 }
 
-/** Próximo ao topo + ainda há páginas na API (30 em 30). */
+/** Próximo ao topo da lista (carregar mais fica visível; vazio → toast). */
 const showLoadMoreFab = computed(() => {
   if (!activeKey.value) return false
-  if (!isAtTop.value) return false
-  return mensagens.hasMore
+  return isAtTop.value
 })
 
 async function onLoadMoreMensagens() {
   const el = scroller.value
-  if (!el || !mensagens.hasMore || mensagens.pending) return
+  if (!el || mensagens.pending) return
 
   const prevHeight = el.scrollHeight
   const prevTop = el.scrollTop
 
   try {
-    await mensagens.fetchNextPage()
+    const added = await mensagens.fetchNextPage()
+    if (added === 0) {
+      toast.info('Não há mais mensagens para serem carregadas.', { duration: 4000 })
+      return
+    }
   } catch {
     return
   }

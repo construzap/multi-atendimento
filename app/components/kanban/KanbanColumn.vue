@@ -26,6 +26,8 @@ const props = defineProps<{
   podeMoverDireita?: boolean
   reordenando?: boolean
   carregandoMais?: boolean
+  selectedKeys?: string[]
+  forceShowCheckboxes?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -39,6 +41,7 @@ const emit = defineEmits<{
   columnReorder: [payload: { columnId: number; direcao: 'esquerda' | 'direita' }]
   loadMore: [columnId: number]
   cardOpen: [card: KanbanCardModel]
+  cardToggleSelected: [payload: { conversa_key: string; nextSelected: boolean }]
 }>()
 
 const kanban = useKanbanStore()
@@ -220,6 +223,8 @@ const cardsOrdenados = computed(() =>
   }),
 )
 
+const selectedSet = computed(() => new Set((props.selectedKeys ?? []).map((k) => String(k).trim()).filter(Boolean)))
+
 function onDragOver(e: DragEvent) {
   e.preventDefault()
   emit('columnDragOver', { toColumnId: props.column.id })
@@ -389,9 +394,12 @@ function onDrop(e: DragEvent) {
         :card="c"
         :column-id="column.id"
         :dragging-id="draggingId ?? null"
+        :selected="selectedSet.has(c.conversa_key)"
+        :force-show-checkbox="props.forceShowCheckboxes === true"
         @card-drag-start="emit('cardDragStart', $event)"
         @card-drag-end="emit('cardDragEnd')"
         @card-open="emit('cardOpen', $event)"
+        @card-toggle-selected="emit('cardToggleSelected', $event)"
       />
 
       <div
