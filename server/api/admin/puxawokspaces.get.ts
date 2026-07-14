@@ -33,7 +33,7 @@ export default defineEventHandler(async (event): Promise<AdminWorkspace[]> => {
 
   const { data, error } = await admin
     .from('workspace')
-    .select('id, nome, descricao, created_at, user_id')
+    .select('id, nome, descricao, created_at, user_id, limite_produtos')
     .is('deleted_at', null)
     .is('deleted_by', null)
     .order('created_at', { ascending: false })
@@ -47,12 +47,21 @@ export default defineEventHandler(async (event): Promise<AdminWorkspace[]> => {
 
   return (data ?? []).map((row) => {
     const r = row as Record<string, unknown>
+    const limiteRaw = r.limite_produtos
+    const limite =
+      limiteRaw == null || limiteRaw === ''
+        ? null
+        : typeof limiteRaw === 'number'
+          ? limiteRaw
+          : Number.parseInt(String(limiteRaw), 10)
+
     return {
       id: Number(r.id),
       nome: String(r.nome ?? ''),
       descricao: r.descricao == null ? null : String(r.descricao),
       created_at: String(r.created_at ?? ''),
       user_id: String(r.user_id ?? ''),
+      limite_produtos: limite != null && Number.isFinite(limite) ? limite : null,
     } satisfies AdminWorkspace
   })
 })

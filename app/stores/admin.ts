@@ -1,5 +1,9 @@
 import { defineStore } from 'pinia'
-import type { AdminEmpresaRow, AdminWorkspace } from '#shared/types/admin'
+import type {
+  AdminAtualizarLimiteProdutosResponse,
+  AdminEmpresaRow,
+  AdminWorkspace,
+} from '#shared/types/admin'
 import type { AdminPromptListResponse, PromptWorkspaceComPrincipal } from '#shared/types/adminPrompt'
 import { PROMPT_WORKSPACE_TIPO_DEFAULT } from '#shared/types/adminPrompt'
 import type { AdminPromptItem } from '~/components/admin/prompt/types'
@@ -50,6 +54,7 @@ export const useAdminStore = defineStore('admin', {
     /** `null` = modal fechado; `'novo'` = criando; id = editando */
     promptEmEdicaoId: null as string | null,
     promptSalvando: false,
+    limiteProdutosSalvando: false,
   }),
 
   getters: {
@@ -60,6 +65,16 @@ export const useAdminStore = defineStore('admin', {
         user_id: w.user_id,
         instance_count: 0,
       })),
+
+    workspaceSelecionado(state): AdminWorkspace | null {
+      const id = state.selectedWorkspaceId
+      if (!id) return null
+      return state.workspaces.find((w) => String(w.id) === id) ?? null
+    },
+
+    limiteProdutosAtual(): number | null {
+      return this.workspaceSelecionado?.limite_produtos ?? null
+    },
 
     promptsCacheAtual: (state): PromptsCacheEntry | null => {
       const id = state.selectedWorkspaceId
@@ -335,6 +350,46 @@ export const useAdminStore = defineStore('admin', {
         this.fecharModalPrompt()
       } finally {
         this.promptSalvando = false
+      }
+    },
+
+    async atualizarLimiteProdutos(
+      limiteProdutos: number | null,
+    ): Promise<AdminAtualizarLimiteProdutosResponse> {
+      const ws = this.selectedWorkspaceId
+      if (!ws) {
+        throw new Error('Selecione um workspace na barra lateral.')
+      }
+
+      const wsId = Number.parseInt(ws, 10)
+      if (!Number.isFinite(wsId) || wsId < 1) {
+        throw new Error('Workspace inválido.')
+      }
+
+      this.limiteProdutosSalvando = true
+      try {
+        const data = await $fetch<AdminAtualizarLimiteProdutosResponse>(
+          '/api/admin/produtos/limite-produtos',
+          {
+            method: 'PATCH',
+            body: {
+              workspace_id: wsId,
+              limite_produtos: limiteProdutos,
+            },
+          },
+        )
+
+        const idx = this.workspaces.findIndex((w) => w.id === data.id)
+        if (idx >= 0) {
+          this.workspaces[idx] = {
+            ...this.workspaces[idx],
+            limite_produtos: data.limite_produtos,
+          }
+        }
+
+        return data
+      } finally {
+        this.limiteProdutosSalvando = false
       }
     },
   },

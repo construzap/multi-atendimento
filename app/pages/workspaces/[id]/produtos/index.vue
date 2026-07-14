@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import ProdutosBarraAcoes from '~/components/produtos/ProdutosBarraAcoes.vue'
 import ProdutosBuscaInput from '~/components/produtos/ProdutosBuscaInput.vue'
 import FerramentaImportarProduto from '~/components/produtos/FerramentaImportarProduto.vue'
 import ProdutosModalCriarProdutosEmMassa from '~/components/produtos/ProdutosModalCriarProdutosEmMassa.vue'
 import ProdutosTabela from '~/components/produtos/ProdutosTabela.vue'
+import { useProdutosStore } from '~/stores/produtos'
+import { useWorkspacesStore } from '~/stores/workspaces'
 
 definePageMeta({
   layout: 'workspace',
@@ -13,8 +15,14 @@ definePageMeta({
 
 const route = useRoute()
 const produtosStore = useProdutosStore()
+const workspacesStore = useWorkspacesStore()
 
 const { listPending, listError, page, totalPages, total } = storeToRefs(produtosStore)
+const { items: workspaces } = storeToRefs(workspacesStore)
+
+onMounted(() => {
+  void workspacesStore.ensureAllLoaded()
+})
 
 function parsePositiveInt(raw: unknown): number | null {
   const s = String(Array.isArray(raw) ? raw[0] : raw ?? '').trim()
@@ -26,6 +34,33 @@ function parsePositiveInt(raw: unknown): number | null {
 }
 
 const workspaceId = computed(() => parsePositiveInt(route.params.id))
+
+/** Limite do plano/workspace. `null` = sem limite configurado. */
+const limiteProdutos = computed(() => {
+  const wid = workspaceId.value
+  if (wid == null) return null
+  const ws = workspaces.value.find((w) => w.id === wid)
+  const lim = ws?.limite_produtos
+  if (lim == null || !Number.isFinite(lim) || lim < 0) return null
+  return Math.trunc(lim)
+})
+
+/** Quantos produtos ainda cabem até o limite. */
+const produtosRestantes = computed(() => {
+  const lim = limiteProdutos.value
+  if (lim == null) return null
+  return Math.max(0, lim - (total.value ?? 0))
+})
+
+const textoLimiteProdutos = computed(() => {
+  const lim = limiteProdutos.value
+  const rest = produtosRestantes.value
+  if (lim == null || rest == null) return null
+  if (rest === 0) {
+    return `Limite atingido: ${lim} produto${lim === 1 ? '' : 's'}.`
+  }
+  return `Você pode adicionar ${rest} de ${lim} produto${lim === 1 ? '' : 's'}.`
+})
 
 const modalCriarEmMassaAberto = ref(false)
 
@@ -122,6 +157,17 @@ function aposImportacao() {
       <h1 class="font-headline text-2xl font-bold text-on-surface dark:text-dark-on-surface">Produtos</h1>
       <p class="font-body text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
         Busca, ações e listagem de produtos
+      </p>
+      <p
+        v-if="textoLimiteProdutos"
+        class="font-body text-sm font-medium"
+        :class="
+          produtosRestantes === 0
+            ? 'text-red-600 dark:text-red-400'
+            : 'text-primary-700 dark:text-primary-300'
+        "
+      >
+        {{ textoLimiteProdutos }}
       </p>
     </header>
 

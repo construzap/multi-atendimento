@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 
 type AdminPagina = 'prompt' | 'produtos' | 'ia'
 
@@ -36,16 +36,14 @@ const opcoes = [
   },
 ] as const
 
-const opcaoSelecionada = computed(() =>
-  opcoes.find((o) => o.id === selected.value) ?? null,
-)
-
 async function selecionar(pagina: AdminPagina) {
   selected.value = pagina
   emit('select', pagina)
 
   if (pagina === 'prompt') {
     await navigateTo('/admin/prompt')
+  } else if (pagina === 'produtos') {
+    await navigateTo('/admin/produtos')
   } else if (pagina === 'ia') {
     await navigateTo('/admin/ia')
   }
@@ -175,18 +173,5 @@ async function selecionar(pagina: AdminPagina) {
       </button>
     </div>
 
-    <div
-      v-if="opcaoSelecionada && opcaoSelecionada.id === 'produtos'"
-      class="rounded-2xl border border-dashed border-primary-300 bg-primary-50/50 p-6 dark:border-primary-800/50 dark:bg-primary-950/20"
-    >
-      <p class="text-xs font-semibold uppercase tracking-wide text-primary-700 dark:text-primary-300">
-        Próximo passo (em breve)
-      </p>
-      <p class="mt-2 font-body text-sm text-on-surface dark:text-dark-on-surface">
-        Você selecionou
-        <span class="font-semibold">{{ opcaoSelecionada.titulo }}</span>.
-        Aqui entrará o fluxo de edição dessa área.
-      </p>
-    </div>
   </section>
 </template>

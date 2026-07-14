@@ -6,6 +6,7 @@ import {
   normalizarTermoImportacao,
   resolverTermosDoLoteImportacao,
 } from '../../utils/produtoTermosPesquisa'
+import { checkLimiteProdutos } from '../../utils/checkLimiteProdutos'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -215,6 +216,8 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
     }
     normalizadas.push(row)
   }
+
+  await checkLimiteProdutos(event, workspaceId, normalizadas.length)
 
   const idsExplicitos = normalizadas
     .map((r) => r.categoria_id)

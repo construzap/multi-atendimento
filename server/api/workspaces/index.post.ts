@@ -64,7 +64,7 @@ export default defineEventHandler(async (event): Promise<Workspace> => {
       descricao: descricao?.trim() || null,
       user_id: userId
     })
-    .select('id, nome, descricao, created_at')
+    .select('id, nome, descricao, limite_produtos, created_at')
     .single()
 
   if (error) {

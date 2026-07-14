@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
     })
     .eq('id', workspaceId)
     .eq('user_id', userId)
-    .select('id, nome, descricao, created_at')
+    .select('id, nome, descricao, limite_produtos, created_at')
     .single()
 
   if (error) {

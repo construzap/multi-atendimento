@@ -63,7 +63,7 @@ export default defineEventHandler(async (event): Promise<Workspace[]> => {
 
   const { data, error } = await admin
     .from('workspace')
-    .select('id, nome, descricao, created_at')
+    .select('id, nome, descricao, limite_produtos, created_at')
     .in('id', workspaceIds)
     .is('deleted_by', null)
     .is('deleted_at', null)

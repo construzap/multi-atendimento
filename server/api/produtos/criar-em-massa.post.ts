@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutoCriarEmMassaLinha, ProdutosCriarEmMassaResponse } from '#shared/types/produtos'
+import { checkLimiteProdutos } from '../../utils/checkLimiteProdutos'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -173,8 +174,14 @@ export default defineEventHandler(async (event): Promise<ProdutosCriarEmMassaRes
   }
 
   const parentIds = new Set<number>()
+  let produtosPaiNovos = 0
   for (const r of normalizadas) {
     if (r.parent_id != null && r.parent_id > 0) parentIds.add(r.parent_id)
+    else produtosPaiNovos += 1
+  }
+
+  if (produtosPaiNovos > 0) {
+    await checkLimiteProdutos(event, workspaceId, produtosPaiNovos)
   }
 
   if (parentIds.size > 0) {
