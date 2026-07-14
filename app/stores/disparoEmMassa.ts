@@ -40,6 +40,20 @@ export const useDisparoEmMassaStore = defineStore('disparoEmMassa', {
       this.campanhaEdicaoId = id
     },
 
+    atualizarCampanhaLocal(campanha: CampanhaListItem) {
+      const idx = this.campanhas.findIndex((c) => c.id === campanha.id)
+      if (idx >= 0) {
+        this.campanhas[idx] = campanha
+      }
+    },
+
+    removerCampanhaLocal(campanhaId: string) {
+      this.campanhas = this.campanhas.filter((c) => c.id !== campanhaId)
+      if (this.campanhaEdicaoId === campanhaId) {
+        this.campanhaEdicaoId = null
+      }
+    },
+
     invalidarCampanhas() {
       this.campanhas = []
       this.workspaceIdLoaded = null

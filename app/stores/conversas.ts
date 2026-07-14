@@ -64,17 +64,40 @@ type CanalConversasState = {
   conversaAtual: string | null
 }
 
+export type ConversasFiltrosKanban = {
+  funilId: number | null
+  colunaId: number | null
+}
+
+export type ConversasFiltros = {
+  /** Inclui conversas com `conversa_aberta = false` na lista. */
+  mostrarFechadas: boolean
+  /** Inclui conversas de grupo (`is_group = true`) na lista. */
+  mostrarGrupos: boolean
+  /** Termo de busca server-side em `name`/`phone` (Enter no input). */
+  termoPesquisa: string
+  kanban: ConversasFiltrosKanban
+}
+
 type ConversasState = {
   /** Canal atualmente selecionado (espelha o store de canais). */
   activeCanalId: number | null
   /** Cache por canal. */
   byCanal: Record<number, CanalConversasState>
-  /** Quando true, a lista inclui conversas com `conversa_aberta = false`. */
-  mostrarConversasFechadas: boolean
-  /** Quando true, a lista inclui conversas de grupo (`is_group = true`). */
-  mostrarGrupos: boolean
-  /** Termo de busca aplicado na lista lateral (Enter no input). */
-  termoPesquisa: string
+  /** Filtros da lista lateral de conversas. */
+  filtros: ConversasFiltros
+}
+
+function emptyFiltros(): ConversasFiltros {
+  return {
+    mostrarFechadas: false,
+    mostrarGrupos: false,
+    termoPesquisa: '',
+    kanban: {
+      funilId: null,
+      colunaId: null,
+    },
+  }
 }
 
 function emptyCanalState(): CanalConversasState {
@@ -89,6 +112,9 @@ function emptyCanalState(): CanalConversasState {
     conversaAtual: null
   }
 }
+
+/** Evita GET duplicado ao garantir conversa na lista lateral. */
+const ensureConversaNaListaInflight = new Map<string, Promise<void>>()
 
 function mergeCamposPersonalizados(
   campos: CampoPersonalizado[],
@@ -120,9 +146,7 @@ export const useConversasStore = defineStore('conversas', {
   state: (): ConversasState => ({
     activeCanalId: null,
     byCanal: {},
-    mostrarConversasFechadas: false,
-    mostrarGrupos: false,
-    termoPesquisa: ''
+    filtros: emptyFiltros(),
   }),
   getters: {
     active(state): CanalConversasState | null {
@@ -184,21 +208,59 @@ export const useConversasStore = defineStore('conversas', {
         return null
       }
     },
+
+    /** Filtros da lista lateral — espelham `state.filtros`. */
+    mostrarFechadas(state): boolean {
+      return state.filtros.mostrarFechadas
+    },
+    mostrarGrupos(state): boolean {
+      return state.filtros.mostrarGrupos
+    },
+    filtroKanbanFunilId(state): number | null {
+      return state.filtros.kanban.funilId
+    },
+    filtroKanbanColunaId(state): number | null {
+      return state.filtros.kanban.colunaId
+    },
+    temFiltroKanbanAtivo(state): boolean {
+      return state.filtros.kanban.funilId != null || state.filtros.kanban.colunaId != null
+    },
+    termoPesquisa(state): string {
+      return state.filtros.termoPesquisa
+    },
   },
   actions: {
-    /** Opções de fetch da lista lateral (abertas/fechadas e 1:1/grupos). */
+    /** Opções de fetch da lista lateral (abertas/fechadas, 1:1/grupos, kanban). */
     listFetchOptions(append = false): FetchOptions {
       const opts: FetchOptions = { append }
-      if (!this.mostrarConversasFechadas) opts.conversaAberta = true
-      if (!this.mostrarGrupos) opts.isGroup = false
-      const q = this.termoPesquisa?.trim()
+      if (!this.filtros.mostrarFechadas) opts.conversaAberta = true
+      if (!this.filtros.mostrarGrupos) opts.isGroup = false
+      if (this.filtros.kanban.colunaId != null) opts.colunaId = this.filtros.kanban.colunaId
+      return opts
+    },
+
+    /** Busca pelo input: somente `q` em name/phone — sem filtros Pinia. */
+    searchFetchOptions(append = false): FetchOptions {
+      const opts: FetchOptions = { append }
+      const q = this.filtros.termoPesquisa?.trim()
       if (q) opts.q = q
       return opts
     },
 
+    /** Lista normal ou busca, conforme termo aplicado no input. */
+    resolveFetchOptions(append = false): FetchOptions {
+      if (this.filtros.termoPesquisa?.trim()) return this.searchFetchOptions(append)
+      return this.listFetchOptions(append)
+    },
+
     async setMostrarConversasFechadas(value: boolean) {
-      if (this.mostrarConversasFechadas === value) return
-      this.mostrarConversasFechadas = value
+      await this.setMostrarFechadas(value)
+    },
+
+    async setMostrarFechadas(value: boolean) {
+      if (this.filtros.mostrarFechadas === value) return
+      this.filtros.mostrarFechadas = value
+      this.filtros.termoPesquisa = ''
 
       const idCanal = this.activeCanalId
       if (idCanal == null) return
@@ -207,8 +269,9 @@ export const useConversasStore = defineStore('conversas', {
     },
 
     async setMostrarGrupos(value: boolean) {
-      if (this.mostrarGrupos === value) return
-      this.mostrarGrupos = value
+      if (this.filtros.mostrarGrupos === value) return
+      this.filtros.mostrarGrupos = value
+      this.filtros.termoPesquisa = ''
 
       const idCanal = this.activeCanalId
       if (idCanal == null) return
@@ -242,6 +305,44 @@ export const useConversasStore = defineStore('conversas', {
           conversa.campos_personalizados ?? bucket.items[idx]!.campos_personalizados,
       }
       bucket.items = [merged, ...bucket.items.filter((_, i) => i !== idx)]
+    },
+
+    /**
+     * Garante que a conversa exista em `byCanal[canalId].items` (ex.: aberta via URL/kanban).
+     * Se não estiver no cache, busca GET `/api/conversas?key=`.
+     */
+    async ensureConversaNaLista(canalId: number, conversaKey: string) {
+      const idCanal = Math.trunc(canalId)
+      const key = conversaKey.trim()
+      if (!Number.isFinite(idCanal) || idCanal < 1 || !key || key.startsWith('temp:')) return
+
+      this.setActiveCanalId(idCanal)
+      const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
+      if (bucket.items.some((c) => c.key === key)) return
+
+      const inflightKey = `${idCanal}:${key}`
+      const inflight = ensureConversaNaListaInflight.get(inflightKey)
+      if (inflight) return inflight
+
+      const promise = (async () => {
+        const res = await $fetch<ConversasListResponse>('/api/conversas', {
+          method: 'GET',
+          query: { id_canal: idCanal, key },
+        })
+        const conversa = res.data[0]
+        if (conversa) {
+          this.addOrUpdateLocalConversa(conversa, idCanal)
+        }
+      })()
+        .catch(() => {
+          /* falha silenciosa; lista pode não exibir preview até próximo fetch */
+        })
+        .finally(() => {
+          ensureConversaNaListaInflight.delete(inflightKey)
+        })
+
+      ensureConversaNaListaInflight.set(inflightKey, promise)
+      return promise
     },
 
     removeLocalConversaByKey(conversaKey: string, canalId?: number) {
@@ -332,7 +433,9 @@ export const useConversasStore = defineStore('conversas', {
     /** Troca o canal ativo (não apaga cache). */
     setActiveCanalId(id: number | null) {
       if (id !== this.activeCanalId) {
-        this.termoPesquisa = ''
+        this.filtros.termoPesquisa = ''
+        this.filtros.kanban.funilId = null
+        this.filtros.kanban.colunaId = null
       }
       this.activeCanalId = id
       if (id == null) return
@@ -340,20 +443,67 @@ export const useConversasStore = defineStore('conversas', {
     },
 
     async aplicarPesquisa(termo: string) {
-      this.termoPesquisa = termo.trim()
+      this.filtros.termoPesquisa = termo.trim()
+      const idCanal = this.activeCanalId
+      if (idCanal == null) return
+      const opts = this.filtros.termoPesquisa
+        ? this.searchFetchOptions()
+        : this.listFetchOptions()
+      await this.fetchPage(1, idCanal, opts)
+    },
+
+    async limparPesquisa() {
+      if (!this.filtros.termoPesquisa.trim()) return
+      this.filtros.termoPesquisa = ''
       const idCanal = this.activeCanalId
       if (idCanal == null) return
       await this.fetchPage(1, idCanal, this.listFetchOptions())
     },
 
-    limparPesquisa() {
-      this.termoPesquisa = ''
+    setFiltroKanbanFunil(funilId: number | null) {
+      const id =
+        funilId != null && Number.isFinite(funilId) && funilId > 0
+          ? Math.trunc(funilId)
+          : null
+      this.filtros.kanban.funilId = id
+      if (id == null) this.filtros.kanban.colunaId = null
+    },
+
+    _funilIdDaColunaKanban(colunaId: number): number | null {
+      const kanban = useKanbanStore()
+      for (const funil of kanban.funis) {
+        if (funil.columns.some((c) => c.id === colunaId)) return funil.id
+      }
+      return null
+    },
+
+    async aplicarFiltroColuna(colunaId: number) {
+      const id = Number.parseInt(String(colunaId), 10)
+      if (!Number.isFinite(id) || id < 1) return
+
+      this.filtros.termoPesquisa = ''
+      this.filtros.kanban.colunaId = id
+      this.filtros.kanban.funilId = this._funilIdDaColunaKanban(id)
+      const idCanal = this.activeCanalId
+      if (idCanal == null) return
+      await this.fetchPage(1, idCanal, this.listFetchOptions())
+    },
+
+    async limparFiltroKanban() {
+      const tinhaFiltro =
+        this.filtros.kanban.colunaId != null || this.filtros.kanban.funilId != null
+      this.filtros.termoPesquisa = ''
+      this.filtros.kanban.funilId = null
+      this.filtros.kanban.colunaId = null
+      const idCanal = this.activeCanalId
+      if (idCanal == null || !tinhaFiltro) return
+      await this.fetchPage(1, idCanal, this.listFetchOptions())
     },
 
     async atualizarLista() {
       const idCanal = this.activeCanalId
       if (idCanal == null) return
-      await this.fetchPage(1, idCanal, this.listFetchOptions())
+      await this.fetchPage(1, idCanal, this.resolveFetchOptions())
     },
 
     /** Limpa apenas o canal ativo (mantém cache de outros canais). */
@@ -436,7 +586,7 @@ export const useConversasStore = defineStore('conversas', {
       this.setActiveCanalId(canalId)
       const bucket = this.byCanal[canalId] ?? (this.byCanal[canalId] = emptyCanalState())
       if (bucket.loadedAt != null) return
-      await this.fetchPage(page, canalId, this.listFetchOptions())
+      await this.fetchPage(page, canalId, this.resolveFetchOptions())
     },
 
     /**
@@ -454,7 +604,7 @@ export const useConversasStore = defineStore('conversas', {
       if (!(bucket.page * bucket.perPage < bucket.total)) return
 
       const nextPage = bucket.page + 1
-      await this.fetchPage(nextPage, idCanal, this.listFetchOptions(true))
+      await this.fetchPage(nextPage, idCanal, this.resolveFetchOptions(true))
     },
 
     /** Atualiza dados da conversa no banco e espelha no cache do canal. */
@@ -613,7 +763,7 @@ export const useConversasStore = defineStore('conversas', {
         body: { key }
       })
 
-      if (this.mostrarConversasFechadas) {
+      if (this.filtros.mostrarFechadas) {
         const idCanal = this.activeCanalId
         if (idCanal != null) {
           const bucket = this.byCanal[idCanal]
@@ -683,7 +833,7 @@ export const useConversasStore = defineStore('conversas', {
     mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
       let conversaKey = payload.conversa_key?.trim()
       if (!conversaKey) return
-      if (!this.mostrarGrupos && payload.is_group) return
+      if (!this.filtros.mostrarGrupos && payload.is_group) return
 
       const bucket = this.byCanal[canalId] ?? (this.byCanal[canalId] = emptyCanalState())
       const msg = payload.mensagem

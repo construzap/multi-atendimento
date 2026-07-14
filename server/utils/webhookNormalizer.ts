@@ -4,10 +4,46 @@ import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
 
 const MEDIA_MEDIA_TYPES = ['image', 'video', 'ptt', 'audio', 'document', 'sticker'] as const
 
+type UazapiMediaType = (typeof MEDIA_MEDIA_TYPES)[number]
+
+/** Quando `mediaType` vem vazio, infere a partir de `messageType` (payload uazapi). */
+const MESSAGE_TYPE_TO_MEDIA_TYPE: Record<string, UazapiMediaType> = {
+  ImageMessage: 'image',
+  imageMessage: 'image',
+  VideoMessage: 'video',
+  videoMessage: 'video',
+  DocumentMessage: 'document',
+  documentMessage: 'document',
+  documentWithCaptionMessage: 'document',
+  StickerMessage: 'sticker',
+  stickerMessage: 'sticker',
+}
+
+/**
+ * Resolve o tipo de mídia uazapi (`image`, `video`, …).
+ * Usa `mediaType` quando preenchido; senão infere de `messageType`.
+ */
+export function resolveUazapiMediaType(msg: UazapiMessage): UazapiMediaType | null {
+  if (msg.type !== 'media') return null
+
+  const raw = String(msg.mediaType ?? '').trim()
+  if (raw && (MEDIA_MEDIA_TYPES as readonly string[]).includes(raw)) {
+    return raw as UazapiMediaType
+  }
+
+  const messageType = String(msg.messageType ?? '').trim()
+  if (!messageType) return null
+
+  return (
+    MESSAGE_TYPE_TO_MEDIA_TYPE[messageType]
+    ?? MESSAGE_TYPE_TO_MEDIA_TYPE[messageType.charAt(0).toLowerCase() + messageType.slice(1)]
+    ?? null
+  )
+}
+
 /** Mensagem de mídia suportada para download + B2 (uazapi `type === 'media'`). */
 export function isMediaMessage(msg: UazapiMessage): boolean {
-  if (msg.type !== 'media') return false
-  return (MEDIA_MEDIA_TYPES as readonly string[]).includes(msg.mediaType)
+  return resolveUazapiMediaType(msg) != null
 }
 
 function pickQuotedId(o: Record<string, unknown>): string | null {

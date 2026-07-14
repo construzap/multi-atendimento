@@ -81,6 +81,7 @@ const panelStyle = ref<Record<string, string>>({})
 const suprimirBlurCommit = ref(false)
 const rootRef = ref<HTMLElement | null>(null)
 const painelDropdownRef = ref<HTMLElement | null>(null)
+const painelComponentRef = ref<InstanceType<typeof ProdutosSelecaoUnicaPainel> | null>(null)
 const listaSugestoesRef = ref<HTMLUListElement | null>(null)
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
@@ -321,10 +322,11 @@ function fecharPainel() {
 
 watch(mostrarPainel, (aberto) => {
   if (aberto) {
-    void nextTick(() => {
+    void nextTick(async () => {
       updatePanelPos()
       if (isCelula.value) attachScrollListeners()
       attachFecharFora()
+      await focarInputPainel()
     })
   } else {
     detachScrollListeners()
@@ -372,14 +374,28 @@ function reaplicarSugestoesDaCache() {
   indiceDestaque.value = sugestoes.value.length > 0 ? 0 : -1
 }
 
-function abrirPainel() {
+async function focarInputPainel() {
+  await nextTick()
+  painelComponentRef.value?.focusFiltro?.()
+}
+
+async function abrirPainel() {
   if (props.disabled) return
   filtro.value = ''
   ultimaBuscaTexto.value = ''
   ultimaBuscaComFiltroNome.value = false
   painelAberto.value = true
-  void buscarItens({ listaCompletaNoWorkspace: true })
+  await buscarItens({ listaCompletaNoWorkspace: true })
+  await focarInputPainel()
 }
+
+function onClickCelula(ev: MouseEvent) {
+  if (!isCelula.value || props.disabled) return
+  if ((ev.target as HTMLElement).closest('button')) return
+  void abrirPainel()
+}
+
+defineExpose({ abrirPainel })
 
 function selecaoAtualNome(): string | null {
   if (isForm.value) return modeloSelecao.value?.nome?.trim() ?? null
@@ -574,11 +590,16 @@ const itemSugestaoClass = (idx: number) =>
 </script>
 
 <template>
-  <div ref="rootRef" class="relative min-w-0 w-full" @focusin="isForm ? aoFocusForm() : undefined">
+  <div
+    ref="rootRef"
+    class="relative min-w-0 w-full"
+    @click="onClickCelula"
+    @focusin="isForm ? aoFocusForm() : undefined"
+  >
     <div v-if="isForm" class="w-full" @keydown="onKeydownForm">
       <BaseInput :id="inputId" v-model="filtro" :placeholder="placeholderEfetivo" autocomplete="off" :disabled="disabled" @focus="aoFocusForm" />
     </div>
-    <div v-else :class="celulaClass" @click="abrirPainel">
+    <div v-else :class="celulaClass">
       <span v-if="selecionado" :class="chipClass">
         <span class="truncate">{{ selecionado.nome }}</span>
         <button type="button" class="ml-0.5 rounded-full p-0.5 text-zinc-500 hover:bg-zinc-300/80 hover:text-zinc-800 disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-zinc-600 dark:hover:text-white" :disabled="disabled" :aria-label="'Remover ' + selecionado.nome" @click.stop="removerChip">
@@ -594,6 +615,7 @@ const itemSugestaoClass = (idx: number) =>
     <Teleport v-if="isCelula" to="body">
       <div v-if="mostrarPainel && !disabled" ref="painelDropdownRef" role="listbox" :class="painelDropdownRootClass" :style="panelStyle">
         <ProdutosSelecaoUnicaPainel
+          ref="painelComponentRef"
           v-model:filtro="filtro"
           v-model:nome-edicao="nomeEdicao"
           v-model:lista-sugestoes-ref="listaSugestoesRef"

@@ -42,6 +42,7 @@ const emit = defineEmits<{
   loadMore: [columnId: number]
   cardOpen: [card: KanbanCardModel]
   cardToggleSelected: [payload: { conversa_key: string; nextSelected: boolean }]
+  columnToggleSelectAll: [payload: { keys: string[]; nextSelected: boolean }]
 }>()
 
 const kanban = useKanbanStore()
@@ -169,7 +170,7 @@ async function criarContato() {
       body,
     })
     fecharModalNovoContato()
-    await kanban.fetchBoard(props.workspaceId)
+    await kanban.refetchCurrentBoard(props.workspaceId)
     toast.success('Contato criado.')
   } catch (err: unknown) {
     toast.error(mensagemErroFetch(err, 'Não foi possível criar o contato.'))
@@ -225,6 +226,42 @@ const cardsOrdenados = computed(() =>
 
 const selectedSet = computed(() => new Set((props.selectedKeys ?? []).map((k) => String(k).trim()).filter(Boolean)))
 
+const keysDaColuna = computed(() =>
+  cardsOrdenados.value.map((card) => card.conversa_key.trim()).filter(Boolean),
+)
+
+const selecionadosNaColuna = computed(
+  () => keysDaColuna.value.filter((key) => selectedSet.value.has(key)).length,
+)
+
+const todosSelecionadosNaColuna = computed(
+  () => keysDaColuna.value.length > 0 && selecionadosNaColuna.value === keysDaColuna.value.length,
+)
+
+const algunsSelecionadosNaColuna = computed(
+  () => selecionadosNaColuna.value > 0 && !todosSelecionadosNaColuna.value,
+)
+
+const checkboxSelecionarTodosColuna = ref<HTMLInputElement | null>(null)
+
+watch(
+  [todosSelecionadosNaColuna, algunsSelecionadosNaColuna],
+  () => {
+    const el = checkboxSelecionarTodosColuna.value
+    if (el) el.indeterminate = algunsSelecionadosNaColuna.value
+  },
+  { immediate: true },
+)
+
+function onToggleSelecionarTodosColuna() {
+  const keys = keysDaColuna.value
+  if (keys.length === 0) return
+  emit('columnToggleSelectAll', {
+    keys,
+    nextSelected: !todosSelecionadosNaColuna.value,
+  })
+}
+
 function onDragOver(e: DragEvent) {
   e.preventDefault()
   emit('columnDragOver', { toColumnId: props.column.id })
@@ -263,6 +300,56 @@ function onDrop(e: DragEvent) {
     <header class="mb-4 flex items-start justify-between gap-2">
       <div class="min-w-0 flex-1">
         <div class="flex items-start gap-2">
+          <label
+            v-if="props.forceShowCheckboxes && keysDaColuna.length > 0"
+            class="mt-0.5 shrink-0 cursor-pointer"
+            :title="todosSelecionadosNaColuna ? 'Desmarcar todos desta coluna' : 'Selecionar todos desta coluna'"
+            @click.stop
+            @mousedown.stop
+          >
+            <input
+              ref="checkboxSelecionarTodosColuna"
+              type="checkbox"
+              class="peer sr-only"
+              :checked="todosSelecionadosNaColuna"
+              @change="onToggleSelecionarTodosColuna"
+            />
+            <span
+              class="flex h-7 w-7 items-center justify-center rounded-lg border border-outline/45 bg-white/90 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/45 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:bg-slate-900"
+              :class="todosSelecionadosNaColuna || algunsSelecionadosNaColuna ? 'ring-2 ring-primary/25' : ''"
+              aria-hidden="true"
+            >
+              <span
+                class="flex h-3.5 w-3.5 items-center justify-center rounded border-2 transition-colors"
+                :class="
+                  todosSelecionadosNaColuna
+                    ? 'border-primary bg-primary text-white'
+                    : algunsSelecionadosNaColuna
+                      ? 'border-primary bg-primary/20'
+                      : 'border-slate-300 bg-transparent dark:border-slate-600'
+                "
+              >
+                <svg
+                  v-if="todosSelecionadosNaColuna"
+                  class="h-3 w-3"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.25 7.31a1 1 0 0 1-1.42-.002l-3.25-3.29a1 1 0 1 1 1.422-1.406l2.54 2.57 6.54-6.59a1 1 0 0 1 1.412-.006Z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+                <span
+                  v-else-if="algunsSelecionadosNaColuna"
+                  class="h-1.5 w-1.5 rounded-sm bg-primary"
+                  aria-hidden="true"
+                />
+              </span>
+            </span>
+            <span class="sr-only">Selecionar todos desta coluna</span>
+          </label>
           <span
             class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
             :style="dotStyle"

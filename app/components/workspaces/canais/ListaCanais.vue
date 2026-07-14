@@ -4,13 +4,16 @@ import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import CanalCard from '~/components/workspaces/canais/CanalCard.vue'
 import ModalAddCanal from '~/components/workspaces/canais/ModalAddCanal.vue'
+import type { Canal } from '#shared/types/canal'
 
 const props = defineProps<{
   workspaceId: number
 }>()
 
 const pesquisa = ref('')
-const modalAddAberto = ref(false)
+const modalAberto = ref(false)
+const modalMode = ref<'create' | 'edit'>('create')
+const canalEdicaoId = ref<number | null>(null)
 
 const canaisStore = useCanaisStore()
 
@@ -44,6 +47,25 @@ function labelData(iso: string) {
     year: 'numeric'
   }).format(d)}`
 }
+
+function abrirCriar() {
+  modalMode.value = 'create'
+  canalEdicaoId.value = null
+  modalAberto.value = true
+}
+
+function abrirEdicao(canal: Canal) {
+  modalMode.value = 'edit'
+  canalEdicaoId.value = canal.id
+  modalAberto.value = true
+}
+
+watch(modalAberto, (aberto) => {
+  if (!aberto) {
+    canalEdicaoId.value = null
+    modalMode.value = 'create'
+  }
+})
 </script>
 
 <template>
@@ -76,7 +98,7 @@ function labelData(iso: string) {
           </BaseInput>
         </div>
         <div class="w-full sm:w-auto sm:shrink-0">
-          <BaseButton type="button" class="sm:w-auto sm:min-w-[11rem]" @click="modalAddAberto = true">
+          <BaseButton type="button" class="sm:w-auto sm:min-w-[11rem]" @click="abrirCriar">
             Adicionar canal
           </BaseButton>
         </div>
@@ -117,10 +139,16 @@ function labelData(iso: string) {
           :canal="c"
           :data-criacao-label="labelData(c.created_at)"
           status="ativo"
+          @editar="abrirEdicao"
         />
       </template>
     </div>
 
-    <ModalAddCanal v-model:open="modalAddAberto" :workspace-id="workspaceId" />
+    <ModalAddCanal
+      v-model:open="modalAberto"
+      :mode="modalMode"
+      :workspace-id="workspaceId"
+      :canal-edicao-id="canalEdicaoId"
+    />
   </div>
 </template>

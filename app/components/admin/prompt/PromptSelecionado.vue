@@ -5,6 +5,7 @@ import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import ModalEditor_prompt from '~/components/admin/prompt/ModalEditor_prompt.vue'
 import { PROMPT_TIPOS_OPCOES, PROMPT_WORKSPACE_TIPO_DEFAULT } from '~/components/admin/prompt/types'
+import type { PromptWorkspaceTipoOpcao } from '#shared/types/adminPrompt'
 
 const props = withDefaults(
   defineProps<{
@@ -22,7 +23,7 @@ const emit = defineEmits<{
 }>()
 
 const adminStore = useAdminStore()
-const { promptEmEdicao } = storeToRefs(adminStore)
+const { promptEmEdicao, selectedWorkspaceId } = storeToRefs(adminStore)
 
 const tituloPainel = computed(() =>
   promptEmEdicao.value?.isNovo ? 'Novo prompt' : 'Editar prompt',
@@ -33,6 +34,15 @@ const conteudo = ref('')
 const tipo = ref(PROMPT_WORKSPACE_TIPO_DEFAULT)
 const principal = ref(false)
 const modalConteudoAberto = ref(false)
+
+const tipoOpcoes = computed((): PromptWorkspaceTipoOpcao[] => {
+  const opcoes: PromptWorkspaceTipoOpcao[] = [...PROMPT_TIPOS_OPCOES]
+  const atual = tipo.value.trim()
+  if (atual && !opcoes.some((o) => o.value === atual)) {
+    opcoes.push({ value: atual, label: atual })
+  }
+  return opcoes
+})
 
 watch(
   promptEmEdicao,
@@ -132,29 +142,25 @@ function abrirModalConteudo() {
         />
       </div>
 
-      <div class="shrink-0 space-y-2">
+      <div v-if="selectedWorkspaceId" class="shrink-0 space-y-2">
         <label
           for="prompt-selecionado-tipo"
           class="font-label text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant"
         >
           Tipo
         </label>
-        <BaseInput
+        <select
           id="prompt-selecionado-tipo"
           v-model="tipo"
-          placeholder="Ex.: ESTOQUE"
-          list="prompt-selecionado-tipo-sugestoes"
           :disabled="salvando"
-        />
-        <datalist id="prompt-selecionado-tipo-sugestoes">
-          <option
-            v-for="opcao in PROMPT_TIPOS_OPCOES"
-            :key="opcao.value"
-            :value="opcao.value"
-          />
-        </datalist>
+          class="w-full rounded-xl border border-outline/40 bg-surface-container-high px-4 py-2.5 text-sm text-on-surface focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-outline/40 dark:bg-dark-surface-container-high dark:text-dark-on-surface dark:focus:ring-primary-900/40"
+        >
+          <option v-for="opcao in tipoOpcoes" :key="opcao.value" :value="opcao.value">
+            {{ opcao.label }}
+          </option>
+        </select>
         <p class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
-          Digite o tipo livremente. Padrão: {{ PROMPT_WORKSPACE_TIPO_DEFAULT }}.
+          Escolha entre Estoque ou Agendamento para este workspace.
         </p>
       </div>
 

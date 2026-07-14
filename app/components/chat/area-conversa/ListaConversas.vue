@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { storeToRefs } from 'pinia'
 import ItemConversa from '~/components/chat/area-conversa/ItemConversa.vue'
+import SelecaoMultiplaBar from '~/components/kanban/SelecaoMultiplaBar.vue'
+import { useWorkspacesStore } from '~/stores/workspaces'
+import { useKanbanStore } from '~/stores/kanban'
+import { useConversasFiltros } from '~/composables/useConversasFiltros'
 import type { Conversa } from '#shared/types/conversa'
 import type { MessageType } from '#shared/types/messageType'
 
@@ -19,8 +22,53 @@ type ConversaListaItem = {
 
 const canais = useCanaisStore()
 const conversas = useConversasStore()
+const kanbanStore = useKanbanStore()
+const workspacesStore = useWorkspacesStore()
+const route = useRoute()
 const { conversaKeyAtiva } = useConversaKeyAtiva()
-const { termoPesquisa } = storeToRefs(conversas)
+const { termoPesquisa, filtroKanbanColunaId } = useConversasFiltros()
+
+function parseWorkspaceId(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+const workspaceId = computed(() => {
+  const fromStore = parseWorkspaceId(workspacesStore.currentWorkspaceId)
+  if (fromStore) return fromStore
+  return parseWorkspaceId(route.params.id)
+})
+
+const selectedKeys = ref<string[]>([])
+const selectedCount = computed(() => selectedKeys.value.length)
+const selectionActive = computed(() => selectedCount.value > 0)
+
+function isMultiSelected(key: string): boolean {
+  const k = key.trim()
+  if (!k) return false
+  return selectedKeys.value.includes(k)
+}
+
+function onToggleSelected(payload: { conversaKey: string; nextSelected: boolean }) {
+  const k = payload.conversaKey.trim()
+  if (!k) return
+  const cur = isMultiSelected(k)
+  if (payload.nextSelected === cur) return
+  if (payload.nextSelected) {
+    selectedKeys.value = [...selectedKeys.value, k]
+    return
+  }
+  selectedKeys.value = selectedKeys.value.filter((x) => x !== k)
+}
+
+function clearSelection() {
+  selectedKeys.value = []
+}
+
+async function onSelecaoConcluida() {
+  clearSelection()
+  await conversas.atualizarLista()
+}
 
 function firstNonEmpty(...vals: Array<string | null | undefined>): string {
   for (const v of vals) {
@@ -60,29 +108,11 @@ function previewTexto(m: Conversa): string {
   return labelPreview(m) || ' '
 }
 
-function conversaMatchesPesquisa(m: Conversa, q: string): boolean {
-  if (!q) return true
-  const ql = q.toLowerCase()
-  const haystack = [
-    m.name,
-    m.phone,
-    m.lid,
-    m.message,
-    m.key,
-    m.name_group,
-    m.id_group,
-  ]
-    .map((v) => (v ?? '').toLowerCase())
-    .join(' ')
-  return haystack.includes(ql)
-}
-
 const itens = computed<ConversaListaItem[]>(() => {
   // Se não houver canal selecionado, não lista nada.
   if (!canais.currentCanalId) return []
 
-  const q = termoPesquisa.value.trim()
-  const msgs = conversas.items.filter((m) => conversaMatchesPesquisa(m, q))
+  const msgs = conversas.items
   if (!msgs.length) return []
 
   const sorted = [...msgs].sort((a, b) => {
@@ -104,20 +134,37 @@ const itens = computed<ConversaListaItem[]>(() => {
   }))
 })
 
-// Se a lista trocar (ex.: canal mudou), não auto-seleciona nada.
+watch(
+  workspaceId,
+  (wsId) => {
+    if (wsId) void kanbanStore.ensureFunisLoaded(wsId).catch(() => {})
+  },
+  { immediate: true },
+)
+
+watch(
+  () => canais.currentCanalId,
+  () => {
+    clearSelection()
+  },
+)
+
 watch(
   itens,
   (list) => {
     if (conversas.pending) return
     if (!conversas.hasCacheForActive) return
 
+    const ids = new Set(list.map((x) => x.id))
+    selectedKeys.value = selectedKeys.value.filter((k) => ids.has(k))
+
     if (!list.length) {
-      conversas.setConversaAtual(null)
+      if (!conversaKeyAtiva.value) conversas.setConversaAtual(null)
       return
     }
     const cur = conversaKeyAtiva.value
-    // Se a conversa atual não existir mais no novo conjunto, apenas limpa a seleção.
-    if (cur && !list.some((x) => x.id === cur)) conversas.setConversaAtual(null)
+    // Se a conversa da URL não estiver na lista filtrada, não limpa (ex.: veio do kanban).
+    if (cur && !list.some((x) => x.id === cur)) return
   },
   { immediate: true },
 )
@@ -166,40 +213,58 @@ function maybeLoadMore() {
 </script>
 
 <template>
-  <!-- `h-0` em flex child força overflow interno (evita esticar a página). -->
-  <div
-    ref="scroller"
-    class="lista-conversas-scroll flex h-0 min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4 pt-2"
-    :class="isScrolling ? 'is-scrolling' : ''"
-    @scroll="onScroll"
-  >
-    <div class="flex flex-col gap-2">
-      <ItemConversa
-        v-for="c in itens"
-        :key="c.id"
-        :conversa-id="c.id"
-        :nome="c.nome"
-        :ultima-mensagem="c.ultimaMensagem"
-        :horario="c.horario"
-        :avatar-src="c.avatarSrc"
-        :messatype="c.messatype"
-        :fechada="c.fechada"
-        :is-grupo="c.isGrupo"
-        :nao-lidas="c.naoLidas"
-        :selected="c.id === conversaKeyAtiva"
-      />
+  <div class="flex h-0 min-h-0 flex-1 flex-col">
+    <!-- `h-0` em flex child força overflow interno (evita esticar a página). -->
+    <div
+      ref="scroller"
+      class="lista-conversas-scroll flex h-0 min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4 pt-2"
+      :class="isScrolling ? 'is-scrolling' : ''"
+      @scroll="onScroll"
+    >
+      <div class="flex flex-col gap-2">
+        <ItemConversa
+          v-for="c in itens"
+          :key="c.id"
+          :conversa-id="c.id"
+          :nome="c.nome"
+          :ultima-mensagem="c.ultimaMensagem"
+          :horario="c.horario"
+          :avatar-src="c.avatarSrc"
+          :messatype="c.messatype"
+          :fechada="c.fechada"
+          :is-grupo="c.isGrupo"
+          :nao-lidas="c.naoLidas"
+          :selected="c.id === conversaKeyAtiva"
+          :multi-selected="isMultiSelected(c.id)"
+          :force-show-checkbox="selectionActive"
+          @toggle-selected="onToggleSelected"
+        />
 
-      <p
-        v-if="!conversas.pending && itens.length === 0"
-        class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
-      >
-        <template v-if="!canais.currentCanalId">Selecione um canal para ver as conversas.</template>
-        <template v-else-if="termoPesquisa.trim()">
-          Nenhuma conversa encontrada para “{{ termoPesquisa.trim() }}”.
-        </template>
-        <template v-else>Nenhuma conversa carregada para este canal.</template>
-      </p>
+        <p
+          v-if="!conversas.pending && itens.length === 0"
+          class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+        >
+          <template v-if="!canais.currentCanalId">Selecione um canal para ver as conversas.</template>
+          <template v-else-if="termoPesquisa.trim()">
+            Nenhuma conversa encontrada para “{{ termoPesquisa.trim() }}”.
+          </template>
+          <template v-else-if="filtroKanbanColunaId != null">
+            Nenhuma conversa nesta coluna do kanban.
+          </template>
+          <template v-else>Nenhuma conversa carregada para este canal.</template>
+        </p>
+      </div>
     </div>
+
+    <SelecaoMultiplaBar
+      v-if="selectedCount > 0 && workspaceId"
+      :count="selectedCount"
+      :workspace-id="workspaceId"
+      :funil-id="0"
+      :selected-keys="selectedKeys"
+      @limpar="clearSelection"
+      @concluido="onSelecaoConcluida"
+    />
   </div>
 </template>
 

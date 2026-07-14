@@ -59,24 +59,10 @@ export default defineEventHandler(async (event) => {
 
   const admin = serverSupabaseServiceRole<any>(event)
 
-  const { data: funil, error: funilErr } = await admin
-    .from('funil_workspace')
-    .select('id')
-    .eq('workspace_id', workspaceId)
-    .maybeSingle()
-
-  if (funilErr) throw createError({ statusCode: 500, statusMessage: funilErr.message })
-  if (!funil?.id) {
-    throw createError({ statusCode: 400, statusMessage: 'Funil não encontrado para este workspace.' })
-  }
-
-  const funilId = typeof funil.id === 'number' ? funil.id : Number(funil.id)
-
   const { data: coluna, error: colErr } = await admin
     .from('funil_workspace_colunas')
-    .select('id')
+    .select('id, funil_id')
     .eq('id', colunaId)
-    .eq('funil_id', funilId)
     .is('deleted_at', null)
     .maybeSingle()
 
@@ -84,7 +70,30 @@ export default defineEventHandler(async (event) => {
   if (!coluna) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Coluna inválida ou não pertence ao funil deste workspace.',
+      statusMessage: 'Coluna inválida ou não encontrada.',
+    })
+  }
+
+  const funilId =
+    typeof coluna.funil_id === 'number'
+      ? coluna.funil_id
+      : Number.parseInt(String(coluna.funil_id ?? '').trim(), 10)
+  if (!Number.isFinite(funilId) || funilId < 1) {
+    throw createError({ statusCode: 400, statusMessage: 'Funil da coluna inválido.' })
+  }
+
+  const { data: funil, error: funilErr } = await admin
+    .from('funil_workspace')
+    .select('id')
+    .eq('id', funilId)
+    .eq('workspace_id', workspaceId)
+    .maybeSingle()
+
+  if (funilErr) throw createError({ statusCode: 500, statusMessage: funilErr.message })
+  if (!funil) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Coluna não pertence a um funil deste workspace.',
     })
   }
 

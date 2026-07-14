@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AreaConversaHeader from '~/components/chat/area-conversa/AreaConversaHeader.vue'
+import FiltroKanban from '~/components/chat/area-conversa/FiltroKanban.vue'
 import ListaConversas from '~/components/chat/area-conversa/ListaConversas.vue'
 </script>
 
@@ -9,6 +10,7 @@ import ListaConversas from '~/components/chat/area-conversa/ListaConversas.vue'
     style="min-width: 18rem"
   >
     <AreaConversaHeader />
+    <FiltroKanban />
     <ListaConversas />
   </div>
 </template>

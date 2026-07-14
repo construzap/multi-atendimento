@@ -1,6 +1,13 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
+import type { Canal, CanalHorarios } from '#shared/types/canal'
+import {
+  parseCanalHorarios,
+  parseEndereco,
+  parseLatitude,
+  parseLongitude,
+  parseTempoAvisoMinutos,
+} from '#shared/utils/validarCanalConfigLoja'
 import { createError, readBody } from 'h3'
-import type { Canal } from '#shared/types/canal'
 import { checkChannel } from '../../utils/checkChannel'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -9,14 +16,20 @@ type EditarCanalBody = {
   descricao?: string | null
   workspace_id?: number | string
   id_canal?: number | string
+  latitude?: number | string
+  longitude?: number | string
+  tempo_aviso_minutos?: number | string
+  horarios?: unknown
+  endereco?: string
 }
+
+const CANAL_SELECT_PUBLICO =
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios'
 
 /**
  * POST /api/canais/editarcanal
- * Atualiza nome e descrição do canal.
+ * Atualiza dados do canal (nome, descrição, localização e configuração da loja).
  *
- * - Mesmas validações de corpo que `criarcanal` (nome obrigatório, descrição opcional).
- * - Sem verificação de assinatura.
  * - Posse do canal: `checkChannel` (user_id + id do canal).
  * - Atualização restrita ao `workspace_id` informado (filtro no UPDATE; 404 se não bater).
  */
@@ -56,6 +69,33 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: 'Descrição inválida.'
     })
+  }
+
+  const latitudeParsed = parseLatitude(body.latitude)
+  if (typeof latitudeParsed === 'string') {
+    throw createError({ statusCode: 400, statusMessage: latitudeParsed })
+  }
+
+  const longitudeParsed = parseLongitude(body.longitude)
+  if (typeof longitudeParsed === 'string') {
+    throw createError({ statusCode: 400, statusMessage: longitudeParsed })
+  }
+
+  const tempoAvisoParsed = parseTempoAvisoMinutos(body.tempo_aviso_minutos)
+  if (typeof tempoAvisoParsed === 'string') {
+    throw createError({ statusCode: 400, statusMessage: tempoAvisoParsed })
+  }
+
+  const horariosParsed = parseCanalHorarios(body.horarios)
+  if (typeof horariosParsed === 'string') {
+    throw createError({ statusCode: 400, statusMessage: horariosParsed })
+  }
+
+  const horarios: CanalHorarios = horariosParsed
+
+  const endereco = parseEndereco(body.endereco)
+  if (!endereco) {
+    throw createError({ statusCode: 400, statusMessage: 'Informe o endereço da loja.' })
   }
 
   const rawWs = body.workspace_id
@@ -109,14 +149,19 @@ export default defineEventHandler(async (event) => {
     .from('canais')
     .update({
       nome,
-      descricao: descricao?.trim() || null
+      descricao: descricao?.trim() || null,
+      endereco,
+      latitude: latitudeParsed,
+      longitude: longitudeParsed,
+      tempo_aviso_minutos: tempoAvisoParsed,
+      horarios,
     })
     .eq('id', canalId)
     .eq('user_id', userId)
     .eq('workspace_id', workspaceId)
     .is('deleted_at', null)
     .is('deleted_by', null)
-    .select('id, nome, descricao, provedor, created_at')
+    .select(CANAL_SELECT_PUBLICO)
     .maybeSingle()
 
   if (error) {

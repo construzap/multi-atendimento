@@ -19,6 +19,8 @@ create table if not exists public.webhook_uazapi_execucoes (
 
   message_id text null,
   conversa_key text null,
+  messagetype text null,
+  phone text null,
 
   request_url text null,
   user_agent text null,
@@ -49,5 +51,19 @@ create index if not exists idx_webhook_uazapi_exec_status_created
 create index if not exists idx_webhook_uazapi_exec_message_id
   on public.webhook_uazapi_execucoes (message_id)
   where message_id is not null;
+
+create index if not exists idx_webhook_uazapi_exec_phone
+  on public.webhook_uazapi_execucoes (phone)
+  where phone is not null;
+
+create index if not exists idx_webhook_uazapi_exec_messagetype
+  on public.webhook_uazapi_execucoes (messagetype)
+  where messagetype is not null;
+
+comment on column public.webhook_uazapi_execucoes.messagetype is
+  'Tipo normalizado da mensagem (ex.: audioMessage, imageMessage).';
+
+comment on column public.webhook_uazapi_execucoes.phone is
+  'Telefone ou id de grupo persistido em conversas.phone.';
 
 alter table public.webhook_uazapi_execucoes enable row level security;

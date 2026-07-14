@@ -1,6 +1,9 @@
 import type { UazapiWebhookPayload } from '#shared/types/webhook'
 import type { WebhookExecucaoEtapa, WebhookExecucaoStatus } from '#shared/types/webhookExecucao'
 
+import type { MessageType } from '#shared/types/messageType'
+import type { MensagemNormalizada } from '#shared/types/webhook'
+
 /** Cliente retornado por `serverSupabaseServiceRole`. */
 type SupabaseAdmin = ReturnType<
   typeof import('#supabase/server').serverSupabaseServiceRole<any>
@@ -21,6 +24,9 @@ export type WebhookExecucaoFinalizarOpts = {
   id_canal?: number | null
   message_id?: string | null
   conversa_key?: string | null
+  messagetype?: MessageType | string | null
+  /** Valor persistido em `conversas.phone` (número 1:1 ou id @g.us em grupo). */
+  phone?: string | null
   motivo_ignorado?: string | null
   erro_etapa?: string | null
   erro_mensagem?: string | null
@@ -51,6 +57,26 @@ export function sanitizarPayloadUazapi(
     return copia
   } catch {
     return { _erro: 'payload_nao_serializavel' }
+  }
+}
+
+/** Telefone/id gravado em `conversas.phone` (mesma regra de persistWebhookMensagem). */
+export function phoneConversaFromNormalizada(normalizada: MensagemNormalizada): string | null {
+  if (normalizada.is_group && normalizada.id_group?.trim()) {
+    return normalizada.id_group.trim()
+  }
+  const phone = normalizada.phone?.trim()
+  return phone || null
+}
+
+/** Extrai messagetype + phone para o log de execução. */
+export function dadosLogFromNormalizada(normalizada: MensagemNormalizada): {
+  messagetype: MessageType
+  phone: string | null
+} {
+  return {
+    messagetype: normalizada.messagetype,
+    phone: phoneConversaFromNormalizada(normalizada),
   }
 }
 
@@ -132,6 +158,8 @@ export async function criarWebhookExecucaoLog(
           id_canal: opts.id_canal ?? null,
           message_id: opts.message_id ?? null,
           conversa_key: opts.conversa_key ?? null,
+          messagetype: opts.messagetype ?? null,
+          phone: opts.phone ?? null,
           motivo_ignorado: opts.motivo_ignorado ?? null,
           erro_etapa: opts.erro_etapa ?? null,
           erro_mensagem: opts.erro_mensagem ?? null,

@@ -43,6 +43,15 @@ function parseColunaId(raw: unknown): number | null {
   return n
 }
 
+function parseFunilIdFilter(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+    throw createError({ statusCode: 400, statusMessage: 'funil_id inválido.' })
+  }
+  return n
+}
+
 /** `id_canal` ou alias `canal_id`. Omitido / vazio = todos os canais. */
 function parseIdCanalFilter(raw: unknown): number | undefined {
   if (raw === undefined || raw === null || raw === '') return undefined
@@ -302,11 +311,12 @@ async function buildCardsPage(
 }
 
 /**
- * GET /api/kanban?workspace_id=&q=&is_group=&id_canal=
+ * GET /api/kanban?workspace_id=&funil_id=&q=&is_group=&id_canal=
  *
  * Board completo: 10 cards por coluna via `view_kanban_conversas` (`conversas.coluna_id` / `funil_id`).
+ * Sem `funil_id`, usa o funil com `ordem = 1` do workspace.
  *
- * GET /api/kanban?workspace_id=&coluna_id=&offset=&q=&is_group=&id_canal=
+ * GET /api/kanban?workspace_id=&funil_id=&coluna_id=&offset=&q=&is_group=&id_canal=
  *
  * Paginação por coluna.
  *
@@ -341,6 +351,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
   await checkWorkspace(event, workspaceId, userId)
 
   const colunaIdFilter = parseColunaId(q.coluna_id)
+  const funilIdFilter = parseFunilIdFilter(q.funil_id)
   const offset = parsePositiveInt(q.offset, 0)
   const searchRaw = parseSearchQuery(q.q ?? q.busca)
   const isGroupFilter = parseIsGroupFilter(q.is_group)
@@ -348,18 +359,25 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
 
   const admin = serverSupabaseServiceRole<any>(event)
 
-  const { data: funil, error: funilErr } = await admin
+  let funilQuery = admin
     .from('funil_workspace')
     .select('id, nome')
     .eq('workspace_id', workspaceId)
-    .maybeSingle()
+
+  if (funilIdFilter != null) {
+    funilQuery = funilQuery.eq('id', funilIdFilter)
+  } else {
+    funilQuery = funilQuery.eq('ordem', 1)
+  }
+
+  const { data: funil, error: funilErr } = await funilQuery.maybeSingle()
 
   if (funilErr) {
     throw createError({ statusCode: 500, statusMessage: funilErr.message })
   }
 
   if (!funil) {
-    if (colunaIdFilter != null) {
+    if (colunaIdFilter != null || funilIdFilter != null) {
       throw createError({ statusCode: 404, statusMessage: 'Funil não encontrado.' })
     }
     return {

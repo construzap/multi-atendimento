@@ -1,42 +1,18 @@
-function parseConversaKeyParam(raw: unknown): string {
-  const s = String(raw ?? '').trim()
-  if (!s) return ''
-  try {
-    return decodeURIComponent(s).trim()
-  } catch {
-    return s
-  }
-}
+import { parseConversaKeyParam } from '~/utils/chatRouteParams'
 
 /**
- * Key da conversa ativa no chat: prioriza `route.params.conversaKey` (URL),
- * com fallback em `conversas.conversaAtual` (Pinia).
+ * Key da conversa ativa no chat: lê `route.params.conversaKey` (URL = fonte da verdade).
+ * Pinia é sincronizado pelo plugin `conversas-route-sync.client.ts`.
  */
 export function useConversaKeyAtiva() {
   const route = useRoute()
-  const conversasStore = useConversasStore()
-  const canaisStore = useCanaisStore()
 
-  const conversaKeyFromRoute = computed(() => parseConversaKeyParam(route.params.conversaKey))
-
-  const conversaKeyAtiva = computed(() => {
-    const fromRoute = conversaKeyFromRoute.value
-    if (fromRoute) return fromRoute
-    const fromStore = conversasStore.conversaAtual?.trim()
-    return fromStore || null
+  const conversaKeyFromRoute = computed(() => {
+    const key = parseConversaKeyParam(route.params.conversaKey)
+    return key || null
   })
 
-  watch(
-    conversaKeyFromRoute,
-    (key) => {
-      const canalId = canaisStore.currentCanalId
-      if (!key || canalId == null) return
-      if (conversasStore.conversaAtual !== key) {
-        conversasStore.setConversaAtual(key, canalId)
-      }
-    },
-    { immediate: true },
-  )
+  const conversaKeyAtiva = conversaKeyFromRoute
 
   return {
     conversaKeyFromRoute,

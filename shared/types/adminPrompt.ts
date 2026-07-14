@@ -16,8 +16,15 @@ export const PROMPT_WORKSPACE_TIPO_DEFAULT = 'ESTOQUE'
 
 export const PROMPT_WORKSPACE_TIPOS_OPCOES = [
   { value: 'ESTOQUE', label: 'Estoque' },
-  { value: 'principal', label: 'Principal' },
+  { value: 'AGENDAMENTO', label: 'Agendamento' },
 ] as const
+
+export type PromptWorkspaceTipo = (typeof PROMPT_WORKSPACE_TIPOS_OPCOES)[number]['value']
+
+export type PromptWorkspaceTipoOpcao = {
+  value: string
+  label: string
+}
 
 /** Resposta de `GET /api/admin/prompt`. */
 export interface AdminPromptListResponse {

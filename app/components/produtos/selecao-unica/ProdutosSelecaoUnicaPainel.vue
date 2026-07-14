@@ -30,6 +30,13 @@ const listaSugestoesRef = defineModel<HTMLUListElement | null>('listaSugestoesRe
 
 const inputRef = ref<HTMLInputElement | null>(null)
 
+function focusFiltro() {
+  inputRef.value?.focus()
+  inputRef.value?.select()
+}
+
+defineExpose({ focusFiltro })
+
 const emit = defineEmits<{
   fechar: []
   enterFiltro: []
@@ -62,7 +69,6 @@ const emit = defineEmits<{
       v-model="filtro"
       type="text"
       autocomplete="off"
-      autofocus
       :class="inpFiltroClass"
       :placeholder="config.placeholderFiltro"
       @keydown.enter.prevent="emit('enterFiltro')"

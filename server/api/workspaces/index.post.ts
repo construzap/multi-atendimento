@@ -93,14 +93,12 @@ export default defineEventHandler(async (event): Promise<Workspace> => {
 
     const { data: funilRow, error: funilErr } = await admin
       .from('funil_workspace')
-      .upsert(
-        {
-          workspace_id: workspaceId,
-          nome: 'Funil padrao',
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'workspace_id' },
-      )
+      .insert({
+        workspace_id: workspaceId,
+        nome: 'Funil Principal',
+        ordem: 1,
+        updated_at: new Date().toISOString(),
+      })
       .select('id')
       .single()
 

@@ -23,6 +23,10 @@ const props = withDefaults(
   },
 )
 
+const emit = defineEmits<{
+  openChange: [open: boolean]
+}>()
+
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLButtonElement | null>(null)
@@ -119,6 +123,8 @@ function onKeydown(e: KeyboardEvent) {
 }
 
 watch(open, (isOpen) => {
+  emit('openChange', isOpen)
+
   if (attachTimeout) {
     clearTimeout(attachTimeout)
     attachTimeout = null

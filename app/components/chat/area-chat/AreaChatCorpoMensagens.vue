@@ -76,7 +76,7 @@ async function onFabScrollToBottom() {
 /** Próximo ao topo da lista (carregar mais fica visível; vazio → toast). */
 const showLoadMoreFab = computed(() => {
   if (!activeKey.value) return false
-  return isAtTop.value
+  return isAtTop.value && mensagens.hasMore
 })
 
 async function onLoadMoreMensagens() {
@@ -89,7 +89,8 @@ async function onLoadMoreMensagens() {
   try {
     const added = await mensagens.fetchNextPage()
     if (added === 0) {
-      toast.info('Não há mais mensagens para serem carregadas.', { duration: 4000 })
+      // Se não há mais páginas, não insiste em toast a cada clique.
+      toast.info('Não há mais mensagens para serem carregadas.', { duration: 2500 })
       return
     }
   } catch {

@@ -1,24 +1,17 @@
 import AreaChat from '~/components/chat/area-chat.vue'
 import AreaConversa from '~/components/chat/area-conversa.vue'
 import AreaInfoConversa from '~/components/chat/area-info-conversa.vue'
+import {
+  parseConversaKeyParam,
+  parsePositiveIntParam,
+} from '~/utils/chatRouteParams'
 
 function parsePositiveInt(raw: unknown): number | null {
-  const s = String(raw ?? '').trim()
-  if (!s) return null
-  const n = Number.parseInt(s, 10)
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return null
-  if (String(n) !== s) return null
-  return n
+  return parsePositiveIntParam(raw)
 }
 
-function parseConversaKeyParam(raw: unknown): string {
-  const s = String(raw ?? '').trim()
-  if (!s) return ''
-  try {
-    return decodeURIComponent(s).trim()
-  } catch {
-    return s
-  }
+function parseConversaKeyParamLocal(raw: unknown): string {
+  return parseConversaKeyParam(raw)
 }
 
 type Options = {
@@ -56,7 +49,7 @@ export function useChatCanalPage(options: Options = {}) {
 
   const canalId = computed(() => parsePositiveInt(route.params.canalId))
   const workspaceId = computed(() => parsePositiveInt(route.params.id))
-  const conversaKeyFromRoute = computed(() => parseConversaKeyParam(route.params.conversaKey))
+  const conversaKeyFromRoute = computed(() => parseConversaKeyParamLocal(route.params.conversaKey))
 
   const cookieName = computed(() => {
     const wid = workspaceId.value
@@ -134,7 +127,6 @@ export function useChatCanalPage(options: Options = {}) {
         const id = canalId.value
         if (id == null) return
         if (key) {
-          conversasStore.setConversaAtual(key, id)
           if (key.startsWith('temp:')) return
 
           mensagensStore.setActiveKey(key)
@@ -153,7 +145,7 @@ export function useChatCanalPage(options: Options = {}) {
           })
           return
         }
-        conversasStore.setConversaAtual(null, id)
+        if (!conversaKeyFromRoute.value) conversasStore.setConversaAtual(null, id)
       },
       { immediate: true },
     )
@@ -167,10 +159,7 @@ export function useChatCanalPage(options: Options = {}) {
         const cid = canalId.value
         if (!key || wid == null || cid == null) return
         if (conversaKeyFromRoute.value === key) return
-        void navigateTo(
-          `/workspaces/${wid}/chat/${cid}/${encodeURIComponent(key)}`,
-          { replace: true },
-        )
+        void navegarParaConversaChat(wid, cid, key)
       },
     )
   }

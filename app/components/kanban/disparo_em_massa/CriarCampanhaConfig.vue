@@ -2,8 +2,8 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
-import type { CampanhaStatusCriacao, CampanhaListItem, CriarCampanhaResponse, EnfileirarFilaDisparoResponse } from '#shared/types/disparoEmMassa'
-import { OPCOES_FUSO_CAMPANHA, defaultFusoCampanhaDoNavegador } from '#shared/constants/ianaTimezonesBrasil'
+import type { CampanhaStatusCriacao, CampanhaListItem, CriarCampanhaResponse, AtualizarCampanhaResponse, EnfileirarFilaDisparoResponse } from '#shared/types/disparoEmMassa'
+import { OPCOES_FUSO_CAMPANHA, defaultFusoCampanhaDoNavegador, normalizarTimezoneCampanhaParaFormulario } from '#shared/constants/ianaTimezonesBrasil'
 import BaseButton from '~/components/BaseButton.vue'
 import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
 import { useCanaisStore } from '~/stores/canais'
@@ -28,6 +28,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   criado: [response: CriarCampanhaResponse]
+  atualizado: [response: AtualizarCampanhaResponse]
   cancelar: []
 }>()
 
@@ -36,7 +37,38 @@ const canaisStore = useCanaisStore()
 const disparoEmMassa = useDisparoEmMassaStore()
 const workspacesStore = useWorkspacesStore()
 const route = useRoute()
-const { columns } = storeToRefs(kanban)
+const { funis, funisPending, funisError } = storeToRefs(kanban)
+const { campanhas } = storeToRefs(disparoEmMassa)
+
+const totalColunasFunis = computed(() =>
+  funis.value.reduce((acc, funil) => acc + funil.columns.length, 0),
+)
+
+const funisComColunas = computed(() => funis.value.filter((funil) => funil.columns.length > 0))
+
+/** Funis ordenados com o funil «mover após disparo» primeiro (modo edição). */
+const funisComColunasAposDisparo = computed(() => {
+  const lista = [...funisComColunas.value]
+  const fid = funilIdAposDisparo.value
+  if (fid == null) return lista
+  return lista.sort((a, b) => {
+    if (a.id === fid) return -1
+    if (b.id === fid) return 1
+    return a.ordem - b.ordem
+  })
+})
+
+/** Funis ordenados com o funil «erro no disparo» primeiro (modo edição). */
+const funisComColunasErro = computed(() => {
+  const lista = [...funisComColunas.value]
+  const fid = funilErroId.value
+  if (fid == null) return lista
+  return lista.sort((a, b) => {
+    if (a.id === fid) return -1
+    if (b.id === fid) return 1
+    return a.ordem - b.ordem
+  })
+})
 
 const modoEdicao = computed(() => Boolean(props.campanhaId?.trim()))
 const tituloExibicao = computed(() =>
@@ -49,8 +81,8 @@ const ehPrimeiraEtapa = computed(() => etapaAtual.value === 0)
 const ehUltimaEtapa = computed(() => etapaAtual.value === TOTAL_ETAPAS - 1)
 const rotuloEtapa = computed(() => `Etapa ${etapaAtual.value + 1} de ${TOTAL_ETAPAS}`)
 const rotuloBotaoSalvar = computed(() => {
-  if (submitPending.value) return modoEdicao.value ? 'Salvando alterações…' : 'Criando campanha…'
-  return modoEdicao.value ? 'Salvar alterações' : 'Criar campanha'
+  if (submitPending.value) return modoEdicao.value ? 'Salvando…' : 'Criando campanha…'
+  return modoEdicao.value ? 'Salvar' : 'Criar campanha'
 })
 
 function irProximaEtapa() {
@@ -82,6 +114,8 @@ const horaPermitidaInicio = ref('08:00')
 const horaPermitidaFim = ref('18:00')
 const intervaloMinimo = ref(30)
 const intervaloMaximo = ref(60)
+const tamanhoLote = ref(10)
+const pausaLoteMinutos = ref(30)
 const canaisSelecionados = ref<number[]>([])
 const filtroDestinatario = ref<CampanhaFiltroDestinatario>('coluna')
 const colunasSelecionadas = ref<number[]>([])
@@ -89,6 +123,12 @@ const fonteCanaisSelecionados = ref<number[]>([])
 const enviaParaGrupo = ref(false)
 /** Coluna do funil para mover o contato após o disparo (`null` = não mover). */
 const colunaAposDisparoId = ref<number | null>(null)
+/** Funil da coluna «mover após o disparo» (`campanhas.funil_id`). */
+const funilIdAposDisparo = ref<number | null>(null)
+/** Coluna do funil para mover o contato se o envio falhar. */
+const colunaErroId = ref<number | null>(null)
+/** Funil da coluna de erro (`campanhas.funil_erro_id`). */
+const funilErroId = ref<number | null>(null)
 const submitPending = ref(false)
 
 const FILA_LOTE = 10
@@ -474,12 +514,17 @@ function resetFormulario() {
   horaPermitidaFim.value = '18:00'
   intervaloMinimo.value = 30
   intervaloMaximo.value = 60
+  tamanhoLote.value = 10
+  pausaLoteMinutos.value = 30
   canaisSelecionados.value = []
   filtroDestinatario.value = 'coluna'
   colunasSelecionadas.value = []
   fonteCanaisSelecionados.value = []
   enviaParaGrupo.value = false
   colunaAposDisparoId.value = null
+  funilIdAposDisparo.value = null
+  colunaErroId.value = null
+  funilErroId.value = null
   imagemNome.value = null
   audioNome.value = null
 }
@@ -491,14 +536,70 @@ function horaBancoParaInput(hora: string | null | undefined): string {
   return `${match[1].padStart(2, '0')}:${match[2]}`
 }
 
-function isoParaCamposLocais(iso: string | null | undefined): { data: string; hora: string } {
+function isoParaCamposLocais(
+  iso: string | null | undefined,
+  timeZone?: string | null,
+): { data: string; hora: string } {
   if (!iso) return { data: '', hora: '' }
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return { data: '', hora: '' }
+
+  const tz = timeZone?.trim() || undefined
+  if (tz) {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: tz,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+      const parts = fmt.formatToParts(d)
+      const pick = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find((p) => p.type === type)?.value ?? ''
+      const data = `${pick('year')}-${pick('month')}-${pick('day')}`
+      const hora = `${pick('hour')}:${pick('minute')}`
+      if (/^\d{4}-\d{2}-\d{2}$/.test(data) && /^\d{2}:\d{2}$/.test(hora)) {
+        return { data, hora }
+      }
+    } catch {
+      /* fallback local */
+    }
+  }
+
   const pad = (n: number) => String(n).padStart(2, '0')
   return {
     data: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
     hora: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  }
+}
+
+function parseFunilIdCampanha(raw: string | null | undefined): number | null {
+  const t = String(raw ?? '').trim()
+  if (!t) return null
+  const n = Number.parseInt(t, 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function aplicarMoverAposDisparoDoPinia(campanha: CampanhaListItem) {
+  colunaAposDisparoId.value = campanha.coluna_id ?? null
+  funilIdAposDisparo.value = parseFunilIdCampanha(campanha.funil_id)
+
+  if (colunaAposDisparoId.value != null) {
+    const fidColuna = funilIdDaColuna(colunaAposDisparoId.value)
+    if (fidColuna != null) funilIdAposDisparo.value = fidColuna
+  }
+}
+
+function aplicarColunaErroDoPinia(campanha: CampanhaListItem) {
+  colunaErroId.value = campanha.coluna_erro_id ?? null
+  funilErroId.value = parseFunilIdCampanha(campanha.funil_erro_id)
+
+  if (colunaErroId.value != null) {
+    const fidColuna = funilIdDaColuna(colunaErroId.value)
+    if (fidColuna != null) funilErroId.value = fidColuna
   }
 }
 
@@ -530,13 +631,16 @@ function preencherFormulario(campanha: CampanhaListItem) {
   mensagem.value = campanha.conteudo_texto ?? ''
   visualizacaoUnica.value = campanha.visualizacao_unica ?? false
 
-  const { data, hora } = isoParaCamposLocais(campanha.data_inicio)
+  ianaTimezone.value = normalizarTimezoneCampanhaParaFormulario(campanha.timezone_escolhido)
+  const { data, hora } = isoParaCamposLocais(campanha.data_inicio, ianaTimezone.value)
   dataCampo.value = data
   horaCampo.value = hora
   horaPermitidaInicio.value = horaBancoParaInput(campanha.hora_permitida_inicio)
   horaPermitidaFim.value = horaBancoParaInput(campanha.hora_permitida_fim)
   intervaloMinimo.value = campanha.intervalo_minimo_minutos ?? 30
   intervaloMaximo.value = campanha.intervalo_maximo_minutos ?? 60
+  tamanhoLote.value = campanha.tamanho_lote ?? 10
+  pausaLoteMinutos.value = campanha.pausa_lote_minutos ?? 30
   const idsCanais =
     campanha.canais_ids?.filter((id) => Number.isFinite(id) && id > 0) ??
     (campanha.canal_id != null ? [campanha.canal_id] : [])
@@ -544,7 +648,8 @@ function preencherFormulario(campanha: CampanhaListItem) {
   fonteCanaisSelecionados.value = parseFonteCanaisIdsCsv(campanha.fonte_canal_id)
   enviaParaGrupo.value = campanha.envia_para_grupo === true
   colunasSelecionadas.value = []
-  colunaAposDisparoId.value = null
+  aplicarMoverAposDisparoDoPinia(campanha)
+  aplicarColunaErroDoPinia(campanha)
 
   imagemArquivo.value = null
   audioArquivo.value = null
@@ -563,9 +668,14 @@ function preencherFormulario(campanha: CampanhaListItem) {
 function aplicarEstadoAoAbrir() {
   etapaAtual.value = 0
   void carregarCanaisSeNecessario()
+  void carregarFunisSeNecessario()
 
-  if (props.campanhaId) {
-    const campanha = disparoEmMassa.campanhas.find((c) => c.id === props.campanhaId) ?? null
+  const campanhaId = props.campanhaId?.trim()
+  if (campanhaId) {
+    const campanha =
+      disparoEmMassa.campanhaEmEdicao ??
+      campanhas.value.find((c) => c.id === campanhaId) ??
+      null
     if (campanha) {
       preencherFormulario(campanha)
       return
@@ -628,7 +738,17 @@ function toggleColuna(colunaId: number) {
 }
 
 function selecionarTodasColunas() {
-  colunasSelecionadas.value = columns.value.map((c) => c.id)
+  colunasSelecionadas.value = funis.value.flatMap((funil) => funil.columns.map((coluna) => coluna.id))
+}
+
+async function carregarFunisSeNecessario() {
+  const wid = workspaceIdAtual()
+  if (wid == null) return
+  try {
+    await kanban.ensureFunisLoaded(wid)
+  } catch {
+    /* erro em funisError */
+  }
 }
 
 async function carregarCanaisSeNecessario() {
@@ -651,10 +771,48 @@ function isColunaAposDisparo(colunaId: number) {
 
 function selecionarColunaAposDisparo(colunaId: number) {
   colunaAposDisparoId.value = colunaId
+  funilIdAposDisparo.value = funilIdDaColuna(colunaId)
+}
+
+function funilIdDaColuna(colunaId: number): number | null {
+  for (const funil of funis.value) {
+    if (funil.columns.some((coluna) => coluna.id === colunaId)) return funil.id
+  }
+  return null
+}
+
+/** Funil da coluna «mover após o disparo» (`campanhas.funil_id`). */
+function funilIdAposDisparoParaCampanha(): string | null {
+  if (colunaAposDisparoId.value != null) {
+    const funilId = funilIdDaColuna(colunaAposDisparoId.value)
+    if (funilId != null) return String(funilId)
+  }
+  if (funilIdAposDisparo.value != null) return String(funilIdAposDisparo.value)
+  return null
 }
 
 function limparColunaAposDisparo() {
   colunaAposDisparoId.value = null
+  funilIdAposDisparo.value = null
+}
+
+function isColunaErro(colunaId: number) {
+  return colunaErroId.value === colunaId
+}
+
+function selecionarColunaErro(colunaId: number) {
+  colunaErroId.value = colunaId
+  funilErroId.value = funilIdDaColuna(colunaId)
+}
+
+/** Funil da coluna de erro (`campanhas.funil_erro_id`). */
+function funilErroIdParaCampanha(): string | null {
+  if (colunaErroId.value != null) {
+    const funilId = funilIdDaColuna(colunaErroId.value)
+    if (funilId != null) return String(funilId)
+  }
+  if (funilErroId.value != null) return String(funilErroId.value)
+  return null
 }
 
 function onImagemChange(e: Event) {
@@ -734,6 +892,29 @@ watch(
   },
 )
 
+watch([funis, () => props.campanhaId], () => {
+  if (!modoEdicao.value) return
+  if (colunaAposDisparoId.value != null) {
+    const fidColuna = funilIdDaColuna(colunaAposDisparoId.value)
+    if (fidColuna != null) funilIdAposDisparo.value = fidColuna
+  }
+  if (colunaErroId.value != null) {
+    const fidErro = funilIdDaColuna(colunaErroId.value)
+    if (fidErro != null) funilErroId.value = fidErro
+  }
+})
+
+watch(campanhas, () => {
+  if (!props.campanhaId?.trim()) return
+  const campanha =
+    disparoEmMassa.campanhaEmEdicao ??
+    campanhas.value.find((c) => c.id === props.campanhaId) ??
+    null
+  if (campanha && !nomeCampanha.value.trim()) {
+    preencherFormulario(campanha)
+  }
+})
+
 function fechar() {
   abortarMidiaTemporariaNavegador()
   emit('cancelar')
@@ -762,18 +943,217 @@ function validar(): string | null {
   if (intervaloMinimo.value > intervaloMaximo.value) {
     return 'O intervalo mínimo não pode ser maior que o máximo.'
   }
+  if (!Number.isFinite(tamanhoLote.value) || tamanhoLote.value < 1) {
+    return 'Informe o tamanho do lote (mínimo 1).'
+  }
+  if (!Number.isFinite(pausaLoteMinutos.value) || pausaLoteMinutos.value < 1) {
+    return 'Informe a pausa entre lotes (mínimo 1 minuto).'
+  }
   if (canaisSelecionados.value.length === 0) return 'Selecione pelo menos um canal de envio.'
-  if (colunasSelecionadas.value.length === 0) {
+  if (!modoEdicao.value && colunasSelecionadas.value.length === 0) {
     return 'Selecione pelo menos uma coluna do Kanban.'
   }
   if (fonteCanaisSelecionados.value.length === 0) {
     return 'Selecione pelo menos um canal fonte para buscar destinatários.'
   }
   if (tipo.value === 'texto' && !mensagem.value.trim()) return 'Preencha a mensagem.'
-  if (gravandoUi.value) return 'Finalize ou cancele a gravação antes de criar a campanha.'
-  if (tipo.value === 'imagem' && !imagemArquivo.value) return 'Anexe uma imagem.'
-  if (tipo.value === 'audio' && !audioArquivo.value) return 'Grave um áudio no navegador ou importe um arquivo de áudio.'
+  if (gravandoUi.value) return 'Finalize ou cancele a gravação antes de salvar.'
+  if (tipo.value === 'imagem' && !imagemArquivo.value && !imagemPreviewUrl.value) {
+    return 'Anexe uma imagem.'
+  }
+  if (tipo.value === 'audio' && !audioArquivo.value && !audioObjectUrl.value) {
+    return 'Grave um áudio no navegador ou importe um arquivo de áudio.'
+  }
+  if (colunaErroId.value == null) {
+    return 'Selecione a coluna para mover o contato em caso de erro no envio.'
+  }
   return null
+}
+
+function montarCorpoCampanha(workspaceId: number) {
+  let mime: string | null = null
+  let data_base64: string | null = null
+  let filename: string | null = null
+
+  if (tipo.value === 'imagem' && imagemArquivo.value) {
+    return arquivoParaBase64Payload(imagemArquivo.value).then((part) => ({
+      workspace_id: workspaceId,
+      nome: nomeCampanha.value.trim(),
+      status: statusCampanha.value,
+      ia_ligada: iaLigada.value,
+      visualizacao_unica:
+        tipo.value === 'imagem' || tipo.value === 'audio' ? visualizacaoUnica.value : false,
+      tipo_mensagem: tipo.value,
+      conteudo_texto: mensagem.value.trim() || null,
+      canais_ids: [...canaisSelecionados.value],
+      coluna_ids: colunasSelecionadas.value.length > 0 ? [...colunasSelecionadas.value] : undefined,
+      funil_id: funilIdAposDisparoParaCampanha(),
+      coluna_id: colunaAposDisparoId.value,
+      coluna_erro_id: colunaErroId.value!,
+      funil_erro_id: funilErroIdParaCampanha(),
+      fonte_canais_ids: [...fonteCanaisSelecionados.value],
+      envia_para_grupo: enviaParaGrupo.value,
+      intervalo_minimo_minutos: intervaloMinimo.value,
+      intervalo_maximo_minutos: intervaloMaximo.value,
+      tamanho_lote: tamanhoLote.value,
+      pausa_lote_minutos: pausaLoteMinutos.value,
+      data_local: dataCampo.value.trim(),
+      hora_local: horaCampo.value.trim(),
+      timezone_escolhido: ianaTimezone.value,
+      hora_permitida_inicio: horaPermitidaInicio.value.trim(),
+      hora_permitida_fim: horaPermitidaFim.value.trim(),
+      mime: part.mime,
+      data_base64: part.data_base64,
+      filename: part.filename,
+    }))
+  }
+
+  if (tipo.value === 'audio' && audioArquivo.value) {
+    return arquivoParaBase64Payload(audioArquivo.value).then((part) => ({
+      workspace_id: workspaceId,
+      nome: nomeCampanha.value.trim(),
+      status: statusCampanha.value,
+      ia_ligada: iaLigada.value,
+      visualizacao_unica:
+        tipo.value === 'imagem' || tipo.value === 'audio' ? visualizacaoUnica.value : false,
+      tipo_mensagem: tipo.value,
+      conteudo_texto: mensagem.value.trim() || null,
+      canais_ids: [...canaisSelecionados.value],
+      coluna_ids: colunasSelecionadas.value.length > 0 ? [...colunasSelecionadas.value] : undefined,
+      funil_id: funilIdAposDisparoParaCampanha(),
+      coluna_id: colunaAposDisparoId.value,
+      coluna_erro_id: colunaErroId.value!,
+      funil_erro_id: funilErroIdParaCampanha(),
+      fonte_canais_ids: [...fonteCanaisSelecionados.value],
+      envia_para_grupo: enviaParaGrupo.value,
+      intervalo_minimo_minutos: intervaloMinimo.value,
+      intervalo_maximo_minutos: intervaloMaximo.value,
+      tamanho_lote: tamanhoLote.value,
+      pausa_lote_minutos: pausaLoteMinutos.value,
+      data_local: dataCampo.value.trim(),
+      hora_local: horaCampo.value.trim(),
+      timezone_escolhido: ianaTimezone.value,
+      hora_permitida_inicio: horaPermitidaInicio.value.trim(),
+      hora_permitida_fim: horaPermitidaFim.value.trim(),
+      mime: part.mime,
+      data_base64: part.data_base64,
+      filename: part.filename,
+    }))
+  }
+
+  return Promise.resolve({
+    workspace_id: workspaceId,
+    nome: nomeCampanha.value.trim(),
+    status: statusCampanha.value,
+    ia_ligada: iaLigada.value,
+    visualizacao_unica:
+      tipo.value === 'imagem' || tipo.value === 'audio' ? visualizacaoUnica.value : false,
+    tipo_mensagem: tipo.value,
+    conteudo_texto: mensagem.value.trim() || null,
+    canais_ids: [...canaisSelecionados.value],
+    coluna_ids: colunasSelecionadas.value.length > 0 ? [...colunasSelecionadas.value] : undefined,
+    funil_id: funilIdAposDisparoParaCampanha(),
+    coluna_id: colunaAposDisparoId.value,
+    coluna_erro_id: colunaErroId.value!,
+    funil_erro_id: funilErroIdParaCampanha(),
+    fonte_canais_ids: [...fonteCanaisSelecionados.value],
+    envia_para_grupo: enviaParaGrupo.value,
+    intervalo_minimo_minutos: intervaloMinimo.value,
+    intervalo_maximo_minutos: intervaloMaximo.value,
+    tamanho_lote: tamanhoLote.value,
+    pausa_lote_minutos: pausaLoteMinutos.value,
+    data_local: dataCampo.value.trim(),
+    hora_local: horaCampo.value.trim(),
+    timezone_escolhido: ianaTimezone.value,
+    hora_permitida_inicio: horaPermitidaInicio.value.trim(),
+    hora_permitida_fim: horaPermitidaFim.value.trim(),
+    mime: null as string | null,
+    data_base64: null as string | null,
+    filename: null as string | null,
+  })
+}
+
+async function salvarEdicao(workspaceId: number, signal: AbortSignal) {
+  const campanhaId = props.campanhaId?.trim()
+  if (!campanhaId) {
+    toast.error('Campanha não encontrada para edição.')
+    return
+  }
+
+  progressoTitulo.value = 'Salvando campanha…'
+  progressoEtapa.value = 'Atualizando configurações…'
+  progressoTotal.value = 1
+  progressoEnviados.value = 0
+  progressoErro.value = null
+  progressoAberto.value = true
+
+  const body = await montarCorpoCampanha(workspaceId)
+  const atualizarResponse = await $fetch<AtualizarCampanhaResponse>('/api/kanban/disparo_em_massa', {
+    method: 'PATCH',
+    signal,
+    body: {
+      ...body,
+      campanha_id: campanhaId,
+    },
+  })
+
+  progressoEnviados.value = 1
+  emit('atualizado', atualizarResponse)
+  toast.success('Campanha atualizada com sucesso.')
+}
+
+async function salvarNova(workspaceId: number, signal: AbortSignal) {
+  progressoTitulo.value = 'Criando campanha…'
+  progressoEtapa.value = 'Etapa 1 de 2: Criando campanha…'
+  progressoTotal.value = 1
+  progressoEnviados.value = 0
+  progressoErro.value = null
+  progressoAberto.value = true
+
+  const body = await montarCorpoCampanha(workspaceId)
+  const colunaIds = colunasSelecionadas.value
+  if (!colunaIds.length) {
+    throw new Error('Selecione pelo menos uma coluna do Kanban.')
+  }
+
+  const criarResponse = await $fetch<CriarCampanhaResponse>('/api/kanban/disparo_em_massa', {
+    method: 'POST',
+    signal,
+    body: {
+      ...body,
+      coluna_ids: [...colunaIds],
+    },
+  })
+
+  const { campanha, conversa_keys } = criarResponse
+  progressoEnviados.value = 1
+  progressoTotal.value = 1 + conversa_keys.length
+
+  if (conversa_keys.length > 0) {
+    progressoTitulo.value = 'Enfileirando disparos…'
+    progressoEtapa.value = 'Etapa 2 de 2: Enfileirando disparos…'
+
+    let enfileirados = 0
+    for (const lote of chunkArray(conversa_keys, FILA_LOTE)) {
+      await $fetch<EnfileirarFilaDisparoResponse>('/api/kanban/disparo_em_massa/fila', {
+        method: 'POST',
+        signal,
+        body: {
+          campanha_id: String(campanha.id),
+          conversa_keys: lote,
+        },
+      })
+      enfileirados += lote.length
+      progressoEnviados.value = 1 + enfileirados
+    }
+  }
+
+  emit('criado', criarResponse)
+  toast.success(
+    conversa_keys.length === 0
+      ? 'Campanha criada (nenhum contato na fila).'
+      : `Campanha criada com ${conversa_keys.length} contato(s) na fila.`,
+  )
 }
 
 async function salvar() {
@@ -789,97 +1169,20 @@ async function salvar() {
     return
   }
 
-  progressoTitulo.value = 'Criando campanha…'
-  progressoEtapa.value = 'Etapa 1 de 2: Criando campanha…'
-  progressoTotal.value = 1
-  progressoEnviados.value = 0
-  progressoErro.value = null
-  progressoAberto.value = true
-
   submitPending.value = true
   abortController = new AbortController()
   const signal = abortController.signal
 
   try {
-    let mime: string | null = null
-    let data_base64: string | null = null
-    let filename: string | null = null
-
-    if (tipo.value === 'imagem' && imagemArquivo.value) {
-      const part = await arquivoParaBase64Payload(imagemArquivo.value)
-      mime = part.mime
-      data_base64 = part.data_base64
-      filename = part.filename
-    } else if (tipo.value === 'audio' && audioArquivo.value) {
-      const part = await arquivoParaBase64Payload(audioArquivo.value)
-      mime = part.mime
-      data_base64 = part.data_base64
-      filename = part.filename
+    if (modoEdicao.value) {
+      await salvarEdicao(workspaceId, signal)
+    } else {
+      await salvarNova(workspaceId, signal)
     }
-
-    const criarResponse = await $fetch<CriarCampanhaResponse>('/api/kanban/disparo_em_massa', {
-      method: 'POST',
-      signal,
-      body: {
-        workspace_id: workspaceId,
-        nome: nomeCampanha.value.trim(),
-        status: statusCampanha.value,
-        ia_ligada: iaLigada.value,
-        visualizacao_unica:
-          tipo.value === 'imagem' || tipo.value === 'audio' ? visualizacaoUnica.value : false,
-        tipo_mensagem: tipo.value,
-        conteudo_texto: mensagem.value.trim() || null,
-        canais_ids: [...canaisSelecionados.value],
-        coluna_ids: [...colunasSelecionadas.value],
-        coluna_id: colunaAposDisparoId.value,
-        fonte_canais_ids: [...fonteCanaisSelecionados.value],
-        envia_para_grupo: enviaParaGrupo.value,
-        intervalo_minimo_minutos: intervaloMinimo.value,
-        intervalo_maximo_minutos: intervaloMaximo.value,
-        data_local: dataCampo.value.trim(),
-        hora_local: horaCampo.value.trim(),
-        timezone_escolhido: ianaTimezone.value,
-        hora_permitida_inicio: horaPermitidaInicio.value.trim(),
-        hora_permitida_fim: horaPermitidaFim.value.trim(),
-        mime,
-        data_base64,
-        filename,
-      },
-    })
-
-    const { campanha, conversa_keys } = criarResponse
-    progressoEnviados.value = 1
-    progressoTotal.value = 1 + conversa_keys.length
-
-    if (conversa_keys.length > 0) {
-      progressoTitulo.value = 'Enfileirando disparos…'
-      progressoEtapa.value = 'Etapa 2 de 2: Enfileirando disparos…'
-
-      let enfileirados = 0
-      for (const lote of chunkArray(conversa_keys, FILA_LOTE)) {
-        await $fetch<EnfileirarFilaDisparoResponse>('/api/kanban/disparo_em_massa/fila', {
-          method: 'POST',
-          signal,
-          body: {
-            campanha_id: String(campanha.id),
-            conversa_keys: lote,
-          },
-        })
-        enfileirados += lote.length
-        progressoEnviados.value = 1 + enfileirados
-      }
-    }
-
-    emit('criado', criarResponse)
-    toast.success(
-      conversa_keys.length === 0
-        ? 'Campanha criada (nenhum contato na fila).'
-        : `Campanha criada com ${conversa_keys.length} contato(s) na fila.`,
-    )
   } catch (err: unknown) {
     const e = err as { name?: string }
     if (e?.name === 'AbortError') {
-      toast.info('Criação da campanha cancelada.')
+      toast.info(modoEdicao.value ? 'Atualização cancelada.' : 'Criação da campanha cancelada.')
     } else {
       const msg = mensagemErroFetch(err)
       progressoErro.value = msg
@@ -1359,6 +1662,37 @@ async function salvar() {
                 />
               </div>
             </div>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div class="space-y-2">
+                <label :class="labelCls" for="campanha-tamanho-lote">
+                  Tamanho do lote <span class="text-danger" aria-hidden="true">*</span>
+                </label>
+                <p :class="hintCls">Quantidade de mensagens enviadas antes da pausa.</p>
+                <input
+                  id="campanha-tamanho-lote"
+                  v-model.number="tamanhoLote"
+                  type="number"
+                  min="1"
+                  required
+                  :class="inputCls"
+                />
+              </div>
+              <div class="space-y-2">
+                <label :class="labelCls" for="campanha-pausa-lote">
+                  Pausa entre lotes (min) <span class="text-danger" aria-hidden="true">*</span>
+                </label>
+                <p :class="hintCls">Tempo de espera após cada lote.</p>
+                <input
+                  id="campanha-pausa-lote"
+                  v-model.number="pausaLoteMinutos"
+                  type="number"
+                  min="1"
+                  required
+                  :class="inputCls"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -1555,9 +1889,11 @@ async function salvar() {
           <div class="min-w-0 flex-1 space-y-3">
             <div class="flex flex-wrap items-center justify-between gap-3">
               <p :class="labelCls">
-                Destinatários <span class="text-danger" aria-hidden="true">*</span>
+                Destinatários
+                <span v-if="!modoEdicao" class="text-danger" aria-hidden="true">*</span>
               </p>
               <button
+                v-if="!modoEdicao"
                 type="button"
                 :class="classeSegmento(filtroDestinatario === 'coluna', true)"
                 aria-pressed="true"
@@ -1568,13 +1904,39 @@ async function salvar() {
             </div>
 
             <div
+              v-if="modoEdicao"
+              class="rounded-xl border border-amber-200/80 bg-amber-50/90 p-4 dark:border-amber-900/40 dark:bg-amber-950/30"
+              role="status"
+            >
+              <div class="flex gap-3">
+                <span
+                  class="material-symbols-outlined shrink-0 text-[22px] text-amber-700 dark:text-amber-300"
+                  aria-hidden="true"
+                >
+                  info
+                </span>
+                <div class="min-w-0 space-y-1">
+                  <p class="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                    Destinatários não podem ser alterados
+                  </p>
+                  <p class="text-sm leading-relaxed text-amber-900/90 dark:text-amber-200/90">
+                    Após a criação da campanha, não é possível editar as colunas de destinatários.
+                    Se precisar mudar quem receberá o disparo, exclua esta campanha e crie uma nova.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div
               class="rounded-xl border border-outline/25 bg-surface-container-lowest/60 p-4 dark:border-dark-outline/20 dark:bg-dark-surface-container-low/50"
+              :class="modoEdicao ? 'pointer-events-none select-none opacity-55' : ''"
+              :aria-disabled="modoEdicao ? 'true' : undefined"
             >
               <div class="mb-3 flex flex-wrap items-center justify-end gap-2">
                 <button
                   type="button"
                   :class="classeChipAcao()"
-                  :disabled="columns.length === 0"
+                  :disabled="funisPending || totalColunasFunis === 0"
                   @click="selecionarTodasColunas"
                 >
                   Selecionar todas
@@ -1589,27 +1951,40 @@ async function salvar() {
                 </button>
               </div>
 
-              <p v-if="columns.length === 0" :class="hintCls">
-                Nenhuma coluna carregada no Kanban deste workspace.
+              <p v-if="funisPending" :class="hintCls">Carregando funis e colunas…</p>
+
+              <p v-else-if="funisError" class="text-sm text-danger">
+                {{ funisError }}
               </p>
 
-              <ul v-else class="max-h-80 space-y-2 overflow-y-auto pr-0.5" role="list">
-                <li v-for="coluna in columns" :key="coluna.id">
-                  <label :class="classeColunaItem(isColunaSelecionada(coluna.id))">
-                    <span class="flex min-w-0 items-center gap-3">
-                      <input
-                        type="checkbox"
-                        class="h-4 w-4 rounded border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
-                        :checked="isColunaSelecionada(coluna.id)"
-                        @change="toggleColuna(coluna.id)"
-                      />
-                      <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
-                        {{ coluna.nome?.trim() || `Coluna #${coluna.id}` }}
-                      </span>
-                    </span>
-                  </label>
-                </li>
-              </ul>
+              <p v-else-if="totalColunasFunis === 0" :class="hintCls">
+                Nenhuma coluna encontrada nos funis deste workspace.
+              </p>
+
+              <div v-else class="max-h-80 space-y-4 overflow-y-auto pr-0.5">
+                <section v-for="funil in funisComColunas" :key="funil.id" class="space-y-2">
+                  <p class="text-xs font-bold uppercase tracking-wide text-primary-700 dark:text-primary-300">
+                    {{ funil.nome?.trim() || `Funil #${funil.id}` }}
+                  </p>
+                  <ul class="space-y-2" role="list">
+                    <li v-for="coluna in funil.columns" :key="coluna.id">
+                      <label :class="classeColunaItem(isColunaSelecionada(coluna.id))">
+                        <span class="flex min-w-0 items-center gap-3">
+                          <input
+                            type="checkbox"
+                            class="h-4 w-4 rounded border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
+                            :checked="isColunaSelecionada(coluna.id)"
+                            @change="toggleColuna(coluna.id)"
+                          />
+                          <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                            {{ coluna.nome?.trim() || `Coluna #${coluna.id}` }}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  </ul>
+                </section>
+              </div>
             </div>
           </div>
         </div>
@@ -1649,28 +2024,106 @@ async function salvar() {
                 </button>
               </div>
 
-              <p v-if="columns.length === 0" :class="hintCls">
-                Nenhuma coluna carregada no Kanban deste workspace.
+              <p v-if="funisPending" :class="hintCls">Carregando funis e colunas…</p>
+
+              <p v-else-if="funisError" class="text-sm text-danger">
+                {{ funisError }}
               </p>
 
-              <ul v-else class="max-h-80 space-y-2 overflow-y-auto pr-0.5" role="listbox" aria-label="Etapa após o disparo">
-                <li v-for="coluna in columns" :key="`apos-${coluna.id}`">
-                  <label :class="classeColunaItem(isColunaAposDisparo(coluna.id))">
-                    <span class="flex min-w-0 items-center gap-3">
-                      <input
-                        type="radio"
-                        name="coluna-apos-disparo"
-                        class="h-4 w-4 border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
-                        :checked="isColunaAposDisparo(coluna.id)"
-                        @change="selecionarColunaAposDisparo(coluna.id)"
-                      />
-                      <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
-                        {{ coluna.nome?.trim() || `Coluna #${coluna.id}` }}
-                      </span>
-                    </span>
-                  </label>
-                </li>
-              </ul>
+              <p v-else-if="totalColunasFunis === 0" :class="hintCls">
+                Nenhuma coluna encontrada nos funis deste workspace.
+              </p>
+
+              <div v-else class="max-h-80 space-y-4 overflow-y-auto pr-0.5" role="listbox" aria-label="Etapa após o disparo">
+                <section
+                  v-for="funil in funisComColunasAposDisparo"
+                  :key="`apos-funil-${funil.id}`"
+                  class="space-y-2"
+                  :class="funilIdAposDisparo === funil.id ? 'rounded-xl ring-1 ring-primary-500/30 p-1' : ''"
+                >
+                  <p class="text-xs font-bold uppercase tracking-wide text-primary-700 dark:text-primary-300">
+                    {{ funil.nome?.trim() || `Funil #${funil.id}` }}
+                  </p>
+                  <ul class="space-y-2" role="list">
+                    <li v-for="coluna in funil.columns" :key="`apos-${coluna.id}`">
+                      <label :class="classeColunaItem(isColunaAposDisparo(coluna.id))">
+                        <span class="flex min-w-0 items-center gap-3">
+                          <input
+                            type="radio"
+                            name="coluna-apos-disparo"
+                            class="h-4 w-4 border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
+                            :checked="isColunaAposDisparo(coluna.id)"
+                            @change="selecionarColunaAposDisparo(coluna.id)"
+                          />
+                          <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                            {{ coluna.nome?.trim() || `Coluna #${coluna.id}` }}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  </ul>
+                </section>
+              </div>
+            </div>
+
+            <div class="space-y-1 pt-2">
+              <p :class="labelCls">
+                Mover em caso de erro no envio <span class="text-danger" aria-hidden="true">*</span>
+              </p>
+              <p :class="hintCls">
+                Selecione a coluna do funil para onde o contato será movido se o disparo falhar.
+              </p>
+            </div>
+
+            <div
+              class="rounded-xl border border-outline/25 bg-surface-container-lowest/60 p-4 dark:border-dark-outline/20 dark:bg-dark-surface-container-low/50"
+            >
+              <p v-if="funisPending" :class="hintCls">Carregando funis e colunas…</p>
+
+              <p v-else-if="funisError" class="text-sm text-danger">
+                {{ funisError }}
+              </p>
+
+              <p v-else-if="totalColunasFunis === 0" :class="hintCls">
+                Nenhuma coluna encontrada nos funis deste workspace.
+              </p>
+
+              <div
+                v-else
+                class="max-h-80 space-y-4 overflow-y-auto pr-0.5"
+                role="listbox"
+                aria-label="Etapa em caso de erro no disparo"
+              >
+                <section
+                  v-for="funil in funisComColunasErro"
+                  :key="`erro-funil-${funil.id}`"
+                  class="space-y-2"
+                  :class="funilErroId === funil.id ? 'rounded-xl ring-1 ring-danger/30 p-1' : ''"
+                >
+                  <p class="text-xs font-bold uppercase tracking-wide text-danger">
+                    {{ funil.nome?.trim() || `Funil #${funil.id}` }}
+                  </p>
+                  <ul class="space-y-2" role="list">
+                    <li v-for="coluna in funil.columns" :key="`erro-${coluna.id}`">
+                      <label :class="classeColunaItem(isColunaErro(coluna.id))">
+                        <span class="flex min-w-0 items-center gap-3">
+                          <input
+                            type="radio"
+                            name="coluna-erro-disparo"
+                            required
+                            class="h-4 w-4 border-outline/50 text-primary-600 transition-shadow focus:ring-2 focus:ring-primary-500/30 dark:border-dark-outline/50 dark:focus:ring-dark-primary/30"
+                            :checked="isColunaErro(coluna.id)"
+                            @change="selecionarColunaErro(coluna.id)"
+                          />
+                          <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                            {{ coluna.nome?.trim() || `Coluna #${coluna.id}` }}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  </ul>
+                </section>
+              </div>
             </div>
           </div>
         </div>

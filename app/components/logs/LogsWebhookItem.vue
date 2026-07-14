@@ -23,10 +23,32 @@ function formatarDataHora(iso: string | null | undefined): string {
   })
 }
 
-function formatarDuracao(ms: number | null): string {
-  if (ms == null) return '—'
-  if (ms < 1000) return `${ms} ms`
-  return `${(ms / 1000).toFixed(2)} s`
+const LABELS_MESSAGETYPE: Record<string, string> = {
+  audioMessage: 'Áudio',
+  imageMessage: 'Imagem',
+  videoMessage: 'Vídeo',
+  documentMessage: 'Documento',
+  documentWithCaptionMessage: 'Documento',
+  stickerMessage: 'Figurinha',
+  conversation: 'Texto',
+  chat: 'Texto',
+  extendedTextMessage: 'Texto',
+  contactMessage: 'Contato',
+  locationMessage: 'Localização',
+  liveLocationMessage: 'Localização ao vivo',
+  reactionMessage: 'Reação',
+  desconhecido: 'Desconhecido',
+  unknown: 'Desconhecido',
+}
+
+function labelMessagetype(tipo: string | null | undefined): string | null {
+  if (!tipo?.trim()) return null
+  const key = tipo.trim()
+  if (LABELS_MESSAGETYPE[key]) return LABELS_MESSAGETYPE[key]
+  if (key.endsWith('Message')) {
+    return key.slice(0, -7)
+  }
+  return key
 }
 
 const resumoErro = computed(() => {
@@ -51,6 +73,12 @@ const canalExibicao = computed(() => {
   return null
 })
 
+const tipoMensagem = computed(() => labelMessagetype(props.execucao.message_type))
+
+/** Badge do tipo — cores explícitas para contraste no dark mode (evita primary-*). */
+const tipoMensagemClass =
+  'bg-teal-100 text-teal-900 dark:bg-teal-900 dark:text-teal-100'
+
 const origemLabel = computed(() => {
   const origem = props.execucao.request_origem
   if (origem === 'ngrok') return 'Dev (ngrok)'
@@ -61,12 +89,12 @@ const origemLabel = computed(() => {
 const origemClass = computed(() => {
   const origem = props.execucao.request_origem
   if (origem === 'ngrok') {
-    return 'bg-violet-100 text-violet-800 dark:bg-violet-950/50 dark:text-violet-300'
+    return 'bg-violet-100 text-violet-900 dark:bg-violet-900 dark:text-violet-100'
   }
   if (origem === 'producao') {
-    return 'bg-sky-100 text-sky-800 dark:bg-sky-950/50 dark:text-sky-300'
+    return 'bg-sky-100 text-sky-900 dark:bg-sky-900 dark:text-sky-100'
   }
-  return 'bg-surface-container-high text-on-surface-variant dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant'
+  return 'bg-surface-container-high text-on-surface-variant dark:bg-dark-surface-container-high dark:text-dark-on-surface'
 })
 </script>
 
@@ -83,10 +111,11 @@ const origemClass = computed(() => {
           {{ formatarDataHora(execucao.created_at) }}
         </span>
         <span
-          v-if="execucao.duracao_ms != null"
-          class="rounded-md bg-surface-container-high px-1.5 py-0.5 text-[10px] font-mono text-on-surface-variant dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant"
+          v-if="tipoMensagem"
+          class="rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+          :class="tipoMensagemClass"
         >
-          {{ formatarDuracao(execucao.duracao_ms) }}
+          {{ tipoMensagem }}
         </span>
         <span
           v-if="origemLabel"
@@ -98,11 +127,14 @@ const origemClass = computed(() => {
       </div>
 
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-        <span class="font-medium text-on-surface dark:text-dark-on-surface">
-          {{ execucao.event_type ?? '—' }}
+        <span
+          v-if="execucao.phone"
+          class="font-mono text-on-surface dark:text-dark-on-surface"
+        >
+          {{ execucao.phone }}
         </span>
         <span v-if="canalExibicao" class="text-on-surface-variant dark:text-dark-on-surface-variant">
-          · {{ canalExibicao }}
+          <span v-if="execucao.phone">· </span>{{ canalExibicao }}
         </span>
         <span
           v-if="execucao.instance_name"

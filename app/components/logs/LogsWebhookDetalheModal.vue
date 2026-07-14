@@ -74,10 +74,12 @@ function formatarData(iso: string | null | undefined): string {
           <dd class="mt-0.5 text-on-surface dark:text-dark-on-surface">{{ formatarData(execucao.finalizado_em) }}</dd>
         </div>
         <div>
-          <dt class="text-xs font-semibold text-on-surface-variant dark:text-dark-on-surface-variant">Duração</dt>
-          <dd class="mt-0.5 text-on-surface dark:text-dark-on-surface">
-            {{ execucao.duracao_ms != null ? `${execucao.duracao_ms} ms` : '—' }}
-          </dd>
+          <dt class="text-xs font-semibold text-on-surface-variant dark:text-dark-on-surface-variant">Telefone</dt>
+          <dd class="mt-0.5 font-mono text-on-surface dark:text-dark-on-surface">{{ execucao.phone || '—' }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs font-semibold text-on-surface-variant dark:text-dark-on-surface-variant">Tipo da mensagem</dt>
+          <dd class="mt-0.5 text-on-surface dark:text-dark-on-surface">{{ execucao.message_type || '—' }}</dd>
         </div>
         <div>
           <dt class="text-xs font-semibold text-on-surface-variant dark:text-dark-on-surface-variant">Message ID</dt>

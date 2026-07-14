@@ -111,3 +111,43 @@ export type KanbanCriarContatoResponse = {
   conversa_key: string
   coluna_id: number
 }
+
+/** Corpo de `POST /api/kanban/funil`. */
+export type KanbanCriarFunilBody = {
+  workspace_id: number
+  nome: string
+}
+
+/** Resposta de `POST /api/kanban/funil`. */
+export type KanbanCriarFunilResponse = {
+  ok: true
+  id: number
+  nome: string
+  workspace_id: number
+  ordem: number
+  columns: KanbanFunilColunaResumo[]
+}
+
+/** Coluna resumida dentro de um funil (lista em Pinia / GET funis). */
+export type KanbanFunilColunaResumo = {
+  id: number
+  nome: string
+  cor: string | null
+  ordem: number
+}
+
+/** Item de funil (`funil_workspace`). */
+export type KanbanFunilItem = {
+  id: number
+  nome: string
+  workspace_id: number
+  ordem: number
+  created_at: string
+  updated_at: string | null
+  columns: KanbanFunilColunaResumo[]
+}
+
+/** Resposta de `GET /api/kanban/funil`. */
+export type KanbanListarFunisResponse = {
+  funis: KanbanFunilItem[]
+}

@@ -16,11 +16,22 @@ const props = defineProps<{
   avatarSrc?: string | null
 }>()
 
+const emit = defineEmits<{
+  editar: [canal: Canal]
+}>()
+
 const canaisStore = useCanaisStore()
 
 function abrirChat() {
   canaisStore.setCurrentCanal(props.canal)
   navigateTo(`/workspaces/${props.workspaceId}/chat/${props.canal.id}`)
+}
+
+function editarCanal(e: MouseEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  const canal = canaisStore.items.find((c) => c.id === props.canal.id) ?? props.canal
+  emit('editar', canal)
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -65,6 +76,16 @@ function onKeydown(e: KeyboardEvent) {
     <div
       class="flex shrink-0 flex-row items-center justify-between gap-4 border-t border-slate-100 pt-4 sm:border-t-0 sm:pt-0 dark:border-slate-800 md:justify-end md:gap-6"
     >
+      <button
+        type="button"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-primary"
+        aria-label="Editar canal"
+        title="Editar canal"
+        @click="editarCanal"
+      >
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">edit</span>
+      </button>
+
       <span
         class="flex items-center gap-1.5 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-primary"
       >

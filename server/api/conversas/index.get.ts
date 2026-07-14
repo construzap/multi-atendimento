@@ -112,6 +112,7 @@ function parseSearchTerm(raw: unknown): string | undefined {
  * - `is_group` (opcional): `false` = só 1:1 (inclui null legado); omitido = todas (inclui grupos)
  * - `coluna_id` (opcional): restringe à coluna específica do kanban
  * - `q` (opcional): termo de busca em `name` OU `phone` (parcial, case-insensitive)
+ * - `key` (opcional): busca uma conversa específica por `conversa_key` (ignora paginação/filtros)
  */
 export default defineEventHandler(async (event): Promise<ConversasListResponse> => {
   const client = await serverSupabaseClient(event)
@@ -173,11 +174,41 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
   const isGroupFilter = parseIsGroupFilter(q.is_group)
   const colunaIdFilter = parseColunaIdFilter(q.coluna_id)
   const searchTerm = parseSearchTerm(q.q)
+  const rawKey = q.key
+  const conversaKeyFilter =
+    rawKey === undefined || rawKey === null || rawKey === ''
+      ? undefined
+      : String(rawKey).trim() || undefined
+
+  const admin = serverSupabaseServiceRole<any>(event)
+
+  if (conversaKeyFilter) {
+    const { data, error } = await admin
+      .from(VIEW_KANBAN_CONVERSAS)
+      .select(VIEW_SELECT)
+      .eq('id_canal', canalId)
+      .eq('conversa_key', conversaKeyFilter)
+      .maybeSingle()
+
+    if (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: error.message
+      })
+    }
+
+    const row = data as ViewKanbanConversaRow | null
+    return {
+      data: row ? [mapViewRowToConversa(row)] : [],
+      page: 1,
+      perPage: 1,
+      total: row ? 1 : 0
+    }
+  }
 
   const from = (page - 1) * PER_PAGE
   const to = from + PER_PAGE - 1
 
-  const admin = serverSupabaseServiceRole<any>(event)
   let query = admin
     .from(VIEW_KANBAN_CONVERSAS)
     .select(VIEW_SELECT, { count: 'exact' })

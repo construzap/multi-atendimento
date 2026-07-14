@@ -178,7 +178,7 @@ async function executarImportacao(
       importacaoProcessadas.value += chunk.length
     }
 
-    await kanbanStore.fetchBoard(workspaceId)
+    await kanbanStore.refetchCurrentBoard(workspaceId)
     emit('importado')
     return true
   } catch (err) {

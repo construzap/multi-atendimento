@@ -81,7 +81,34 @@ export default defineEventHandler(async (event): Promise<DetalheWebhookExecucaoR
 
   return {
     execucao: {
-      ...(data as DetalheWebhookExecucaoResponse['execucao']),
+      id: String(data.id ?? ''),
+      workspace_id: data.workspace_id != null ? Number(data.workspace_id) : null,
+      id_canal: data.id_canal != null ? Number(data.id_canal) : null,
+      event_type: typeof data.event_type === 'string' ? data.event_type : null,
+      instance_name: typeof data.instance_name === 'string' ? data.instance_name : null,
+      token_prefix: typeof data.token_prefix === 'string' ? data.token_prefix : null,
+      status: data.status,
+      motivo_ignorado: typeof data.motivo_ignorado === 'string' ? data.motivo_ignorado : null,
+      erro_etapa: typeof data.erro_etapa === 'string' ? data.erro_etapa : null,
+      erro_mensagem: typeof data.erro_mensagem === 'string' ? data.erro_mensagem : null,
+      message_id: typeof data.message_id === 'string' ? data.message_id : null,
+      conversa_key: typeof data.conversa_key === 'string' ? data.conversa_key : null,
+      message_type:
+        typeof data.messagetype === 'string'
+          ? data.messagetype
+          : typeof data.message_type === 'string'
+            ? data.message_type
+            : null,
+      phone: typeof data.phone === 'string' ? data.phone : null,
+      request_url: typeof data.request_url === 'string' ? data.request_url : null,
+      user_agent: typeof data.user_agent === 'string' ? data.user_agent : null,
+      etapas: Array.isArray(data.etapas) ? data.etapas : [],
+      payload: data.payload ?? null,
+      resposta: data.resposta ?? null,
+      iniciado_em: String(data.iniciado_em ?? ''),
+      finalizado_em: data.finalizado_em != null ? String(data.finalizado_em) : null,
+      duracao_ms: data.duracao_ms != null ? Number(data.duracao_ms) : null,
+      created_at: String(data.created_at ?? ''),
       canal_nome,
     },
   }

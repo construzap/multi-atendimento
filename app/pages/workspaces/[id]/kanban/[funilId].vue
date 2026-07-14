@@ -18,21 +18,27 @@ const workspaceId = computed(() => {
   return Number.isFinite(n) && n > 0 ? n : 0
 })
 
+const funilId = computed(() => {
+  const raw = route.params.funilId
+  const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : 0
+})
+
 /**
  * Não chamar GET /api/kanban no SSR: o $fetch do Nitro não envia cookies da sessão
- * por padrão → 401 "Não autenticado" e o board não carrega (nada a ver com drag-and-drop).
+ * por padrão → 401 "Não autenticado" e o board não carrega.
  */
 watch(
-  workspaceId,
-  (id) => {
-    if (!import.meta.client || !id) return
+  [workspaceId, funilId],
+  ([ws, fid]) => {
+    if (!import.meta.client || !ws || !fid) return
     const conversas = useConversasStore()
     const canalId = useCanaisStore().currentCanalId
     if (canalId != null) {
       conversas.setConversaAtual(null, canalId)
     }
-    void kanban.ensureBoardLoaded(id)
-    void useCanaisStore().ensureCanaisLoaded(id).catch(() => {})
+    void kanban.ensureBoardLoaded(ws, fid)
+    void useCanaisStore().ensureCanaisLoaded(ws).catch(() => {})
   },
   { immediate: true },
 )
@@ -58,6 +64,6 @@ watch(
       {{ error }}
     </div>
 
-    <KanbanBoard v-else :workspace-id="workspaceId" />
+    <KanbanBoard v-else :workspace-id="workspaceId" :funil-id="funilId" />
   </div>
 </template>

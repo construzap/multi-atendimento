@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { toast } from 'vue-sonner'
-import type { KanbanBoardResponse, KanbanCard, KanbanColumn, KanbanColumnPageResponse, KanbanConversaAtualizarResponse, KanbanConversaPatch } from '#shared/types/kanban'
+import type { KanbanBoardResponse, KanbanCard, KanbanColumn, KanbanColumnPageResponse, KanbanConversaAtualizarResponse, KanbanConversaPatch, KanbanCriarFunilResponse, KanbanFunilColunaResumo, KanbanFunilItem, KanbanListarFunisResponse } from '#shared/types/kanban'
 import type { Conversa } from '#shared/types/conversa'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { mensagemErroFetch } from '~/stores/canais'
@@ -69,15 +69,78 @@ function normalizeKanbanColumn(col: KanbanColumn): KanbanColumn {
   }
 }
 
+function normalizeFunilColunaResumo(raw: KanbanFunilColunaResumo): KanbanFunilColunaResumo {
+  const ordemRaw = raw.ordem
+  const ordem =
+    ordemRaw != null && Number.isFinite(Number(ordemRaw)) ? Math.trunc(Number(ordemRaw)) : 0
+  const corRaw = raw.cor
+  const cor =
+    typeof corRaw === 'string' && corRaw.trim() ? corRaw.trim() : corRaw != null ? String(corRaw) : null
+
+  return {
+    id: Math.trunc(raw.id),
+    nome: String(raw.nome ?? '').trim(),
+    cor,
+    ordem,
+  }
+}
+
+function colunasBoardParaResumoFunil(cols: KanbanColumn[]): KanbanFunilColunaResumo[] {
+  return cols.map((c) =>
+    normalizeFunilColunaResumo({
+      id: c.id,
+      nome: c.nome,
+      cor: c.cor,
+      ordem: c.ordem,
+    }),
+  )
+}
+
+function normalizeFunilItem(raw: KanbanFunilItem): KanbanFunilItem {
+  const ordemRaw = raw.ordem
+  const ordem =
+    ordemRaw != null && Number.isFinite(Number(ordemRaw)) && Number(ordemRaw) >= 1
+      ? Math.trunc(Number(ordemRaw))
+      : 1
+
+  return {
+    id: Math.trunc(raw.id),
+    nome: String(raw.nome ?? '').trim(),
+    workspace_id: Math.trunc(raw.workspace_id),
+    ordem,
+    created_at: String(raw.created_at ?? ''),
+    updated_at: raw.updated_at != null && String(raw.updated_at).trim() ? String(raw.updated_at) : null,
+    columns: (raw.columns ?? []).map(normalizeFunilColunaResumo),
+  }
+}
+
+function syncFunilColumnsInList(
+  funis: KanbanFunilItem[],
+  funilId: number,
+  columns: KanbanFunilColunaResumo[],
+): KanbanFunilItem[] {
+  const idx = funis.findIndex((f) => f.id === funilId)
+  if (idx < 0) return funis
+  const next = [...funis]
+  next[idx] = { ...next[idx]!, columns: columns.map(normalizeFunilColunaResumo) }
+  return next
+}
+
 export const useKanbanStore = defineStore('kanban', {
   state: () => ({
     funilId: null as number | null,
     funilNome: '' as string,
+    /** Funis do workspace atual (`funil_workspace`). */
+    funis: [] as KanbanFunilItem[],
+    funisPending: false,
+    funisError: null as string | null,
+    funisWorkspaceIdLoaded: null as number | null,
     columns: [] as KanbanColumn[],
     pending: false,
     error: null as string | null,
     loadedAt: null as number | null,
     workspaceIdLoaded: null as number | null,
+    funilIdLoaded: null as number | null,
     /** Evita double-submit por conversa_key durante drag. */
     movingKeys: {} as Record<string, boolean>,
     /** Durante POST de reordenar colunas (vizinho). */
@@ -128,6 +191,13 @@ export const useKanbanStore = defineStore('kanban', {
         workspace_id: workspaceId,
         ...extra,
       }
+      if (
+        !('funil_id' in query) &&
+        this.funilIdLoaded != null &&
+        this.funilIdLoaded > 0
+      ) {
+        query.funil_id = this.funilIdLoaded
+      }
       const q = this.busca.trim()
       if (q) query.q = q
       if (this.ocultarGrupos) query.is_group = false
@@ -137,21 +207,31 @@ export const useKanbanStore = defineStore('kanban', {
       return query
     },
 
-    async fetchBoard(workspaceId: number) {
-      if (!workspaceId) return
+    async fetchBoard(workspaceId: number, funilId: number) {
+      if (!workspaceId || !funilId) return
+
+      if (this.funilIdLoaded !== funilId) {
+        this.columns = []
+      }
 
       this.pending = true
       this.error = null
       try {
         const res = await $fetch<KanbanBoardResponse>('/api/kanban', {
           method: 'GET',
-          query: this.kanbanQuery(workspaceId),
+          query: this.kanbanQuery(workspaceId, { funil_id: funilId }),
         })
         this.funilId = res.funil_id || null
         this.funilNome = res.funil_nome ?? ''
         this.columns = (res.columns ?? []).map(normalizeKanbanColumn)
         this.loadedAt = Date.now()
         this.workspaceIdLoaded = workspaceId
+        this.funilIdLoaded = funilId
+        this.funis = syncFunilColumnsInList(
+          this.funis,
+          funilId,
+          colunasBoardParaResumoFunil(this.columns),
+        )
         hidratarCamposPersonalizadosNoPinia(
           workspaceId,
           this.columns.flatMap((col) => col.cards),
@@ -160,6 +240,7 @@ export const useKanbanStore = defineStore('kanban', {
         this.columns = []
         this.funilId = null
         this.funilNome = ''
+        this.funilIdLoaded = null
         this.error = mensagemErroFetch(err, 'Não foi possível carregar o Kanban.')
         toast.error(this.error, { duration: 8000 })
       } finally {
@@ -167,20 +248,89 @@ export const useKanbanStore = defineStore('kanban', {
       }
     },
 
+    async refetchCurrentBoard(workspaceId: number) {
+      const fid = this.funilIdLoaded ?? this.funilId
+      if (!workspaceId || !fid) return
+      await this.fetchBoard(workspaceId, fid)
+    },
+
+    async fetchFunis(workspaceId: number) {
+      if (!workspaceId) return []
+
+      this.funisPending = true
+      this.funisError = null
+      try {
+        const res = await $fetch<KanbanListarFunisResponse>('/api/kanban/funil', {
+          method: 'GET',
+          query: { workspace_id: workspaceId },
+        })
+        this.funis = (res.funis ?? []).map(normalizeFunilItem)
+        this.funisWorkspaceIdLoaded = workspaceId
+        return this.funis
+      } catch (err: unknown) {
+        this.funis = []
+        this.funisWorkspaceIdLoaded = null
+        this.funisError = mensagemErroFetch(err, 'Não foi possível carregar os funis.')
+        throw err
+      } finally {
+        this.funisPending = false
+      }
+    },
+
+    /** Cache-first: só busca funis se ainda não houver lista para este workspace. */
+    async ensureFunisLoaded(workspaceId: number, options?: { force?: boolean }) {
+      if (!workspaceId) return
+      if (!options?.force && this.funisWorkspaceIdLoaded === workspaceId) return
+      await this.fetchFunis(workspaceId)
+    },
+
+    adicionarFunilCriado(res: KanbanCriarFunilResponse) {
+      const item = normalizeFunilItem({
+        id: res.id,
+        nome: res.nome,
+        workspace_id: res.workspace_id,
+        ordem: res.ordem,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        columns: res.columns ?? [],
+      })
+      const idx = this.funis.findIndex((f) => f.id === item.id)
+      if (idx >= 0) {
+        this.funis[idx] = item
+      } else {
+        this.funis = [...this.funis, item]
+      }
+      this.funisWorkspaceIdLoaded = res.workspace_id
+    },
+
     /**
      * Cache-first: só busca se o board deste workspace ainda não estiver no Pinia.
      * Use `fetchBoard` ou `{ force: true }` após mutações (mover card, busca, etc.).
      */
-    async ensureBoardLoaded(workspaceId: number, options?: { force?: boolean }) {
+    async ensureBoardLoaded(workspaceId: number, funilId?: number, options?: { force?: boolean }) {
       if (!workspaceId) return
+
+      let fid =
+        funilId ??
+        (this.workspaceIdLoaded === workspaceId ? this.funilIdLoaded ?? this.funilId : null) ??
+        null
+
+      if (!fid) {
+        await this.ensureFunisLoaded(workspaceId)
+        fid = this.funis.find((f) => f.ordem === 1)?.id ?? this.funis[0]?.id ?? null
+      }
+
+      if (!fid) return
+
       if (
         !options?.force &&
         this.loadedAt != null &&
-        this.workspaceIdLoaded === workspaceId
+        this.workspaceIdLoaded === workspaceId &&
+        this.funilIdLoaded === fid
       ) {
         return
       }
-      await this.fetchBoard(workspaceId)
+      await this.fetchBoard(workspaceId, fid)
     },
 
     async loadMoreCards(payload: { workspaceId: number; colunaId: number }) {
@@ -227,13 +377,13 @@ export const useKanbanStore = defineStore('kanban', {
 
     async applyBusca(workspaceId: number, termo: string) {
       this.busca = termo.trim()
-      await this.fetchBoard(workspaceId)
+      await this.refetchCurrentBoard(workspaceId)
     },
 
     async setOcultarGrupos(workspaceId: number, ocultar: boolean) {
       this.ocultarGrupos = ocultar
       this.loadingMoreByColumn = {}
-      await this.fetchBoard(workspaceId)
+      await this.refetchCurrentBoard(workspaceId)
     },
 
     /** `null` = todos os canais. */
@@ -242,7 +392,7 @@ export const useKanbanStore = defineStore('kanban', {
         canalId != null && Number.isFinite(canalId) && canalId > 0 ? Math.trunc(canalId) : null
       this.filtroCanalId = id
       this.loadingMoreByColumn = {}
-      await this.fetchBoard(workspaceId)
+      await this.refetchCurrentBoard(workspaceId)
     },
 
     openInfoContatoConversa(conversaKey: string) {
@@ -640,7 +790,7 @@ export const useKanbanStore = defineStore('kanban', {
             cor: payload.cor?.trim() || null,
           },
         })
-        await this.fetchBoard(payload.workspaceId)
+        await this.refetchCurrentBoard(payload.workspaceId)
         return true
       } catch (err: unknown) {
         const msg = mensagemErroFetch(err, 'Não foi possível criar a coluna.')
@@ -666,7 +816,7 @@ export const useKanbanStore = defineStore('kanban', {
             cor: payload.cor?.trim() || null,
           },
         })
-        await this.fetchBoard(payload.workspaceId)
+        await this.refetchCurrentBoard(payload.workspaceId)
         return true
       } catch (err: unknown) {
         const msg = mensagemErroFetch(err, 'Não foi possível atualizar a coluna.')
@@ -693,7 +843,7 @@ export const useKanbanStore = defineStore('kanban', {
             direcao: payload.direcao,
           },
         })
-        await this.fetchBoard(payload.workspaceId)
+        await this.refetchCurrentBoard(payload.workspaceId)
         return true
       } catch (err: unknown) {
         const msg = mensagemErroFetch(err, 'Não foi possível reordenar a coluna.')
@@ -711,7 +861,7 @@ export const useKanbanStore = defineStore('kanban', {
           `/api/kanban/coluna?workspace_id=${payload.workspaceId}&coluna_id=${payload.colunaId}`,
           { method: 'DELETE' },
         )
-        await this.fetchBoard(payload.workspaceId)
+        await this.refetchCurrentBoard(payload.workspaceId)
         toast.success('Coluna excluída.')
         return true
       } catch (err: unknown) {
@@ -762,11 +912,16 @@ export const useKanbanStore = defineStore('kanban', {
     reset() {
       this.funilId = null
       this.funilNome = ''
+      this.funis = []
+      this.funisPending = false
+      this.funisError = null
+      this.funisWorkspaceIdLoaded = null
       this.columns = []
       this.pending = false
       this.error = null
       this.loadedAt = null
       this.workspaceIdLoaded = null
+      this.funilIdLoaded = null
       this.movingKeys = {}
       this.reorderingColumnId = null
       this.loadingMoreByColumn = {}

@@ -86,12 +86,6 @@ export default defineEventHandler(async (event): Promise<PromptWorkspaceComPrinc
     if (wsErr) {
       throw createError({ statusCode: 500, statusMessage: wsErr.message })
     }
-
-    await admin
-      .from('prompt_workspace')
-      .update({ tipo: 'principal', updated_at: new Date().toISOString() })
-      .eq('id', promptId)
-      .eq('workspace_id', workspaceId)
   } else if (definirPrincipal === false && eraPrincipal) {
     const { error: wsErr } = await admin
       .from('workspace')

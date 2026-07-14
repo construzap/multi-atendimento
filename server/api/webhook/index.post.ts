@@ -8,9 +8,10 @@ import { persistWebhookMensagem } from '../../utils/persistWebhookMensagem'
 import { triggerNovaMensagem } from '../../utils/pusherServer'
 import {
   criarWebhookExecucaoLog,
+  dadosLogFromNormalizada,
   sanitizarPayloadUazapi,
 } from '../../utils/webhookExecucaoLog'
-import { isMediaMessage, normalizarMensagem } from '../../utils/webhookNormalizer'
+import { isMediaMessage, normalizarMensagem, resolveUazapiMediaType } from '../../utils/webhookNormalizer'
 
 /**
  * POST /api/webhook — chamada externa (sem sessão de usuário).
@@ -170,9 +171,13 @@ export default defineEventHandler(async (event) => {
     normalizada.messagetype = 'audioMessage'
   }
 
+  const uazapiMediaType = resolveUazapiMediaType(body.message)
+  if (uazapiMediaType === 'ptt' || uazapiMediaType === 'audio') {
+    normalizada.messagetype = 'audioMessage'
+  }
+
   if (isMediaMessage(body.message)) {
-    const isAudio =
-      body.message.mediaType === 'ptt' || body.message.mediaType === 'audio'
+    const isAudio = uazapiMediaType === 'ptt' || uazapiMediaType === 'audio'
     const tDownload = Date.now()
     const media = await downloadUazapiMedia(
       body.BaseUrl,
@@ -184,7 +189,7 @@ export default defineEventHandler(async (event) => {
       log.registrarEtapa(
         'download_midia',
         true,
-        { mediaType: body.message.mediaType },
+        { mediaType: uazapiMediaType ?? body.message.mediaType },
         Date.now() - tDownload,
       )
 
@@ -214,7 +219,12 @@ export default defineEventHandler(async (event) => {
         )
       }
     } else {
-      log.registrarEtapa('download_midia', false, { mediaType: body.message.mediaType }, Date.now() - tDownload)
+      log.registrarEtapa(
+        'download_midia',
+        false,
+        { mediaType: uazapiMediaType ?? body.message.mediaType },
+        Date.now() - tDownload,
+      )
     }
   }
 
@@ -230,6 +240,7 @@ export default defineEventHandler(async (event) => {
       workspace_id: workspaceId,
       id_canal: canal.id,
       message_id: normalizada.message_id,
+      ...dadosLogFromNormalizada(normalizada),
       erro_etapa: saved.step,
       erro_mensagem: saved.message,
       resposta,
@@ -290,6 +301,7 @@ export default defineEventHandler(async (event) => {
     id_canal: canal.id,
     message_id: normalizada.message_id,
     conversa_key: saved.conversa_key,
+    ...dadosLogFromNormalizada(normalizada),
     resposta,
   })
 

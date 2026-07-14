@@ -1,6 +1,7 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
 import type { AdminPromptTornarPrincipalBody, PromptWorkspaceComPrincipal } from '#shared/types/adminPrompt'
+import { PROMPT_WORKSPACE_TIPO_DEFAULT } from '#shared/types/adminPrompt'
 import {
   assertAdminWorkspaceAtivo,
   assertPromptDoWorkspace,
@@ -12,7 +13,7 @@ import {
 /**
  * POST /api/admin/prompt/tornar-principal
  * Body: `{ workspace_id, id }`
- * Atualiza `workspace.prompt_principal` com o id do prompt.
+ * Atualiza `workspace.prompt_principal` com o id do prompt (sem alterar `tipo`).
  */
 export default defineEventHandler(async (event): Promise<PromptWorkspaceComPrincipal> => {
   assertMethod(event, 'POST')
@@ -27,7 +28,6 @@ export default defineEventHandler(async (event): Promise<PromptWorkspaceComPrinc
   await assertPromptDoWorkspace(event, promptId, workspaceId)
 
   const admin = serverSupabaseServiceRole<any>(event)
-  const agora = new Date().toISOString()
 
   const { error: wsErr } = await admin
     .from('workspace')
@@ -40,10 +40,9 @@ export default defineEventHandler(async (event): Promise<PromptWorkspaceComPrinc
 
   const { data, error } = await admin
     .from('prompt_workspace')
-    .update({ tipo: 'principal', updated_at: agora })
+    .select('id, workspace_id, nome, tipo, prompt, created_at, updated_at')
     .eq('id', promptId)
     .eq('workspace_id', workspaceId)
-    .select('id, workspace_id, nome, tipo, prompt, created_at, updated_at')
     .single()
 
   if (error) {
@@ -57,7 +56,7 @@ export default defineEventHandler(async (event): Promise<PromptWorkspaceComPrinc
     id: Number.isFinite(id) ? id : 0,
     workspace_id: Number.isFinite(wsId) ? wsId : 0,
     nome: String(data.nome ?? '').trim(),
-    tipo: String(data.tipo ?? 'principal').trim(),
+    tipo: String(data.tipo ?? PROMPT_WORKSPACE_TIPO_DEFAULT).trim(),
     prompt: String(data.prompt ?? ''),
     created_at: String(data.created_at ?? ''),
     updated_at: String(data.updated_at ?? ''),

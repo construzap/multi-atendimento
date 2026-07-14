@@ -5,7 +5,7 @@ import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 const CAMPANHAS_SELECT =
-  'id, nome, tipo_mensagem, conteudo_texto, url_midia, webhook_url, intervalo_minimo_minutos, intervalo_maximo_minutos, status, canal_id, canais_ids, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo'
+  'id, nome, tipo_mensagem, conteudo_texto, url_midia, intervalo_minimo_minutos, intervalo_maximo_minutos, status, canal_id, canais_ids, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id, funil_id, timezone_escolhido, tamanho_lote, pausa_lote_minutos, coluna_erro_id, funil_erro_id'
 
 function parseWorkspaceId(raw: unknown): number {
   const n =

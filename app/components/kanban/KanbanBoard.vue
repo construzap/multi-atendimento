@@ -10,6 +10,7 @@ import InfoContatoKanban from './InfoContatoKanban/InfoContatoKanban.vue'
 import FerramentaImportarContato from './importar-contatos/FerramentaImportarContato.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import SelecaoMultiplaBar from '~/components/kanban/SelecaoMultiplaBar.vue'
+import SeletorFunilKanban from '~/components/kanban/SeletorFunilKanban.vue'
 import { useCanaisStore } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 
@@ -20,6 +21,7 @@ type DragState = {
 
 const props = defineProps<{
   workspaceId: number
+  funilId: number
 }>()
 
 const router = useRouter()
@@ -65,11 +67,6 @@ function toggleSelected(key: string, nextSelected?: boolean) {
 
 function clearSelection() {
   selectedKeys.value = []
-}
-
-function onAlterarCampos() {
-  // Somente UI por enquanto (pedido: nenhuma chamada).
-  toast.info('Ação: Alterar campos (UI apenas).')
 }
 
 const canaisDoWorkspace = computed(() =>
@@ -200,8 +197,6 @@ const gridStyle = computed(() => {
     gridTemplateColumns: `repeat(${n}, minmax(260px, 1fr))`,
   }
 })
-
-const titulo = computed(() => kanban.funilNome?.trim() || 'Kanban')
 
 function abrirNovaColuna() {
   modalColunaMode.value = 'create'
@@ -387,15 +382,18 @@ function onCardOpen(card: KanbanCardModel) {
 
   const kanban = useKanbanStore()
   kanban.closeInfoContatoConversa()
-  useCanaisStore().setCurrentCanalId(Math.trunc(canalId))
 
-  void navigateTo(
-    `/workspaces/${props.workspaceId}/chat/${Math.trunc(canalId)}/${encodeURIComponent(conversaKey)}`,
-  )
+  void navegarParaConversaChat(props.workspaceId, Math.trunc(canalId), conversaKey)
 }
 
 function onCardToggleSelected(payload: { conversa_key: string; nextSelected: boolean }) {
   toggleSelected(payload.conversa_key, payload.nextSelected)
+}
+
+function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolean }) {
+  for (const key of payload.keys) {
+    toggleSelected(key, payload.nextSelected)
+  }
 }
 </script>
 
@@ -403,9 +401,7 @@ function onCardToggleSelected(payload: { conversa_key: string; nextSelected: boo
   <div class="flex min-h-0 flex-1 flex-col">
     <div class="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 class="font-headline text-2xl font-bold text-slate-900 dark:text-dark-on-surface">
-          {{ titulo }}
-        </h1>
+        <SeletorFunilKanban :workspace-id="workspaceId" />
         <p class="mt-1 text-sm text-slate-600 dark:text-dark-on-surface-variant">
           Arraste conversas entre as etapas do funil.
         </p>
@@ -551,8 +547,11 @@ function onCardToggleSelected(payload: { conversa_key: string; nextSelected: boo
     <SelecaoMultiplaBar
       v-if="selectedCount > 0"
       :count="selectedCount"
+      :workspace-id="workspaceId"
+      :funil-id="funilId"
+      :selected-keys="selectedKeys"
       @limpar="clearSelection"
-      @alterar-campos="onAlterarCampos"
+      @concluido="clearSelection"
     />
 
     <FerramentaImportarContato
@@ -589,6 +588,7 @@ function onCardToggleSelected(payload: { conversa_key: string; nextSelected: boo
         @load-more="onLoadMore"
         @card-open="onCardOpen"
         @card-toggle-selected="onCardToggleSelected"
+        @column-toggle-select-all="onColumnToggleSelectAll"
       />
     </div>
 

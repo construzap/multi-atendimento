@@ -103,3 +103,21 @@ export function defaultFusoCampanhaDoNavegador(): TimezoneCampanha {
   if (mapeado) return mapeado
   return 'America/Sao_Paulo'
 }
+
+/** Mapeia fusos salvos no banco (lista ampla) para opções do select de campanha. */
+const MAPEAMENTO_TIMEZONE_BANCO_PARA_CAMPANHA: Record<string, TimezoneCampanha> = {
+  'America/Belem': 'America/Fortaleza',
+  'America/Maceio': 'America/Fortaleza',
+  'America/Eirunepe': 'America/Rio_Branco',
+}
+
+/** Normaliza `timezone_escolhido` do banco para valor válido no select de campanha. */
+export function normalizarTimezoneCampanhaParaFormulario(
+  tz: string | null | undefined,
+): TimezoneCampanha {
+  const t = String(tz ?? '').trim()
+  if (isTimezoneCampanhaPermitido(t)) return t
+  const mapeado = MAPEAMENTO_TIMEZONE_BANCO_PARA_CAMPANHA[t]
+  if (mapeado) return mapeado
+  return 'America/Sao_Paulo'
+}

@@ -17,6 +17,7 @@ import {
   isColunaOrigemLeadsNaoConfiguradaError,
   useConversasStore,
 } from '~/stores/conversas'
+import { useConversasFiltros } from '~/composables/useConversasFiltros'
 import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
 
 const pesquisa = ref('')
@@ -32,7 +33,11 @@ const workspacesStore = useWorkspacesStore()
 const { currentCanal, instanciaStatus, items } = storeToRefs(canaisStore)
 const route = useRoute()
 const conversasStore = useConversasStore()
-const { mostrarConversasFechadas, mostrarGrupos } = storeToRefs(conversasStore)
+const {
+  mostrarFechadas,
+  mostrarGrupos,
+  termoPesquisa,
+} = useConversasFiltros()
 
 function parsePositiveInt(raw: unknown): number | null {
   const s = String(raw ?? '').trim()
@@ -55,11 +60,7 @@ const workspaceIdNumero = computed((): number | null => {
   return workspaceId.value
 })
 
-const canalParaEdicaoModal = computed(() => {
-  const c = currentCanal.value
-  if (!c?.id) return null
-  return { id: c.id, nome: c.nome, descricao: c.descricao }
-})
+const canalParaEdicaoModal = computed(() => currentCanal.value?.id ?? null)
 
 async function trocarCanal(idCanal: number, close: () => void) {
   close()
@@ -215,11 +216,11 @@ const alternandoGrupos = ref(false)
 const atualizandoLista = ref(false)
 
 const labelToggleFechadas = computed(() =>
-  mostrarConversasFechadas.value ? 'Somente abertas' : 'Mostrar fechadas'
+  mostrarFechadas.value ? 'Somente abertas' : 'Mostrar fechadas'
 )
 
 const iconeToggleFechadas = computed(() =>
-  mostrarConversasFechadas.value ? 'visibility_off' : 'visibility'
+  mostrarFechadas.value ? 'visibility_off' : 'visibility'
 )
 
 const labelToggleGrupos = computed(() =>
@@ -237,15 +238,19 @@ function executarPesquisa() {
 watch(
   () => currentCanal.value?.id,
   () => {
-    pesquisa.value = ''
+    pesquisa.value = termoPesquisa.value
   },
 )
+
+watch(termoPesquisa, (t) => {
+  if (pesquisa.value !== t) pesquisa.value = t
+})
 
 async function alternarMostrarConversasFechadas() {
   if (alternandoFechadas.value || !currentCanal.value?.id) return
   alternandoFechadas.value = true
   try {
-    await conversasStore.setMostrarConversasFechadas(!mostrarConversasFechadas.value)
+    await conversasStore.setMostrarFechadas(!mostrarFechadas.value)
   } catch (err: unknown) {
     const msg = mensagemErroFetch(err, 'Não foi possível atualizar a lista de conversas.')
     toast.error(msg, { duration: 8000 })
@@ -293,7 +298,7 @@ async function atualizarListaConversas() {
       v-model:open="modalEditarCanalAberto"
       mode="edit"
       :workspace-id="workspaceIdNumero"
-      :canal-edicao="canalParaEdicaoModal"
+      :canal-edicao-id="canalParaEdicaoModal"
     />
 
     <ModalAlerta
@@ -470,13 +475,13 @@ async function atualizarListaConversas() {
 
         <BaseButton
           type="button"
-          :variant="mostrarConversasFechadas ? 'primary' : 'secondary'"
+          :variant="mostrarFechadas ? 'primary' : 'secondary'"
           size="sm"
           :block="false"
           class="!flex min-h-9 w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap !px-2 !py-0 text-[11px] leading-tight"
           :loading="alternandoFechadas"
           :disabled="alternandoFechadas || !currentCanal?.id"
-          :aria-pressed="mostrarConversasFechadas"
+          :aria-pressed="mostrarFechadas"
           :aria-label="labelToggleFechadas"
           @click="alternarMostrarConversasFechadas"
         >

@@ -10,6 +10,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   editar: [campanhaId: string]
+  excluido: [campanhaId: string]
 }>()
 
 const disparoEmMassa = useDisparoEmMassaStore()
@@ -58,7 +59,12 @@ watch(
 
     <ul v-else class="space-y-3" role="list">
       <li v-for="campanha in campanhas" :key="campanha.id">
-        <ItemCampanha :campanha="campanha" @editar="emit('editar', $event)" />
+        <ItemCampanha
+          :campanha="campanha"
+          :workspace-id="workspaceId"
+          @editar="emit('editar', $event)"
+          @excluido="emit('excluido', $event)"
+        />
       </li>
     </ul>
   </section>

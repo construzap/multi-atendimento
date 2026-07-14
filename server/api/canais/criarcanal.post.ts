@@ -1,4 +1,12 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
+import type { CanalHorarios } from '#shared/types/canal'
+import {
+  parseCanalHorarios,
+  parseEndereco,
+  parseLatitude,
+  parseLongitude,
+  parseTempoAvisoMinutos,
+} from '#shared/utils/validarCanalConfigLoja'
 import { createError, readBody } from 'h3'
 import { checkSubscription } from '../../utils/checkSubscription'
 import { getAuthUserId } from '../../utils/getAuthUserId'
@@ -9,13 +17,21 @@ type CreateCanalBody = {
   nome?: string
   descricao?: string | null
   workspace_id?: number | string
+  latitude?: number | string
+  longitude?: number | string
+  tempo_aviso_minutos?: number | string
+  horarios?: unknown
+  endereco?: string
 }
+
+const CANAL_SELECT_PUBLICO =
+  'id, workspace_id, user_id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios'
 
 /**
  * POST /api/canais/criarcanal
  * Cria um canal no workspace indicado.
  *
- * - Recebe: nome, descricao, workspace_id
+ * - Recebe: nome, descricao, workspace_id, latitude, longitude, tempo_aviso_minutos, horarios
  * - Salva: user_id do auth (getUser), igual ao fluxo de /api/perfil/me
  * - Assinatura (`vw_perfil_consolidado` via `checkSubscription`): bloqueia se status
  *   `pendente` ou `cancelado`; caso contrário exige `canais_criados < canais` (limite do plano).
@@ -60,6 +76,33 @@ export default defineEventHandler(async (event) => {
       statusCode: 400,
       statusMessage: 'Descrição inválida.'
     })
+  }
+
+  const latitudeParsed = parseLatitude(body.latitude)
+  if (typeof latitudeParsed === 'string') {
+    throw createError({ statusCode: 400, statusMessage: latitudeParsed })
+  }
+
+  const longitudeParsed = parseLongitude(body.longitude)
+  if (typeof longitudeParsed === 'string') {
+    throw createError({ statusCode: 400, statusMessage: longitudeParsed })
+  }
+
+  const tempoAvisoParsed = parseTempoAvisoMinutos(body.tempo_aviso_minutos)
+  if (typeof tempoAvisoParsed === 'string') {
+    throw createError({ statusCode: 400, statusMessage: tempoAvisoParsed })
+  }
+
+  const horariosParsed = parseCanalHorarios(body.horarios)
+  if (typeof horariosParsed === 'string') {
+    throw createError({ statusCode: 400, statusMessage: horariosParsed })
+  }
+
+  const horarios: CanalHorarios = horariosParsed
+
+  const endereco = parseEndereco(body.endereco)
+  if (!endereco) {
+    throw createError({ statusCode: 400, statusMessage: 'Informe o endereço da loja.' })
   }
 
   const rawWs = body.workspace_id
@@ -116,7 +159,6 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Tipos do DB ainda não configurados (Database = unknown), então usamos any aqui.
   const admin = serverSupabaseServiceRole<any>(event)
 
   await checkWorkspace(event, workspaceId, userId)
@@ -127,9 +169,14 @@ export default defineEventHandler(async (event) => {
       workspace_id: workspaceId,
       user_id: userId,
       nome,
-      descricao: descricao?.trim() || null
+      descricao: descricao?.trim() || null,
+      endereco,
+      latitude: latitudeParsed,
+      longitude: longitudeParsed,
+      tempo_aviso_minutos: tempoAvisoParsed,
+      horarios,
     })
-    .select('id, workspace_id, user_id, nome, descricao, created_at')
+    .select(CANAL_SELECT_PUBLICO)
     .single()
 
   if (error) {
@@ -148,7 +195,7 @@ export default defineEventHandler(async (event) => {
       .from('canais')
       .update({ token, servidor })
       .eq('id', data.id)
-      .select('id, workspace_id, user_id, nome, descricao, created_at')
+      .select(CANAL_SELECT_PUBLICO)
       .single()
 
     if (upErr) {

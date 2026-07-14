@@ -19,7 +19,7 @@ import {
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 const EXECUCOES_SELECT =
-  'id, workspace_id, id_canal, event_type, instance_name, token_prefix, status, motivo_ignorado, erro_etapa, erro_mensagem, message_id, conversa_key, request_url, user_agent, iniciado_em, finalizado_em, duracao_ms, created_at'
+  'id, workspace_id, id_canal, event_type, instance_name, token_prefix, status, motivo_ignorado, erro_etapa, erro_mensagem, message_id, conversa_key, messagetype, phone, request_url, user_agent, iniciado_em, finalizado_em, duracao_ms, created_at'
 
 const STATUS_VALIDOS: WebhookExecucaoStatus[] = ['processando', 'ignorado', 'sucesso', 'erro']
 const ORIGENS_VALIDAS: WebhookRequestOrigem[] = ['ngrok', 'producao', 'outro']
@@ -91,15 +91,37 @@ function aplicarFiltroOrigemQuery(query: any, origem: WebhookRequestOrigem) {
 }
 
 function enriquecerExecucao(
-  row: WebhookExecucaoResumo,
+  row: Record<string, unknown>,
   canalNomes: Map<number, string | null>,
 ): WebhookExecucaoResumo {
-  const request_host = extrairRequestHost(row.request_url)
+  const idCanal = row.id_canal != null ? Number(row.id_canal) : null
+  const requestUrl = typeof row.request_url === 'string' ? row.request_url : null
+  const messagetypeRaw = row.messagetype ?? row.message_type ?? null
+
   return {
-    ...row,
-    canal_nome: row.id_canal != null ? (canalNomes.get(row.id_canal) ?? null) : null,
-    request_host,
-    request_origem: classificarRequestOrigem(row.request_url),
+    id: String(row.id ?? ''),
+    workspace_id: row.workspace_id != null ? Number(row.workspace_id) : null,
+    id_canal: idCanal,
+    event_type: typeof row.event_type === 'string' ? row.event_type : null,
+    instance_name: typeof row.instance_name === 'string' ? row.instance_name : null,
+    token_prefix: typeof row.token_prefix === 'string' ? row.token_prefix : null,
+    status: row.status as WebhookExecucaoResumo['status'],
+    motivo_ignorado: typeof row.motivo_ignorado === 'string' ? row.motivo_ignorado : null,
+    erro_etapa: typeof row.erro_etapa === 'string' ? row.erro_etapa : null,
+    erro_mensagem: typeof row.erro_mensagem === 'string' ? row.erro_mensagem : null,
+    message_id: typeof row.message_id === 'string' ? row.message_id : null,
+    conversa_key: typeof row.conversa_key === 'string' ? row.conversa_key : null,
+    message_type: typeof messagetypeRaw === 'string' ? (messagetypeRaw as WebhookExecucaoResumo['message_type']) : null,
+    phone: typeof row.phone === 'string' ? row.phone : null,
+    request_url: requestUrl,
+    user_agent: typeof row.user_agent === 'string' ? row.user_agent : null,
+    iniciado_em: String(row.iniciado_em ?? ''),
+    finalizado_em: row.finalizado_em != null ? String(row.finalizado_em) : null,
+    duracao_ms: row.duracao_ms != null ? Number(row.duracao_ms) : null,
+    created_at: String(row.created_at ?? ''),
+    canal_nome: idCanal != null ? (canalNomes.get(idCanal) ?? null) : null,
+    request_host: extrairRequestHost(requestUrl),
+    request_origem: classificarRequestOrigem(requestUrl),
   }
 }
 
@@ -188,7 +210,7 @@ export default defineEventHandler(async (event): Promise<ListarWebhookExecucoesR
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
 
-  const rows = ((data ?? []) as WebhookExecucaoResumo[]).filter((row) =>
+  const rows = (data ?? []).filter((row) =>
     execucaoPertenceAoWorkspace(row, workspaceId, canalIdsWorkspace),
   )
 
@@ -196,7 +218,8 @@ export default defineEventHandler(async (event): Promise<ListarWebhookExecucoesR
     ...new Set(
       rows
         .map((r) => r.id_canal)
-        .filter((id): id is number => id != null && Number.isFinite(id)),
+        .filter((id): id is number => id != null && Number.isFinite(Number(id)))
+        .map((id) => Number(id)),
     ),
   ]
 

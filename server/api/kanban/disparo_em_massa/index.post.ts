@@ -180,6 +180,72 @@ function parseColunaIdAposDisparo(raw: unknown): number | null {
   return n
 }
 
+function parseColunaErroId(raw: unknown): number {
+  if (raw === undefined || raw === null || raw === '') {
+    throw createError({ statusCode: 400, statusMessage: 'coluna_erro_id é obrigatório.' })
+  }
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw).trim(), 10)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+    throw createError({ statusCode: 400, statusMessage: 'coluna_erro_id inválido.' })
+  }
+  return n
+}
+
+function parseFunilIdOpcional(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const s = String(raw).trim()
+  if (!s) return null
+  const n = Number.parseInt(s, 10)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+    throw createError({ statusCode: 400, statusMessage: 'funil_id inválido.' })
+  }
+  return String(n)
+}
+
+/** Resolve `funil_id` a partir de uma coluna do workspace. */
+async function resolverFunilIdDaColuna(
+  admin: SupabaseAdmin,
+  workspaceId: number,
+  colunaId: number,
+): Promise<string | null> {
+  const { data: coluna, error: colErr } = await admin
+    .from('funil_workspace_colunas')
+    .select('funil_id')
+    .eq('id', colunaId)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (colErr) {
+    throw createError({ statusCode: 500, statusMessage: colErr.message })
+  }
+  if (!coluna) return null
+
+  const funilId =
+    typeof coluna.funil_id === 'number'
+      ? coluna.funil_id
+      : Number.parseInt(String(coluna.funil_id ?? '').trim(), 10)
+  if (!Number.isFinite(funilId) || funilId < 1) return null
+
+  const { data: funil, error: funilErr } = await admin
+    .from('funil_workspace')
+    .select('workspace_id')
+    .eq('id', funilId)
+    .maybeSingle()
+
+  if (funilErr) {
+    throw createError({ statusCode: 500, statusMessage: funilErr.message })
+  }
+  if (!funil) return null
+
+  const wsFunil =
+    typeof funil.workspace_id === 'number'
+      ? funil.workspace_id
+      : Number.parseInt(String(funil.workspace_id ?? '').trim(), 10)
+  if (!Number.isFinite(wsFunil) || wsFunil !== workspaceId) return null
+
+  return String(funilId)
+}
+
 function parseHoraPermitida(raw: unknown, campo: string): string {
   if (raw === undefined || raw === null || raw === '') {
     throw createError({ statusCode: 400, statusMessage: `${campo} é obrigatório.` })
@@ -320,6 +386,9 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
   const canal_id = canais_ids[0]!
   const coluna_ids = parseColunaIds(body.coluna_ids)
   const coluna_id = parseColunaIdAposDisparo(body.coluna_id)
+  let funil_id = parseFunilIdOpcional(body.funil_id)
+  const coluna_erro_id = parseColunaErroId(body.coluna_erro_id)
+  let funil_erro_id = parseFunilIdOpcional(body.funil_erro_id)
   const fonte_canais_ids = parseFonteCanaisIds(body)
   const fonte_canal_id = serializarFonteCanalId(fonte_canais_ids)
   const envia_para_grupo = parseEnviaParaGrupo(body.envia_para_grupo)
@@ -332,6 +401,8 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     body.intervalo_maximo_minutos,
     'intervalo_maximo_minutos',
   )
+  const tamanho_lote = parseIntervaloMinutos(body.tamanho_lote, 'tamanho_lote')
+  const pausa_lote_minutos = parseIntervaloMinutos(body.pausa_lote_minutos, 'pausa_lote_minutos')
 
   if (intervalo_minimo_minutos > intervalo_maximo_minutos) {
     throw createError({
@@ -362,6 +433,20 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
   }
 
   const admin = serverSupabaseServiceRole<any>(event)
+
+  if (!funil_id && coluna_id) {
+    funil_id = await resolverFunilIdDaColuna(admin, workspaceId, coluna_id)
+  }
+
+  if (!funil_erro_id) {
+    funil_erro_id = await resolverFunilIdDaColuna(admin, workspaceId, coluna_erro_id)
+  }
+  if (!funil_erro_id) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Não foi possível resolver o funil da coluna de erro.',
+    })
+  }
 
   const conversaKeys = await buscarConversasKeys(
     admin,
@@ -421,6 +506,8 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     webhook_url: WEBHOOK_URL_CAMPANHA,
     intervalo_minimo_minutos,
     intervalo_maximo_minutos,
+    tamanho_lote,
+    pausa_lote_minutos,
     status,
     canal_id,
     canais_ids,
@@ -436,6 +523,9 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     fonte_canal_id,
     envia_para_grupo,
     coluna_id,
+    funil_id,
+    coluna_erro_id,
+    funil_erro_id,
     timezone_escolhido,
   }
 
@@ -443,7 +533,7 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     .from('campanhas')
     .insert(insertCampanha)
     .select(
-      'id, nome, tipo_mensagem, conteudo_texto, url_midia, webhook_url, intervalo_minimo_minutos, intervalo_maximo_minutos, status, criado_em, canal_id, canais_ids, ultimo_canal_id, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id, timezone_escolhido',
+      'id, nome, tipo_mensagem, conteudo_texto, url_midia, webhook_url, intervalo_minimo_minutos, intervalo_maximo_minutos, status, criado_em, canal_id, canais_ids, ultimo_canal_id, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id, funil_id, timezone_escolhido, tamanho_lote, pausa_lote_minutos, coluna_erro_id, funil_erro_id',
     )
     .single()
 

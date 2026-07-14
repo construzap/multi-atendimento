@@ -4,7 +4,7 @@ import { storeToRefs } from 'pinia'
 import BaseButton from '~/components/BaseButton.vue'
 import CriarCampanhaConfig from '~/components/kanban/disparo_em_massa/CriarCampanhaConfig.vue'
 import ListaCampanhas from '~/components/kanban/disparo_em_massa/ListaCampanhas.vue'
-import type { CriarCampanhaResponse } from '#shared/types/disparoEmMassa'
+import type { CriarCampanhaResponse, AtualizarCampanhaResponse } from '#shared/types/disparoEmMassa'
 import { useDisparoEmMassaStore } from '~/stores/disparoEmMassa'
 import { useKanbanStore } from '~/stores/kanban'
 
@@ -51,10 +51,25 @@ function fecharConfigCampanha() {
 }
 
 function onCampanhaCriada(_response: CriarCampanhaResponse) {
+  fecharConfigERecarregar()
+}
+
+function onCampanhaAtualizada(_response: AtualizarCampanhaResponse) {
+  fecharConfigERecarregar()
+}
+
+function fecharConfigERecarregar() {
   configAberto.value = false
+  disparoEmMassa.setCampanhaEdicao(null)
   disparoEmMassa.invalidarCampanhas()
   if (workspaceId.value) {
     void disparoEmMassa.fetchCampanhas(workspaceId.value, { force: true })
+  }
+}
+
+function onCampanhaExcluida(campanhaId: string) {
+  if (campanhaEdicaoId.value === campanhaId && configAberto.value) {
+    configAberto.value = false
   }
 }
 </script>
@@ -121,6 +136,7 @@ function onCampanhaCriada(_response: CriarCampanhaResponse) {
         :key="campanhaEdicaoId ?? 'nova'"
         :campanha-id="campanhaEdicaoId"
         @criado="onCampanhaCriada"
+        @atualizado="onCampanhaAtualizada"
         @cancelar="fecharConfigCampanha"
       />
 
@@ -128,6 +144,7 @@ function onCampanhaCriada(_response: CriarCampanhaResponse) {
         v-if="workspaceId"
         :workspace-id="workspaceId"
         @editar="abrirEdicaoCampanha"
+        @excluido="onCampanhaExcluida"
       />
     </div>
   </div>

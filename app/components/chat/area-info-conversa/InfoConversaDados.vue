@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
+import ModalAlerta from '~/components/ModalAlerta.vue'
 import type { Conversa, ConversaPatch } from '#shared/types/conversa'
 
 type CampoEditavel = 'name' | 'phone' | 'coluna'
@@ -23,6 +24,8 @@ const carregandoMetadados = ref(false)
 const campoEmEdicao = ref<CampoEditavel | null>(null)
 const draftValor = ref('')
 const salvandoCampo = ref<CampoEditavel | null>(null)
+const modalApagarMemoriaIaAberto = ref(false)
+const apagandoMemoriaIa = ref(false)
 
 function parseWorkspaceId(raw: unknown): number | null {
   const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10)
@@ -63,6 +66,59 @@ const telefoneLabel = computed(() => {
   const phone = conversa.value?.phone?.trim()
   return phone || '—'
 })
+
+const podeApagarMemoriaIa = computed(() => {
+  const c = conversa.value
+  const wsId = workspaceId.value
+  if (!c || !wsId) return false
+  if (c.is_group === true) return false
+  return Boolean(c.key?.trim() && c.phone?.trim())
+})
+
+const textoModalApagarMemoriaIa = computed(() => {
+  const tel = telefoneLabel.value
+  return `Isso vai apagar a memória da I.A. para o número ${tel} e ligar o atendimento da I.A. para este contato. Esta ação não poderá ser desfeita. Tem certeza?`
+})
+
+function abrirModalApagarMemoriaIa() {
+  if (!podeApagarMemoriaIa.value || apagandoMemoriaIa.value) return
+  modalApagarMemoriaIaAberto.value = true
+}
+
+async function confirmarApagarMemoriaIa() {
+  const c = conversa.value
+  const wsId = workspaceId.value
+  if (!c || !wsId || apagandoMemoriaIa.value) return
+
+  const phone = c.phone?.trim()
+  const key = c.key?.trim()
+  if (!phone || !key) {
+    toast.error('Telefone ou conversa não identificados.')
+    return
+  }
+
+  apagandoMemoriaIa.value = true
+  try {
+    await $fetch('/api/conversas/apagar-memoria-ia', {
+      method: 'POST',
+      body: {
+        workspace_id: wsId,
+        key,
+        phone,
+      },
+    })
+    modalApagarMemoriaIaAberto.value = false
+    toast.success('Memória da I.A. apagada para este contato.')
+  } catch (err: unknown) {
+    const msg =
+      err && typeof err === 'object' && 'data' in err
+        ? String((err as { data?: { statusMessage?: string } }).data?.statusMessage ?? '')
+        : ''
+    toast.error(msg || 'Não foi possível apagar a memória da I.A.')
+  } finally {
+    apagandoMemoriaIa.value = false
+  }
+}
 
 const colunaLabel = computed(() => {
   const colunaId = conversa.value?.coluna_id
@@ -422,5 +478,31 @@ watch(
         </dd>
       </div>
     </dl>
+
+    <div v-if="podeApagarMemoriaIa" class="mt-3 flex justify-end">
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-rose-600 disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-rose-400"
+        :disabled="apagandoMemoriaIa"
+        aria-label="Apagar memória da I.A. para este contato"
+        @click="abrirModalApagarMemoriaIa"
+      >
+        <span class="material-symbols-outlined text-[14px]" aria-hidden="true">memory_alt</span>
+        Apagar memória da I.A.
+      </button>
+    </div>
+
+    <ModalAlerta
+      v-model:open="modalApagarMemoriaIaAberto"
+      title="Apagar memória da I.A.?"
+      :texto="textoModalApagarMemoriaIa"
+      variante="perigo"
+      texto-confirmar="Apagar memória"
+      texto-cancelar="Cancelar"
+      :confirmar-desabilitado="apagandoMemoriaIa"
+      :cancelar-desabilitado="apagandoMemoriaIa"
+      :mostrar-fechar="!apagandoMemoriaIa"
+      @confirmar="confirmarApagarMemoriaIa"
+    />
   </section>
 </template>

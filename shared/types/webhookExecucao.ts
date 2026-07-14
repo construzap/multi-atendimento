@@ -1,3 +1,5 @@
+import type { MessageType } from '#shared/types/messageType'
+
 export type WebhookExecucaoStatus = 'processando' | 'ignorado' | 'sucesso' | 'erro'
 
 export type WebhookExecucaoEtapa = {
@@ -21,6 +23,10 @@ export type WebhookExecucaoRow = {
   erro_mensagem: string | null
   message_id: string | null
   conversa_key: string | null
+  /** Tipo da mensagem (coluna DB: `messagetype`). */
+  message_type: MessageType | null
+  /** Telefone 1:1 ou id do grupo (`conversas.phone`). */
+  phone: string | null
   request_url: string | null
   user_agent: string | null
   etapas: WebhookExecucaoEtapa[]

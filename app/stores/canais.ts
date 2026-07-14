@@ -1,18 +1,14 @@
 import { defineStore } from 'pinia'
-import type { Canal } from '#shared/types/canal'
+import type { Canal, CanalCreateInput, CanalUpdateInput } from '#shared/types/canal'
 import type { InstanciaStatus } from '#shared/types/instanciaStatus'
 
 /** Resposta de POST /api/canais/editarcanal (mesma forma da listagem GET). */
 export type CanalAtualizado = Canal
 
 /** Resposta de POST /api/canais/criarcanal */
-export type CanalCriado = {
-  id: number
+export type CanalCriado = Canal & {
   workspace_id: number
   user_id: string
-  nome: string | null
-  descricao: string | null
-  created_at: string
 }
 
 /** Resposta de GET /api/canais/subscription (alinhado a `checkSubscription`) */
@@ -294,11 +290,7 @@ export const useCanaisStore = defineStore('canais', {
       return this.fetchSubscription(workspaceId)
     },
 
-    async create(input: {
-      nome: string
-      descricao?: string | null
-      workspace_id: number
-    }): Promise<CanalCriado> {
+    async create(input: CanalCreateInput): Promise<CanalCriado> {
       this.pending = true
       this.error = null
 
@@ -308,7 +300,12 @@ export const useCanaisStore = defineStore('canais', {
           body: {
             nome: input.nome,
             descricao: input.descricao ?? null,
-            workspace_id: input.workspace_id
+            workspace_id: input.workspace_id,
+            endereco: input.endereco,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            tempo_aviso_minutos: input.tempo_aviso_minutos,
+            horarios: input.horarios,
           }
         })
         await Promise.all([
@@ -328,12 +325,7 @@ export const useCanaisStore = defineStore('canais', {
       }
     },
 
-    async updateCanal(input: {
-      id_canal: number
-      workspace_id: number
-      nome: string
-      descricao?: string | null
-    }): Promise<CanalAtualizado> {
+    async updateCanal(input: CanalUpdateInput): Promise<CanalAtualizado> {
       this.pending = true
       this.error = null
 
@@ -344,7 +336,12 @@ export const useCanaisStore = defineStore('canais', {
             id_canal: input.id_canal,
             workspace_id: input.workspace_id,
             nome: input.nome,
-            descricao: input.descricao ?? null
+            descricao: input.descricao ?? null,
+            endereco: input.endereco,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            tempo_aviso_minutos: input.tempo_aviso_minutos,
+            horarios: input.horarios,
           }
         })
 

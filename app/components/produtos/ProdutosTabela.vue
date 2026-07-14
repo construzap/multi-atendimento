@@ -1362,7 +1362,7 @@ onUnmounted(() => {
               </td>
               -->
               <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'termos_pesquisa_ids', 'min-h-[2.75rem] w-full')">
+                <div :class="classesCelula(row.id, 'termos_pesquisa_ids', celulaInnerClass)">
                   <ProdutosSelecaoUnica
                     catalogo="termos_pesquisa"
                     variant="celula"
