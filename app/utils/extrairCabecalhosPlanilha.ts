@@ -1,29 +1,14 @@
-import * as XLSX from 'xlsx'
+import { cellToString } from '~/utils/planilhaTexto'
 
-/**
- * Corrige texto que era UTF-8 mas foi interpretado como Latin-1 (ex.: cabeçalhos CSV: "CÃ³digo" → "Código").
- */
-export function corrigirMojibakeUtf8(s: string): string {
-  if (!s || !/Ã.|Â./.test(s)) return s
-  try {
-    const buf = new Uint8Array(s.length)
-    for (let i = 0; i < s.length; i++) buf[i] = s.charCodeAt(i) & 0xff
-    const out = new TextDecoder('utf-8', { fatal: false }).decode(buf)
-    if (out.includes('\uFFFD')) return s
-    return out
-  } catch {
-    return s
-  }
+export { cellToString, corrigirMojibakeUtf8 } from '~/utils/planilhaTexto'
+
+/** Carrega SheetJS só quando preciso (cliente / importação de arquivo). */
+async function loadXlsx() {
+  return import('xlsx')
 }
 
-export function cellToString(c: unknown): string {
-  if (c == null || c === '') return ''
-  if (typeof c === 'string') return corrigirMojibakeUtf8(c.trim())
-  if (typeof c === 'number' && Number.isFinite(c)) return String(c)
-  return corrigirMojibakeUtf8(String(c).trim())
-}
-
-function readWorkbookFromBuffer(buf: ArrayBuffer, fileName: string): XLSX.WorkBook {
+async function readWorkbookFromBuffer(buf: ArrayBuffer, fileName: string) {
+  const XLSX = await loadXlsx()
   const lower = fileName.trim().toLowerCase()
   if (lower.endsWith('.csv')) {
     return XLSX.read(buf, { type: 'array', codepage: 65001 })
@@ -58,8 +43,9 @@ export type MetadadosPlanilhaImportacao = {
  * Cabeçalhos (1.ª linha), exemplos (2.ª linha) e contagem de registros da 1.ª folha (CSV / XLS / XLSX).
  */
 export async function extrairMetadadosPlanilhaImportacao(file: File): Promise<MetadadosPlanilhaImportacao> {
+  const XLSX = await loadXlsx()
   const buf = await file.arrayBuffer()
-  const wb = readWorkbookFromBuffer(buf, file.name)
+  const wb = await readWorkbookFromBuffer(buf, file.name)
   const sheetName = wb.SheetNames[0]
   if (!sheetName) {
     return { cabecalhos: [], exemplos: [], totalLinhasDados: 0 }
@@ -102,8 +88,9 @@ export async function lerTodasLinhasPlanilha(
   file: File,
   options?: { raw?: boolean },
 ): Promise<unknown[][]> {
+  const XLSX = await loadXlsx()
   const buf = await file.arrayBuffer()
-  const wb = readWorkbookFromBuffer(buf, file.name)
+  const wb = await readWorkbookFromBuffer(buf, file.name)
   const sheetName = wb.SheetNames[0]
   if (!sheetName) return []
   const sheet = wb.Sheets[sheetName]

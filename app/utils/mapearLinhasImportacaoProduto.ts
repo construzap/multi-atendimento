@@ -2,7 +2,7 @@ import type { ProdutoImportarLinha } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
 import type { CampoIaProdutoId } from '~/constants/produtosCamposIa'
 import { CAMPOS_TABELA_IA_PRODUTO } from '~/constants/produtosCamposIa'
-import { cellToString } from '~/utils/extrairCabecalhosPlanilha'
+import { cellToString } from '~/utils/planilhaTexto'
 
 function isCampoIaProdutoId(id: string): id is CampoIaProdutoId {
   return CAMPOS_TABELA_IA_PRODUTO.some((c) => c.id === id)

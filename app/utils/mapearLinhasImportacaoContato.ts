@@ -1,6 +1,6 @@
 import type { CampoImportacaoContatoId, ContatoImportarLinha } from '#shared/types/contato'
 import { normalizeTelefoneBrParaEnvio, telefoneContatoNormalizadoValido } from '#shared/utils/normalizeWhatsappBr'
-import { cellToString } from '~/utils/extrairCabecalhosPlanilha'
+import { cellToString } from '~/utils/planilhaTexto'
 import {
   MAPEAMENTO_FUNIL_ATENDENTE_ID,
   MAPEAMENTO_FUNIL_COLUNA_ID,
