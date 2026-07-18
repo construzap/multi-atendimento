@@ -270,6 +270,16 @@ function validarFormulario(): boolean {
     passoAtual.value = 2
     return false
   }
+  if (produtos.value.some((p) => !p.nome.trim())) {
+    toast.error('Informe o nome de todos os produtos.')
+    passoAtual.value = 2
+    return false
+  }
+  if (produtos.value.some((p) => parseMoedaPtBr(p.precoUnitario) <= 0)) {
+    toast.error('Informe um preço unitário válido para todos os produtos.')
+    passoAtual.value = 2
+    return false
+  }
   if (!dataProximaLocal.value || !horaProximaLocal.value) {
     toast.error('Informe a data e o horário da próxima notificação.')
     passoAtual.value = 3

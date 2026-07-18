@@ -1,13 +1,13 @@
 <script setup lang="ts">
 const props = defineProps<{
   nome: string
-  unidadeVenda: string
   quantidade: number
   precoUnitario: string
   subtotal: string
 }>()
 
 const emit = defineEmits<{
+  'update:nome': [value: string]
   'update:quantidade': [value: number]
   'update:precoUnitario': [value: string]
   remover: []
@@ -24,28 +24,19 @@ function atualizarQuantidade(value: string) {
 
 <template>
   <div
-    class="grid gap-3 rounded-xl border border-outline/30 bg-surface-container-lowest p-4 dark:border-dark-outline/30 dark:bg-dark-surface-container-low md:grid-cols-[1fr_88px_96px_140px_120px_44px] md:items-end"
+    class="grid gap-3 rounded-xl border border-outline/30 bg-surface-container-lowest p-4 dark:border-dark-outline/30 dark:bg-dark-surface-container-low md:grid-cols-[1fr_96px_140px_120px_44px] md:items-end"
   >
     <div class="space-y-1.5">
       <label class="font-label text-sm font-medium text-on-surface dark:text-dark-on-surface">
-        Produto
+        Nome do produto
       </label>
-      <div
-        class="rounded-lg border border-outline/30 bg-surface-container-low px-3 py-2.5 font-body text-sm text-on-surface dark:border-dark-outline/30 dark:bg-dark-surface-container dark:text-dark-on-surface"
+      <input
+        :value="props.nome"
+        type="text"
+        placeholder="Ex.: Mesa de jantar"
+        :class="inputClass"
+        @input="emit('update:nome', ($event.target as HTMLInputElement).value)"
       >
-        {{ props.nome }}
-      </div>
-    </div>
-
-    <div class="space-y-1.5">
-      <label class="font-label text-sm font-medium text-on-surface dark:text-dark-on-surface">
-        Unidade
-      </label>
-      <div
-        class="rounded-lg border border-outline/30 bg-surface-container-low px-3 py-2.5 font-body text-sm text-on-surface-variant dark:border-dark-outline/30 dark:bg-dark-surface-container dark:text-dark-on-surface-variant"
-      >
-        {{ props.unidadeVenda || 'un' }}
-      </div>
     </div>
 
     <div class="space-y-1.5">
@@ -63,7 +54,7 @@ function atualizarQuantidade(value: string) {
 
     <div class="space-y-1.5">
       <label class="font-label text-sm font-medium text-on-surface dark:text-dark-on-surface">
-        Preço à vista
+        Preço unitário
       </label>
       <div class="relative">
         <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-body text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
@@ -72,6 +63,8 @@ function atualizarQuantidade(value: string) {
         <input
           :value="props.precoUnitario"
           type="text"
+          inputmode="decimal"
+          placeholder="0,00"
           :class="[inputClass, 'pl-10']"
           @input="emit('update:precoUnitario', ($event.target as HTMLInputElement).value)"
         >
