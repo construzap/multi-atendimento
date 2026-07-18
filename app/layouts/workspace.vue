@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useColorMode } from '~/composables/useColorMode'
 import type { AdminVerificarResponse } from '#shared/types/profile'
+import type { PageRoleSlug } from '#shared/types/pageRoles'
+import { usePageRolesStore } from '~/stores/pageRoles'
+import { useProfileStore } from '~/stores/profile'
 
 /** Recolhida por padrão; expande enquanto o ponteiro estiver sobre a sidebar. */
 const sidebarHovered = ref(false)
@@ -14,6 +17,8 @@ const temaLabel = computed(() => (isDark.value ? 'Modo claro' : 'Modo escuro'))
 type NavItem = {
   label: string
   to: string
+  /** Slug em `page_roles.pages` */
+  page: PageRoleSlug
   icon:
     | 'dashboard'
     | 'chat'
@@ -24,6 +29,7 @@ type NavItem = {
     | 'buscarProdutosIa'
     | 'atendentes'
     | 'frete'
+    | 'cobranca'
     | 'agendamento'
     | 'logs'
     | 'configuracoes'
@@ -31,6 +37,8 @@ type NavItem = {
 
 const route = useRoute()
 const workspaces = useWorkspacesStore()
+const profile = useProfileStore()
+const pageRoles = usePageRolesStore()
 
 const { data: verificarAdmin } = await useFetch<AdminVerificarResponse>('/api/admin/verificar', {
   server: false,
@@ -41,23 +49,41 @@ const workspaceId = computed(() => workspaces.currentWorkspaceId ?? String(route
 const base = computed(() => `/workspaces/${workspaceId.value}`)
 const enviarIaBase = computed(() => `${base.value}/produtos/enviar-para-ia`)
 
+watch(
+  () => [workspaces.currentWorkspaceId ?? String(route.params.id ?? ''), profile.me?.id] as const,
+  async ([wsRaw, profileId]) => {
+    const wsId = typeof wsRaw === 'string' || typeof wsRaw === 'number'
+      ? Number.parseInt(String(wsRaw), 10)
+      : NaN
+    if (!Number.isFinite(wsId) || wsId < 1 || profileId == null) return
+    try {
+      await pageRoles.checkPageRoles({ workspaceId: wsId, profileId })
+    } catch {
+      // erro fica em pageRoles.error
+    }
+  },
+  { immediate: true },
+)
+
 const items = computed<NavItem[]>(() => {
+  const allowed = pageRoles.pagesSet
   const nav: NavItem[] = [
-    { label: 'Kanban', to: `${base.value}/kanban`, icon: 'dashboard' },
-    { label: 'Chat', to: `${base.value}/chat`, icon: 'chat' },
-    { label: 'Contato', to: `${base.value}/contato`, icon: 'contato' },
-    { label: 'Canais', to: `${base.value}/canais`, icon: 'canais' },
-    { label: 'Produtos', to: `${base.value}/produtos`, icon: 'produtos' },
-    { label: 'Vector Store (IA)', to: `${enviarIaBase.value}/vector-store`, icon: 'vectorStore' },
-    { label: 'Atendentes', to: `${base.value}/atendentes`, icon: 'atendentes' },
-    { label: 'Frete', to: `${base.value}/frete`, icon: 'frete' },
-    { label: 'Agendamento de mensagens', to: `${base.value}/agendamento-mensagens`, icon: 'agendamento' },
+    { label: 'Kanban', to: `${base.value}/kanban`, page: 'kanban', icon: 'dashboard' },
+    { label: 'Chat', to: `${base.value}/chat`, page: 'chat', icon: 'chat' },
+    { label: 'Contato', to: `${base.value}/contato`, page: 'contato', icon: 'contato' },
+    { label: 'Canais', to: `${base.value}/canais`, page: 'canais', icon: 'canais' },
+    { label: 'Produtos', to: `${base.value}/produtos`, page: 'produtos', icon: 'produtos' },
+    { label: 'Vector Store (IA)', to: `${enviarIaBase.value}/vector-store`, page: 'vector-store', icon: 'vectorStore' },
+    { label: 'Atendentes', to: `${base.value}/atendentes`, page: 'atendentes', icon: 'atendentes' },
+    { label: 'Frete', to: `${base.value}/frete`, page: 'frete', icon: 'frete' },
+    { label: 'Cobrança', to: `${base.value}/cobranca`, page: 'cobranca', icon: 'cobranca' },
+    { label: 'Agendamento de mensagens', to: `${base.value}/agendamento-mensagens`, page: 'agendamento-mensagens', icon: 'agendamento' },
   ]
   if (isAdmin.value) {
-    nav.push({ label: 'Logs de webhook', to: `${base.value}/logs`, icon: 'logs' })
+    nav.push({ label: 'Logs de webhook', to: `${base.value}/logs`, page: 'logs', icon: 'logs' })
   }
-  nav.push({ label: 'Configurações', to: `${base.value}/configuracoes`, icon: 'configuracoes' })
-  return nav
+  nav.push({ label: 'Configurações', to: `${base.value}/configuracoes`, page: 'configuracoes', icon: 'configuracoes' })
+  return nav.filter((it) => allowed.has(it.page))
 })
 
 function isActive(to: string) {
@@ -190,6 +216,11 @@ function closeMobileSidebar() {
                 <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
                 <circle cx="17" cy="18" r="2" />
                 <circle cx="7" cy="18" r="2" />
+              </svg>
+              <svg v-else-if="it.icon === 'cobranca'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="5" width="20" height="14" rx="2" />
+                <path d="M2 10h20" />
+                <path d="M6 15h4" />
               </svg>
               <svg v-else-if="it.icon === 'agendamento'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" />
@@ -340,6 +371,11 @@ function closeMobileSidebar() {
               <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14" />
               <circle cx="17" cy="18" r="2" />
               <circle cx="7" cy="18" r="2" />
+            </svg>
+            <svg v-else-if="it.icon === 'cobranca'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <path d="M2 10h20" />
+              <path d="M6 15h4" />
             </svg>
             <svg v-else-if="it.icon === 'agendamento'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" />

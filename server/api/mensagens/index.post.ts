@@ -544,6 +544,7 @@ export default defineEventHandler(async (event) => {
     const payload: PusherNovaMensagemPayload = {
       conversa_key,
       mensagem,
+      conversa_name: saved.conversa_name ?? null,
     }
     await triggerNovaMensagem(event, canalId, payload)
 

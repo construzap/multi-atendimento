@@ -2,7 +2,6 @@
 import BaseAvatar from '~/components/BaseAvatar.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import { computed, ref } from 'vue'
-import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type { Conversa } from '#shared/types/conversa'
 import { useMensagensStore } from '~/stores/mensagens'
@@ -10,7 +9,6 @@ import { useMensagensStore } from '~/stores/mensagens'
 const conversasStore = useConversasStore()
 const canaisStore = useCanaisStore()
 const mensagensStore = useMensagensStore()
-const { items } = storeToRefs(conversasStore)
 const { conversaKeyAtiva } = useConversaKeyAtiva()
 
 function firstNonEmpty(...vals: Array<string | null | undefined>): string {
@@ -20,28 +18,10 @@ function firstNonEmpty(...vals: Array<string | null | undefined>): string {
   return ''
 }
 
-function sortIsoAsc(a: string | null, b: string | null): number {
-  const da = a ? new Date(a).getTime() : 0
-  const db = b ? new Date(b).getTime() : 0
-  return da - db
-}
-
 const conversaSelecionada = computed<Conversa | null>(() => {
   const key = conversaKeyAtiva.value
   if (!key) return null
-  const list = items.value
-  if (!list?.length) return null
-
-  const filtrada = list.filter((m) => m.key === key)
-  if (!filtrada.length) return null
-
-  // Pega o registro mais recente dessa conversa para extrair nome/foto/phone.
-  const sorted = [...filtrada].sort((a, b) => {
-    const ta = a.updated_at ?? a.created_at
-    const tb = b.updated_at ?? b.created_at
-    return sortIsoAsc(ta ?? null, tb ?? null)
-  })
-  return sorted[sorted.length - 1] ?? null
+  return conversasStore.findConversaByKey(key) ?? conversasStore.items.find((c) => c.key === key) ?? null
 })
 
 const avatarUrl = computed<string | undefined>(() => conversaSelecionada.value?.photo ?? undefined)

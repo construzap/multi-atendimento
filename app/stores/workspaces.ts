@@ -43,7 +43,11 @@ export const useWorkspacesStore = defineStore('workspaces', {
 
     /** Cache-first: só busca se a lista ainda não foi carregada nesta sessão. */
     async ensureAllLoaded(options?: { force?: boolean }) {
-      if (!options?.force && this.loadedAt != null) return
+      if (!options?.force && this.loadedAt != null) {
+        // Se marcou como carregado mas a lista está vazia e não há erro,
+        // ainda assim permite um refetch forçado pela UI — aqui só pula o GET.
+        return
+      }
       await this.fetchAll()
     },
 

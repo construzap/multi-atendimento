@@ -568,21 +568,6 @@ async function onCreate() {
               <div>
                 <label
                   class="mb-1.5 block text-xs font-semibold text-on-surface dark:text-dark-on-surface"
-                  :for="`canal-${key}-fim-${fieldIdSuffix}`"
-                >
-                  Fechamento <span class="text-error">*</span>
-                </label>
-                <BaseInput
-                  :id="`canal-${key}-fim-${fieldIdSuffix}`"
-                  v-model="horarios[key].fim"
-                  type="time"
-                  :name="`canal_${key}_fim`"
-                />
-              </div>
-
-              <div>
-                <label
-                  class="mb-1.5 block text-xs font-semibold text-on-surface dark:text-dark-on-surface"
                   :for="`canal-${key}-inicio-almoco-${fieldIdSuffix}`"
                 >
                   Início almoço
@@ -607,6 +592,21 @@ async function onCreate() {
                   v-model="horarios[key].fimAlmoco"
                   type="time"
                   :name="`canal_${key}_fim_almoco`"
+                />
+              </div>
+
+              <div>
+                <label
+                  class="mb-1.5 block text-xs font-semibold text-on-surface dark:text-dark-on-surface"
+                  :for="`canal-${key}-fim-${fieldIdSuffix}`"
+                >
+                  Fechamento <span class="text-error">*</span>
+                </label>
+                <BaseInput
+                  :id="`canal-${key}-fim-${fieldIdSuffix}`"
+                  v-model="horarios[key].fim"
+                  type="time"
+                  :name="`canal_${key}_fim`"
                 />
               </div>
             </div>

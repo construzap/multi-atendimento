@@ -56,6 +56,11 @@ export interface PusherNovaMensagemPayload {
   /** `conversas.key` — qual conversa dentro do canal. */
   conversa_key: string
   mensagem: Mensagem
+  /**
+   * Nome da conversa após persistência no banco (`conversas.name`).
+   * Não confundir com `mensagem.name` (remetente / WhatsApp).
+   */
+  conversa_name?: string | null
   /** Metadados do grupo (quando `is_group`). */
   is_group?: boolean
   id_group?: string | null

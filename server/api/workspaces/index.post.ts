@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, readBody } from 'h3'
 import type { Workspace } from '#shared/types/workspace'
+import { criarPageRolePadrao } from '../../utils/criarPageRolePadrao'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 type CreateWorkspaceBody = {
@@ -15,6 +16,7 @@ type CreateWorkspaceBody = {
  * - Recebe: nome, descricao
  * - Salva: user_id do auth em `workspace`
  * - Insere em `atendentes`: mesmo usuário como admin e atendente do workspace
+ * - Insere em `page_roles` com páginas padrão do criador
  * - Escrita via service role (tabela com RLS)
  */
 export default defineEventHandler(async (event): Promise<Workspace> => {
@@ -90,6 +92,8 @@ export default defineEventHandler(async (event): Promise<Workspace> => {
     if (atendenteErr) {
       throw createError({ statusCode: 500, statusMessage: atendenteErr.message })
     }
+
+    await criarPageRolePadrao(event, workspaceId, userId)
 
     const { data: funilRow, error: funilErr } = await admin
       .from('funil_workspace')

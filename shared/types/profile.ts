@@ -3,6 +3,8 @@
  * Tipagem dos campos utilizados no perfil do usuário no app.
  */
 export interface UserProfile {
+  /** `profiles.id` (PK numérica) */
+  id: number
   /** `profiles.created_at` */
   created_at: string
   /** `profiles.email` */

@@ -113,6 +113,19 @@ function emptyCanalState(): CanalConversasState {
   }
 }
 
+/** Mantém a primeira ocorrência de cada `key` (ordem preservada). */
+function dedupeConversasByKey(items: Conversa[]): Conversa[] {
+  const seen = new Set<string>()
+  const out: Conversa[] = []
+  for (const item of items) {
+    const k = item.key?.trim()
+    if (!k || seen.has(k)) continue
+    seen.add(k)
+    out.push(item)
+  }
+  return out
+}
+
 /** Evita GET duplicado ao garantir conversa na lista lateral. */
 const ensureConversaNaListaInflight = new Map<string, Promise<void>>()
 
@@ -291,36 +304,46 @@ export const useConversasStore = defineStore('conversas', {
       const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
       if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
 
-      const idx = bucket.items.findIndex((c) => c.key === conversa.key)
-      if (idx === -1) {
-        bucket.items = [conversa, ...bucket.items]
-        bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
-        return
-      }
+      const key = conversa.key?.trim()
+      if (!key) return
 
-      const merged = {
-        ...bucket.items[idx]!,
-        ...conversa,
-        campos_personalizados:
-          conversa.campos_personalizados ?? bucket.items[idx]!.campos_personalizados,
-      }
-      bucket.items = [merged, ...bucket.items.filter((_, i) => i !== idx)]
+      const prev = bucket.items.find((c) => c.key === key)
+      const without = bucket.items.filter((c) => c.key !== key)
+      const wasNew = !prev
+
+      const merged: Conversa = prev
+        ? {
+            ...prev,
+            ...conversa,
+            key,
+            campos_personalizados:
+              conversa.campos_personalizados ?? prev.campos_personalizados,
+          }
+        : conversa
+
+      bucket.items = dedupeConversasByKey([merged, ...without])
+      if (wasNew) bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
     },
 
     /**
      * Garante que a conversa exista em `byCanal[canalId].items` (ex.: aberta via URL/kanban).
      * Se não estiver no cache, busca GET `/api/conversas?key=`.
+     * Com `force: true`, sempre re-busca e mescla (inclui `name` do banco).
      */
-    async ensureConversaNaLista(canalId: number, conversaKey: string) {
+    async ensureConversaNaLista(
+      canalId: number,
+      conversaKey: string,
+      options: { force?: boolean } = {},
+    ) {
       const idCanal = Math.trunc(canalId)
       const key = conversaKey.trim()
       if (!Number.isFinite(idCanal) || idCanal < 1 || !key || key.startsWith('temp:')) return
 
       this.setActiveCanalId(idCanal)
       const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
-      if (bucket.items.some((c) => c.key === key)) return
+      if (!options.force && bucket.items.some((c) => c.key === key)) return
 
-      const inflightKey = `${idCanal}:${key}`
+      const inflightKey = `${idCanal}:${key}:${options.force ? 'force' : 'soft'}`
       const inflight = ensureConversaNaListaInflight.get(inflightKey)
       if (inflight) return inflight
 
@@ -828,7 +851,8 @@ export const useConversasStore = defineStore('conversas', {
 
     /**
      * Evento Pusher `nova-mensagem`: atualiza preview na lista ou cria a conversa.
-     * `name` / `photo` vêm do payload quando existirem (inclui `from_me === true`, teste — pode voltar a preservar só foto depois).
+     * NUNCA altera `name` de conversa já em cache (nome é editável; vem só do PATCH / API).
+     * Stub novo: usa só `payload.conversa_name` (banco) e força sync via GET.
      */
     mergeFromPusherNovaMensagem(canalId: number, payload: PusherNovaMensagemPayload) {
       let conversaKey = payload.conversa_key?.trim()
@@ -857,26 +881,27 @@ export const useConversasStore = defineStore('conversas', {
 
       const preview = (msg.message ?? msg.caption ?? '').trim() || ' '
       const createdAt = msg.created_at ?? null
+      const conversaNameFromDb = payload.conversa_name?.trim() || null
 
       if (idx === -1) {
         const row: Conversa = {
           key: conversaKey,
           message: preview,
           messatype: msg.messagetype ?? null,
-          name: msg.name ?? null,
+          name: conversaNameFromDb,
           created_at: createdAt,
           updated_at: createdAt,
           id_canal: canalId,
           phone: msg.phone ?? null,
           lid: msg.lid ?? null,
           connect_phone: msg.connected_phone ?? null,
-          photo: msg.photo ?? null,
+          photo: payload.is_group ? (payload.conversa_photo ?? null) : (msg.photo ?? null),
           from_me: msg.from_me ?? null,
           media_url: msg.media_url ?? null,
           conversa_aberta: msg.from_me === false ? true : null,
-          is_group: null,
-          id_group: null,
-          name_group: null,
+          is_group: payload.is_group ? true : null,
+          id_group: payload.is_group ? (payload.id_group ?? null) : null,
+          name_group: payload.is_group ? (payload.name_group ?? null) : null,
           nao_lidas: msg.from_me === false ? 1 : 0,
           funil_id: null,
           coluna_id: null,
@@ -884,21 +909,20 @@ export const useConversasStore = defineStore('conversas', {
         }
 
         if (payload.is_group) {
-          row.is_group = true
-          row.name = payload.name_group ?? null
           row.phone = payload.id_group ?? null
           row.lid = payload.id_group ?? null
-          row.photo = payload.conversa_photo ?? null
-          row.id_group = payload.id_group ?? null
-          row.name_group = payload.name_group ?? null
+          if (!row.name) row.name = payload.name_group ?? null
         }
 
-        bucket.items = [row, ...bucket.items]
+        bucket.items = dedupeConversasByKey([row, ...bucket.items])
         bucket.total = Math.max(0, (bucket.total ?? 0) + 1)
+        // Força GET para trazer name/funil/coluna reais do banco (não confiar só no stub).
+        void this.ensureConversaNaLista(canalId, conversaKey, { force: true })
         return
       }
 
       const current = bucket.items[idx]!
+      // Preserva current.name / name_group — Pusher não mexe em nome editável.
       const merged: Conversa = {
         ...current,
         message: preview,
@@ -906,6 +930,8 @@ export const useConversasStore = defineStore('conversas', {
         from_me: msg.from_me ?? current.from_me,
         media_url: msg.media_url ?? current.media_url,
         updated_at: createdAt ?? current.updated_at,
+        name: current.name,
+        name_group: current.name_group,
         ...(msg.from_me === false
           ? {
               conversa_aberta: true,
@@ -916,18 +942,16 @@ export const useConversasStore = defineStore('conversas', {
 
       if (payload.is_group) {
         merged.is_group = true
-        merged.name = payload.name_group ?? current.name
         merged.phone = payload.id_group ?? current.phone
         merged.lid = payload.id_group ?? current.lid
         merged.photo = payload.conversa_photo ?? current.photo
         merged.id_group = payload.id_group ?? current.id_group
-        merged.name_group = payload.name_group ?? current.name_group
       } else {
-        merged.name = msg.name ?? current.name
         merged.photo = msg.photo ?? current.photo
       }
 
-      bucket.items = [merged, ...bucket.items.filter((_, i) => i !== idx)]
+      const without = bucket.items.filter((_, i) => i !== idx).filter((c) => c.key !== conversaKey)
+      bucket.items = dedupeConversasByKey([merged, ...without])
     },
 
     removeConversaByDbKey(conversaKey: string) {

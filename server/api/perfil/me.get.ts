@@ -32,7 +32,7 @@ export default defineEventHandler(async (event): Promise<UserProfile> => {
   const admin = serverSupabaseServiceRole<any>(event)
   const { data, error } = await admin
     .from('profiles')
-    .select('created_at, email, full_name, whatsapp')
+    .select('id, created_at, email, full_name, whatsapp')
     .eq('user_id', userId)
     .maybeSingle()
 
@@ -75,7 +75,7 @@ export default defineEventHandler(async (event): Promise<UserProfile> => {
 
     const { data: created, error: createdError } = await admin
       .from('profiles')
-      .select('created_at, email, full_name, whatsapp')
+      .select('id, created_at, email, full_name, whatsapp')
       .eq('user_id', userId)
       .single()
 

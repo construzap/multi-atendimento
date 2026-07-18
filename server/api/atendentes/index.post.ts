@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
 import { checkSubscription } from '../../utils/checkSubscription'
+import { criarPageRolePadraoPorProfileId } from '../../utils/criarPageRolePadrao'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 type Body = {
@@ -16,26 +17,40 @@ function parseWorkspaceId(raw: unknown): number | null {
 }
 
 /** Busca perfil por e-mail (tenta igualdade exata e depois ILIKE escapado). */
-async function findProfileUserIdByEmail(admin: any, emailRaw: string): Promise<string | null> {
+async function findProfileByEmail(
+  admin: any,
+  emailRaw: string,
+): Promise<{ user_id: string; profile_id: number } | null> {
   const email = emailRaw.trim()
   if (!email) return null
 
+  const mapRow = (row: { user_id?: unknown; id?: unknown } | null) => {
+    if (!row) return null
+    const uidRaw = row.user_id
+    const userId = typeof uidRaw === 'string' ? uidRaw : uidRaw != null ? String(uidRaw) : ''
+    const idRaw = row.id
+    const profileId = typeof idRaw === 'number' ? idRaw : Number.parseInt(String(idRaw ?? ''), 10)
+    if (!userId || !Number.isFinite(profileId) || profileId < 1) return null
+    return { user_id: userId, profile_id: profileId }
+  }
+
   const { data: exact } = await admin
     .from('profiles')
-    .select('user_id')
+    .select('id, user_id')
     .eq('email', email)
     .maybeSingle()
 
-  const uidExact = (exact as { user_id?: unknown } | null)?.user_id
-  if (uidExact != null) return typeof uidExact === 'string' ? uidExact : String(uidExact)
+  const mappedExact = mapRow(exact as { user_id?: unknown; id?: unknown } | null)
+  if (mappedExact) return mappedExact
 
   const escaped = email.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
-  const { data: ci } = await admin.from('profiles').select('user_id').ilike('email', escaped).maybeSingle()
+  const { data: ci } = await admin
+    .from('profiles')
+    .select('id, user_id')
+    .ilike('email', escaped)
+    .maybeSingle()
 
-  const uidCi = (ci as { user_id?: unknown } | null)?.user_id
-  if (uidCi != null) return typeof uidCi === 'string' ? uidCi : String(uidCi)
-
-  return null
+  return mapRow(ci as { user_id?: unknown; id?: unknown } | null)
 }
 
 function subscriptionPermiteGestao(statusRaw: string): boolean {
@@ -54,7 +69,7 @@ function subscriptionPermiteGestao(statusRaw: string): boolean {
  * Body: `{ workspace_id, email }`
  *
  * Somente o **criador** do workspace (`workspace.user_id`) pode adicionar atendentes.
- * Ordem: autenticação → dono do workspace → assinatura → perfil por e-mail → insert em `atendentes`.
+ * Ordem: autenticação → dono → assinatura → perfil por e-mail → `atendentes` + `page_roles` padrão.
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
@@ -120,13 +135,15 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const novoAtendenteUserId = await findProfileUserIdByEmail(admin, email)
-  if (!novoAtendenteUserId) {
+  const perfilAtendente = await findProfileByEmail(admin, email)
+  if (!perfilAtendente) {
     throw createError({
       statusCode: 404,
       statusMessage: 'Não encontramos um cadastro com este e-mail.',
     })
   }
+
+  const novoAtendenteUserId = perfilAtendente.user_id
 
   if (novoAtendenteUserId === userId) {
     throw createError({
@@ -164,6 +181,8 @@ export default defineEventHandler(async (event) => {
     }
     throw createError({ statusCode: 500, statusMessage: insErr.message })
   }
+
+  await criarPageRolePadraoPorProfileId(event, workspaceId, perfilAtendente.profile_id)
 
   return { ok: true as const }
 })

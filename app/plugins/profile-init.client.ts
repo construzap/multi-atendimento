@@ -1,8 +1,10 @@
 import { watch } from 'vue'
+import { usePageRolesStore } from '~/stores/pageRoles'
 import { useProfileStore } from '~/stores/profile'
 
 export default defineNuxtPlugin(() => {
   const profile = useProfileStore()
+  const pageRoles = usePageRolesStore()
   const session = useSupabaseSession()
 
   async function refreshIfLoggedIn() {
@@ -26,6 +28,7 @@ export default defineNuxtPlugin(() => {
         profile.error = null
         profile.pending = false
         profile.loadedAt = null
+        pageRoles.clear()
         return
       }
       await refreshIfLoggedIn()

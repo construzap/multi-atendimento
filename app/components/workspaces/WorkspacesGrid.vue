@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import ModalAddWorkspace from '~/components/workspaces/ModalAddWorkspace.vue'
 import WorkspaceAddCard from '~/components/workspaces/WorkspaceAddCard.vue'
 import WorkspaceCard from '~/components/workspaces/WorkspaceCard.vue'
-import type { Workspace } from '#shared/types/workspace'
 
 const query = ref('')
 const addOpen = ref(false)
@@ -13,9 +12,8 @@ const store = useWorkspacesStore()
 onMounted(() => {
   // Fora de /workspaces/:id, então não há workspace “atual”
   store.setCurrentWorkspaceId(null)
-  if (!store.items.length && !store.pending) {
-    store.ensureAllLoaded().catch(() => {})
-  }
+  // Sempre força GET ao abrir a home — evita cache Pinia vazio (loadedAt setado sem items).
+  void store.ensureAllLoaded({ force: true }).catch(() => {})
 })
 
 function initials(name: string) {
@@ -32,7 +30,7 @@ function gradientById(id: number): string {
     'bg-gradient-to-br from-tertiary to-tertiary-muted shadow-[0_10px_30px_rgba(0,136,212,0.25)]',
     'bg-gradient-to-br from-warning to-secondary-accent shadow-[0_10px_30px_rgba(230,81,0,0.25)]',
     'bg-gradient-to-br from-success to-success shadow-[0_10px_30px_rgba(46,125,50,0.22)]',
-    'bg-gradient-to-br from-primary-500 to-primary-700 shadow-[0_10px_30px_rgba(26,123,45,0.25)]', //aquifoimodificadocor
+    'bg-gradient-to-br from-primary-500 to-primary-700 shadow-[0_10px_30px_rgba(26,123,45,0.25)]',
     'bg-gradient-to-br from-danger to-error shadow-[0_10px_30px_rgba(186,26,26,0.20)]',
   ] as const
   return g[Math.abs(id) % g.length] ?? g[0]
@@ -47,7 +45,7 @@ const filtered = computed(() => {
 
 async function onSelectWorkspace(workspaceId: string) {
   store.setCurrentWorkspaceId(workspaceId)
-  await navigateTo(`/workspaces/${workspaceId}/chat`)
+  await navigateTo(`/workspaces/${workspaceId}/produtos`)
 }
 </script>
 
@@ -105,22 +103,22 @@ async function onSelectWorkspace(workspaceId: string) {
         Você ainda não tem workspaces. Clique em “Criar Workspace” para adicionar o primeiro.
       </div>
 
-      <WorkspaceCard
-        v-for="w in filtered"
-        v-else
-        :key="w.id"
-        :id="String(w.id)"
-        :name="w.nome"
-        :description="w.descricao ?? ''"
-        :created-at="w.created_at"
-        :avatar-text="initials(w.nome)"
-        :avatar-gradient-class="gradientById(w.id)"
-        status="ativo"
-        @select="onSelectWorkspace"
-      />
+      <template v-else>
+        <WorkspaceCard
+          v-for="w in filtered"
+          :key="w.id"
+          :id="String(w.id)"
+          :name="w.nome"
+          :description="w.descricao ?? ''"
+          :created-at="w.created_at"
+          :avatar-text="initials(w.nome)"
+          :avatar-gradient-class="gradientById(w.id)"
+          status="ativo"
+          @select="onSelectWorkspace"
+        />
+      </template>
     </section>
 
     <ModalAddWorkspace v-model:open="addOpen" />
   </div>
 </template>
-

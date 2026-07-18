@@ -89,7 +89,7 @@ export default defineEventHandler(async (event): Promise<UserProfile> => {
 
   const { data: updated, error: updatedError } = await admin
     .from('profiles')
-    .select('created_at, email, full_name, whatsapp')
+    .select('id, created_at, email, full_name, whatsapp')
     .eq('user_id', userId)
     .single()
 

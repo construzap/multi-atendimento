@@ -63,21 +63,6 @@ export default defineNuxtConfig({
         'whats.construzap.com',
       ],
     },
-    /**
-     * `xlsx` usa require dinâmico de `cpexcel.js` — no SSR isso aponta para node_modules.
-     * Mantém a lib externalizada no bundler SSR; o Dockerfile copia as deps necessárias.
-     */
-    ssr: {
-      external: ['xlsx'],
-    },
-  },
-  nitro: {
-    externals: {
-      traceInclude: [
-        'node_modules/xlsx/**',
-        'node_modules/codepage/**',
-      ],
-    },
   },
   app: {
     head: {

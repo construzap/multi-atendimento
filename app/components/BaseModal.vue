@@ -9,6 +9,8 @@ const props = withDefaults(
     showClose?: boolean
     /** largura do painel (Tailwind) */
     panelClass?: string
+    /** classes extras na área de conteúdo (slot default) */
+    bodyClass?: string
     /** fechar ao clicar fora do painel */
     closeOnBackdrop?: boolean
     /** fechar com Escape */
@@ -17,6 +19,7 @@ const props = withDefaults(
   {
     showClose: true,
     panelClass: 'w-full max-w-lg',
+    bodyClass: '',
     closeOnBackdrop: true,
     closeOnEscape: true,
   },
@@ -118,11 +121,17 @@ onUnmounted(() => {
               </button>
             </header>
 
-            <div class="min-h-0 flex-1 overflow-y-auto p-5">
+            <div
+              class="min-h-0 flex-1 overflow-y-auto p-5"
+              :class="bodyClass"
+            >
               <slot />
             </div>
 
-            <footer class="shrink-0 border-t border-outline/30 p-5 dark:border-dark-outline/30">
+            <footer
+              v-if="$slots.footer"
+              class="shrink-0 border-t border-outline/30 p-5 dark:border-dark-outline/30"
+            >
               <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <slot name="footer" />
               </div>

@@ -677,6 +677,8 @@ export const useKanbanStore = defineStore('kanban', {
           ...current,
           preview,
           updated_at: createdAt ?? current.updated_at,
+          // Nome editável não muda via Pusher.
+          name: current.name,
         }
 
         if (msg.from_me === false && this.infoContatoConversaKey !== conversaKey) {
@@ -685,10 +687,9 @@ export const useKanbanStore = defineStore('kanban', {
 
         if (payload.is_group) {
           merged.is_group = true
-          merged.name = payload.name_group ?? current.name
           merged.photo = payload.conversa_photo ?? current.photo
+          // Não altera `name` do card (editável) — só preview/nao_lidas/photo.
         } else {
-          merged.name = msg.name ?? current.name
           merged.photo = msg.photo ?? current.photo
         }
 

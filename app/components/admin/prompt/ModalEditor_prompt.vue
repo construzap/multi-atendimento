@@ -43,7 +43,8 @@ function aplicar() {
   <BaseModal
     :open="open"
     title="Editar conteúdo do prompt"
-    panel-class="flex w-full max-w-5xl max-h-[min(92vh,52rem)] flex-col"
+    panel-class="flex h-[94vh] w-full max-h-[94vh] max-w-[96vw] flex-col"
+    body-class="flex min-h-0 flex-1 flex-col overflow-hidden"
     @update:open="emit('update:open', $event)"
   >
     <template #subtitle>
@@ -56,10 +57,9 @@ function aplicar() {
         v-model="rascunho"
         :disabled="disabled"
         placeholder="Descreva como a IA deve se comportar, regras, tom de voz, contexto do negócio..."
-        class="min-h-[min(60vh,28rem)] w-full flex-1 resize-none overflow-y-auto rounded-xl border border-outline/40 bg-surface-container-high px-4 py-3 font-mono text-sm leading-relaxed text-on-surface placeholder:text-on-surface-variant/70 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-outline/40 dark:bg-dark-surface-container-high dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant/60 dark:focus:ring-primary-900/40"
-        rows="20"
+        class="min-h-0 w-full flex-1 resize-none overflow-y-auto rounded-xl border border-outline/40 bg-surface-container-high px-4 py-3 font-mono text-sm leading-relaxed text-on-surface placeholder:text-on-surface-variant/70 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-outline/40 dark:bg-dark-surface-container-high dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant/60 dark:focus:ring-primary-900/40"
       />
-      <p class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+      <p class="shrink-0 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
         {{ rascunho.length }} caracteres
       </p>
     </div>

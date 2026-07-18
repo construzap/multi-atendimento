@@ -5,22 +5,19 @@ export default defineNuxtPlugin(() => {
   const workspaces = useWorkspacesStore()
   const session = useSupabaseSession()
 
-  async function refreshIfLoggedIn() {
+  async function refreshIfLoggedIn(force = false) {
     if (!session.value) return
     try {
-      await workspaces.ensureAllLoaded()
+      await workspaces.ensureAllLoaded({ force })
     } catch {
       // erro já fica em workspaces.error; não quebra navegação
     }
   }
 
-  // Ao entrar no app (recarrega/refresh de sessão)
-  refreshIfLoggedIn()
-
-  // Após login/logout (mudança de sessão)
+  // Session pode atrasar um tick após o mount — watch immediate cobre login + F5.
   watch(
     session,
-    async (next) => {
+    async (next, prev) => {
       if (!next) {
         workspaces.items = []
         workspaces.error = null
@@ -29,9 +26,10 @@ export default defineNuxtPlugin(() => {
         workspaces.setCurrentWorkspaceId(null)
         return
       }
-      await refreshIfLoggedIn()
+      // Troca de sessão (login) força refetch; F5/rehydrate só busca se ainda não carregou.
+      const force = Boolean(prev === null || prev === undefined)
+      await refreshIfLoggedIn(force)
     },
-    { immediate: false }
+    { immediate: true },
   )
 })
-

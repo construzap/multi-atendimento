@@ -53,7 +53,7 @@ function viewRowToConversaRow(row: ViewConversaLookupRow): ConversaRow {
 }
 
 export type PersistWebhookMensagemResult =
-  | { ok: true; conversa_key: string; message_persisted?: boolean }
+  | { ok: true; conversa_key: string; message_persisted?: boolean; conversa_name?: string | null }
   | { ok: false; step: 'conversa' | 'mensagem'; message: string }
 
 function digitsIguais(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -120,6 +120,7 @@ type MensagemExistenteRow = {
   from_me: boolean | null
   from_api: boolean | null
   id_canal: number | null
+  name: string | null
 }
 
 async function findConversaPorKey(
@@ -277,7 +278,7 @@ async function loadMensagemNoCanal(
 ): Promise<MensagemExistenteRow | null> {
   const { data, error } = await admin
     .from('mensagens')
-    .select('replyid, key_conversa, from_me, from_api, id_canal')
+    .select('replyid, key_conversa, from_me, from_api, id_canal, name')
     .eq('message_id', message_id)
     .eq('id_canal', id_canal)
     .maybeSingle()
@@ -291,7 +292,15 @@ function buildMensagemRow(
   conversa_key: string,
   replyid: string | null,
   createdAtIso: string,
+  existingName: string | null = null,
 ) {
+  const nameIncoming =
+    !normalizada.from_me && typeof normalizada.name === 'string' && normalizada.name.trim()
+      ? normalizada.name.trim()
+      : null
+  /** Só grava `name` na criação ou se o valor atual no banco estiver vazio. */
+  const nameToPersist = campoIdentificadorVazio(existingName) ? nameIncoming : undefined
+
   return {
     message_id: normalizada.message_id,
     created_at: createdAtIso,
@@ -307,6 +316,7 @@ function buildMensagemRow(
     caption: normalizada.caption,
     filename: normalizada.filename,
     key_conversa: conversa_key,
+    ...(nameToPersist !== undefined ? { name: nameToPersist } : {}),
     ...(replyid ? { replyid } : {}),
   }
 }
@@ -315,10 +325,25 @@ function campoIdentificadorVazio(v: string | null | undefined): boolean {
   return !(typeof v === 'string' && v.trim())
 }
 
+/** Lê `conversas.name` no banco após persist (fonte da verdade para o Pusher). */
+async function loadConversaNameFromDb(
+  admin: SupabaseAdmin,
+  conversa_key: string,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from('conversas')
+    .select('name')
+    .eq('key', conversa_key)
+    .maybeSingle()
+  if (error || !data || typeof data !== 'object') return null
+  const name = (data as { name?: string | null }).name
+  return typeof name === 'string' && name.trim() ? name.trim() : null
+}
+
 /**
  * Conversa existente: preview + `nao_lidas`; foto se mensagem recebida.
- * Completa `phone`/`lid` só quando o campo está vazio no banco e o payload trouxe valor
- * (não sobrescreve identificadores já gravados).
+ * Completa `name`/`phone`/`lid` só quando o campo está vazio no banco e o payload trouxe valor
+ * (não sobrescreve valores já gravados).
  */
 function buildConversaUpdateRow(
   normalizada: MensagemNormalizada,
@@ -335,6 +360,11 @@ function buildConversaUpdateRow(
   if (!normalizada.from_me) {
     const photo = coalesceStr(normalizada.photo, existing.photo)
     if (photo) row.photo = photo
+
+    const nameIncoming = coalesceStr(normalizada.name, null)
+    if (campoIdentificadorVazio(existing.name) && nameIncoming) {
+      row.name = nameIncoming
+    }
   }
 
   const phoneIncoming = phoneContatoParaGravar(normalizada.phone, normalizada.connected_phone)
@@ -498,7 +528,13 @@ async function persistIndividual(
     usarHintComoKey && hint ? hint : existing?.key ?? randomUUID()
 
   const replyid = normalizada.replyid?.trim() || null
-  const mensagemRow = buildMensagemRow(normalizada, conversa_key, replyid, updatedAt)
+  const mensagemRow = buildMensagemRow(
+    normalizada,
+    conversa_key,
+    replyid,
+    updatedAt,
+    mensagemNoCanal?.name ?? null,
+  )
 
   if (!existing) {
     const { error: convErr } = await admin
@@ -531,7 +567,13 @@ async function persistIndividual(
     }
   }
 
-  return { ok: true, conversa_key, message_persisted: true }
+  const conversa_name = await loadConversaNameFromDb(admin, conversa_key)
+  return {
+    ok: true,
+    conversa_key,
+    message_persisted: true,
+    conversa_name,
+  }
 }
 
 async function persistGrupo(
@@ -575,10 +617,13 @@ async function persistGrupo(
   const conversa_key = existing?.key ?? randomUUID()
 
   const replyid = normalizada.replyid?.trim() || null
-  const mensagemRow = {
-    ...buildMensagemRow(normalizada, conversa_key, replyid, updatedAt),
-    name: normalizada.from_me ? null : normalizada.name,
-  }
+  const mensagemRow = buildMensagemRow(
+    normalizada,
+    conversa_key,
+    replyid,
+    updatedAt,
+    mensagemNoCanal?.name ?? null,
+  )
 
   if (!existing) {
     const { error: convErr } = await admin.from('conversas').insert({
@@ -628,6 +673,12 @@ async function persistGrupo(
       if (photo) updateRow.photo = photo
     }
 
+    // Nome do grupo: só preenche se ainda estiver vazio no banco.
+    const nameGroupIncoming = coalesceStr(normalizada.name_group, null)
+    if (campoIdentificadorVazio(existing.name) && nameGroupIncoming) {
+      updateRow.name = nameGroupIncoming
+    }
+
     const { error: convErr } = await admin
       .from('conversas')
       .update(updateRow)
@@ -638,5 +689,11 @@ async function persistGrupo(
     }
   }
 
-  return { ok: true, conversa_key, message_persisted: true }
+  const conversa_name = await loadConversaNameFromDb(admin, conversa_key)
+  return {
+    ok: true,
+    conversa_key,
+    message_persisted: true,
+    conversa_name,
+  }
 }

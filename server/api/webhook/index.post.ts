@@ -255,9 +255,17 @@ export default defineEventHandler(async (event) => {
     Date.now() - tPersist,
   )
 
+  // 1:1: não enviar mensagem.name no Pusher — clientes antigos sobrescreviam conversas.name
+  // com o nome do WhatsApp. O nome editável vai só em `conversa_name` (lido do banco).
+  const mensagemPusher = mensagemFromNormalizada(normalizada, saved.conversa_key)
+  if (!normalizada.is_group) {
+    mensagemPusher.name = null
+  }
+
   const payloadPusher: PusherNovaMensagemPayload = {
     conversa_key: saved.conversa_key,
-    mensagem: mensagemFromNormalizada(normalizada, saved.conversa_key),
+    mensagem: mensagemPusher,
+    conversa_name: saved.conversa_name ?? null,
     ...(normalizada.is_group
       ? {
           is_group: true,
