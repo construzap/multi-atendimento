@@ -3,7 +3,7 @@ import type { SyncChunkResult } from '#shared/types/vectorStore'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { requireAuthUserId } from '../../../utils/requireAuthUserId'
 import {
-  deleteByCodigo,
+  deleteByProdutoId,
   findHashesByWorkspace,
   insertDocument,
 } from '../../../utils/enviarParaIa/documentsVectorStore'
@@ -58,7 +58,7 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
     const payload = buildProdutoEmbeddingPayload(row, workspaceId)
     if (!payload) continue
 
-    const prev = existingHashes.get(payload.codigo)
+    const prev = existingHashes.get(String(payload.produtoId))
     if (!force && prev === payload.contentHash) {
       skipped++
       continue
@@ -87,9 +87,7 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
         }
 
         try {
-          if (payload.codigo) {
-            await deleteByCodigo(event, workspaceId, payload.codigo)
-          }
+          await deleteByProdutoId(event, workspaceId, payload.produtoId)
           await insertDocument(event, payload.content, payload.metadata, embedding)
           embedded++
         } catch (err) {

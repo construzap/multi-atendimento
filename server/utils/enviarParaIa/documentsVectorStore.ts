@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
 import type { DocumentMetadata, SearchHit, VectorStoreSearchFilters } from '#shared/types/vectorStore'
-import { parseCodigoFromContent } from './produtoEmbeddingText'
+import { parseProdutoIdFromContent } from './produtoEmbeddingText'
 import { getSupabaseVectorClient } from './supabaseVector'
 
 const DEFAULT_TABLE = 'documentsconstruzapmulti'
@@ -80,10 +80,10 @@ export async function findHashesByWorkspace(
       if (!matchesWorkspaceMetadata(meta, workspaceId)) continue
       if (!meta?.content_hash) continue
 
-      const codigo = parseCodigoFromContent(String(row.content ?? ''))
-      if (!codigo) continue
+      const produtoId = parseProdutoIdFromContent(String(row.content ?? ''))
+      if (!produtoId) continue
 
-      map.set(codigo, meta.content_hash)
+      map.set(produtoId, meta.content_hash)
     }
 
     if (rows.length < pageSize) break
@@ -95,7 +95,7 @@ export async function findHashesByWorkspace(
 
 export type VectorDocumentRow = {
   id: string
-  codigo: string | null
+  produtoId: string | null
 }
 
 export async function listVectorDocumentsChunk(
@@ -123,7 +123,7 @@ export async function listVectorDocumentsChunk(
     if (!matchesWorkspaceMetadata(row.metadata, workspaceId)) continue
     rows.push({
       id: String(row.id),
-      codigo: parseCodigoFromContent(String(row.content ?? '')),
+      produtoId: parseProdutoIdFromContent(String(row.content ?? '')),
     })
   }
 
@@ -143,7 +143,7 @@ export async function deleteDocumentById(event: H3Event, documentId: string): Pr
 export async function countOrphanDocuments(
   event: H3Event,
   workspaceId: number,
-  activeCodigos: Set<string>,
+  activeProdutoIds: Set<string>,
 ): Promise<number> {
   const client = getSupabaseVectorClient(event)
   const table = getDocumentsTable(event)
@@ -164,8 +164,8 @@ export async function countOrphanDocuments(
     const rows = data ?? []
     for (const row of rows) {
       if (!matchesWorkspaceMetadata(row.metadata, workspaceId)) continue
-      const codigo = parseCodigoFromContent(String(row.content ?? ''))
-      if (!codigo || !activeCodigos.has(codigo)) orfaos++
+      const produtoId = parseProdutoIdFromContent(String(row.content ?? ''))
+      if (!produtoId || !activeProdutoIds.has(produtoId)) orfaos++
     }
 
     if (rows.length < pageSize) break
@@ -175,17 +175,17 @@ export async function countOrphanDocuments(
   return orfaos
 }
 
-export async function deleteByCodigo(
+export async function deleteByProdutoId(
   event: H3Event,
   workspaceId: number,
-  codigo: string,
+  produtoId: number | string,
 ): Promise<void> {
   const client = getSupabaseVectorClient(event)
   const ws = String(workspaceId)
-  const code = String(codigo).trim()
-  if (!code) return
+  const id = String(produtoId).trim()
+  if (!id) return
 
-  const prefix = `Codigo: ${code}  |`
+  const prefix = `Id: ${id}  |`
 
   const { error } = await client
     .from(getDocumentsTable(event))

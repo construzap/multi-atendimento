@@ -8,7 +8,7 @@ import {
   listVectorDocumentsChunk,
 } from '../../../utils/enviarParaIa/documentsVectorStore'
 import { parseWorkspaceId } from '../../../utils/enviarParaIa/parseWorkspaceId'
-import { fetchIndexableProdutoCodigos } from '../../../utils/enviarParaIa/produtosIndexaveis'
+import { fetchIndexableProdutoIdKeys } from '../../../utils/enviarParaIa/produtosIndexaveis'
 
 type Body = {
   workspace_id?: unknown
@@ -38,9 +38,9 @@ export default defineEventHandler(async (event): Promise<SyncCleanupChunkResult>
 
   await checkWorkspace(event, workspaceId, userId)
 
-  const [total, activeCodigos, docs] = await Promise.all([
+  const [total, activeProdutoIds, docs] = await Promise.all([
     countByWorkspace(event, workspaceId),
-    fetchIndexableProdutoCodigos(event, workspaceId),
+    fetchIndexableProdutoIdKeys(event, workspaceId),
     listVectorDocumentsChunk(event, workspaceId, offset, limit),
   ])
 
@@ -48,7 +48,7 @@ export default defineEventHandler(async (event): Promise<SyncCleanupChunkResult>
   let removed = 0
 
   for (const doc of docs) {
-    const isOrphan = doc.codigo == null || !activeCodigos.has(doc.codigo)
+    const isOrphan = doc.produtoId == null || !activeProdutoIds.has(doc.produtoId)
     if (!isOrphan) continue
 
     try {

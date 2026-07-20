@@ -100,7 +100,7 @@ export function buildProdutoEmbeddingPayload(
   const codigo = formatValor(row.codigo)
 
   const content = [
-    `Codigo: ${codigo}`,
+    `Id: ${id}`,
     `Nome do produto: ${nome}`,
     `Unidade_Venda: ${formatValor(row.unidade_venda)}`,
     `Marca: ${formatValor(row.marca)}`,
@@ -138,9 +138,9 @@ export function buildProdutoEmbeddingPayload(
   }
 }
 
-/** Extrai o código do produto a partir do `content` indexado. */
-export function parseCodigoFromContent(content: string): string | null {
-  const match = content.match(/^Codigo:\s*([^|]+?)\s*\|/)
+/** Extrai o id do produto a partir do `content` indexado (`Id: 123  |  ...`). */
+export function parseProdutoIdFromContent(content: string): string | null {
+  const match = content.match(/^Id:\s*([^|]+?)\s*\|/)
   if (!match) return null
   const value = match[1]?.trim()
   return value || null

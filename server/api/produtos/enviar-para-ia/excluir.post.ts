@@ -2,7 +2,7 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutosExcluirResponse } from '#shared/types/produtos'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
-import { deleteByCodigo } from '../../../utils/enviarParaIa/documentsVectorStore'
+import { deleteByProdutoId } from '../../../utils/enviarParaIa/documentsVectorStore'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 const MAX_IDS = 500
@@ -80,17 +80,17 @@ export default defineEventHandler(async (event): Promise<ProdutosExcluirResponse
     .delete()
     .eq('workspace_id', workspaceId)
     .in('id', ids)
-    .select('id, codigo')
+    .select('id')
 
   if (error) {
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
 
   for (const row of data ?? []) {
-    const codigo = row.codigo != null ? String(row.codigo).trim() : ''
-    if (!codigo) continue
+    const id = typeof row.id === 'number' ? row.id : Number(row.id)
+    if (!Number.isFinite(id)) continue
     try {
-      await deleteByCodigo(event, workspaceId, codigo)
+      await deleteByProdutoId(event, workspaceId, id)
     } catch {
       // Não bloqueia exclusão no banco se a vector store falhar
     }

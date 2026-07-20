@@ -27,13 +27,13 @@ export default defineEventHandler(async (event): Promise<VectorStoreStatus> => {
     findHashesByWorkspace(event, workspaceId),
   ])
 
-  const { activeCodigos, sincronizados, pendentes } = await computeIndexableProdutoSyncStatus(
+  const { activeProdutoIds, sincronizados, pendentes } = await computeIndexableProdutoSyncStatus(
     event,
     workspaceId,
     hashes,
   )
 
-  const orfaos = await countOrphanDocuments(event, workspaceId, activeCodigos)
+  const orfaos = await countOrphanDocuments(event, workspaceId, activeProdutoIds)
 
   return {
     total_produtos,

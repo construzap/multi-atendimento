@@ -92,24 +92,24 @@ async function fetchIndexableProdutoRows(
   return rows
 }
 
-/** Códigos sequenciais dos produtos indexáveis do workspace (usado na vector store). */
-export async function fetchIndexableProdutoCodigos(
+/** Ids dos produtos indexáveis do workspace (chave na vector store). */
+export async function fetchIndexableProdutoIdKeys(
   event: H3Event,
   workspaceId: number,
 ): Promise<Set<string>> {
-  const rows = await fetchIndexableProdutoRows(event, workspaceId, 'id, codigo, status, parent_id')
-  const codigos = new Set<string>()
+  const rows = await fetchIndexableProdutoRows(event, workspaceId, 'id, status, parent_id')
+  const ids = new Set<string>()
 
   for (const row of rows) {
-    const codigo = row.codigo != null ? String(row.codigo).trim() : ''
-    if (codigo) codigos.add(codigo)
+    const id = Number(row.id)
+    if (Number.isFinite(id)) ids.add(String(id))
   }
 
-  return codigos
+  return ids
 }
 
 export type IndexableProdutoSyncStatus = {
-  activeCodigos: Set<string>
+  activeProdutoIds: Set<string>
   sincronizados: number
   pendentes: number
 }
@@ -121,23 +121,23 @@ export async function computeIndexableProdutoSyncStatus(
   existingHashes: Map<string, string>,
 ): Promise<IndexableProdutoSyncStatus> {
   const rows = await fetchIndexableProdutoRows(event, workspaceId, SELECT_VIEW_PRODUTOS_EMBEDDING)
-  const activeCodigos = new Set<string>()
+  const activeProdutoIds = new Set<string>()
   let sincronizados = 0
   let pendentes = 0
 
   for (const row of rows) {
-    const codigo = row.codigo != null ? String(row.codigo).trim() : ''
-    if (codigo) activeCodigos.add(codigo)
-
     const payload = buildProdutoEmbeddingPayload(row, workspaceId)
     if (!payload) continue
 
-    const prev = codigo ? existingHashes.get(codigo) : undefined
+    const key = String(payload.produtoId)
+    activeProdutoIds.add(key)
+
+    const prev = existingHashes.get(key)
     if (prev === payload.contentHash) sincronizados++
     else pendentes++
   }
 
-  return { activeCodigos, sincronizados, pendentes }
+  return { activeProdutoIds, sincronizados, pendentes }
 }
 
 export async function fetchIndexableProdutoIds(
