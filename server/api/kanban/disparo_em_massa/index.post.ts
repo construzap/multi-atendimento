@@ -113,10 +113,11 @@ function parseVisualizacaoUnica(raw: unknown): boolean {
 }
 
 function visualizacaoUnicaDaCampanha(
-  tipo_mensagem: CampanhaTipoMensagem,
+  sequencia_tipos: CampanhaTipoMensagem[],
   raw: unknown,
 ): boolean {
-  if (tipo_mensagem === 'texto') return false
+  const temMidia = sequencia_tipos.some((t) => t === 'imagem' || t === 'audio' || t === 'video')
+  if (!temMidia) return false
   return parseVisualizacaoUnica(raw)
 }
 
@@ -309,6 +310,139 @@ function safeMime(raw: unknown): string {
   return (s.split(';')[0] ?? '').trim().toLowerCase()
 }
 
+type SequenciaProcessada = {
+  sequencia_tipos: CampanhaTipoMensagem[]
+  sequencia_textos: (string | null)[]
+  sequencia_midias: (string | null)[]
+  tipo_mensagem: CampanhaTipoMensagem
+  conteudo_texto: string | null
+  url_midia: string | null
+}
+
+/**
+ * Processa `body.sequencia` (preferencial) ou cai no legado de 1 mensagem
+ * (`tipo_mensagem` + `conteudo_texto` + `data_base64`).
+ */
+async function processarSequenciaMensagens(
+  workspaceId: number,
+  body: Body,
+): Promise<SequenciaProcessada> {
+  const rawSeq = body.sequencia
+  if (Array.isArray(rawSeq) && rawSeq.length > 0) {
+    const sequencia_tipos: CampanhaTipoMensagem[] = []
+    const sequencia_textos: (string | null)[] = []
+    const sequencia_midias: (string | null)[] = []
+
+    for (let i = 0; i < rawSeq.length; i++) {
+      const item = rawSeq[i]
+      if (!item || typeof item !== 'object') {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `sequencia[${i}] inválido.`,
+        })
+      }
+      const row = item as Record<string, unknown>
+      const tipo = parseTipoMensagem(row.tipo)
+      const texto = trimOrNull(row.texto)
+
+      if (tipo === 'texto') {
+        if (!texto) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: `sequencia[${i}]: texto é obrigatório para mensagem de texto.`,
+          })
+        }
+        sequencia_tipos.push(tipo)
+        sequencia_textos.push(texto)
+        sequencia_midias.push(null)
+        continue
+      }
+
+      const data_base64 = typeof row.data_base64 === 'string' ? row.data_base64.trim() : ''
+      const urlExistente = trimOrNull(row.url_midia)
+      let url_midia: string | null = urlExistente
+
+      if (data_base64) {
+        const mime = safeMime(row.mime)
+        if (!mime) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: `sequencia[${i}]: mime é obrigatório para imagem ou áudio.`,
+          })
+        }
+        url_midia = await uploadMidiaDisparoEmMassa({
+          workspaceId,
+          mensagem_type: tipo === 'audio' ? 'audio' : 'imagem',
+          mime,
+          data_base64,
+        })
+      }
+
+      if (!url_midia) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `sequencia[${i}]: informe mídia (arquivo ou url_midia) para ${tipo}.`,
+        })
+      }
+
+      sequencia_tipos.push(tipo)
+      sequencia_textos.push(texto)
+      sequencia_midias.push(url_midia)
+    }
+
+    const primeiro = sequencia_tipos[0]!
+    return {
+      sequencia_tipos,
+      sequencia_textos,
+      sequencia_midias,
+      tipo_mensagem: primeiro,
+      conteudo_texto: sequencia_textos[0] ?? null,
+      url_midia: sequencia_midias[0] ?? null,
+    }
+  }
+
+  // Legado: uma única mensagem
+  const tipo_mensagem = parseTipoMensagem(body.tipo_mensagem)
+  const conteudo_texto = trimOrNull(body.conteudo_texto)
+  let url_midia: string | null = null
+
+  if (tipo_mensagem === 'texto') {
+    if (!conteudo_texto) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'conteudo_texto é obrigatório para mensagem de texto.',
+      })
+    }
+  } else if (tipo_mensagem === 'imagem' || tipo_mensagem === 'audio') {
+    const data_base64 = typeof body.data_base64 === 'string' ? body.data_base64.trim() : ''
+    if (!data_base64) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Informe data_base64 para campanha com imagem ou áudio.',
+      })
+    }
+    const mime = safeMime(body.mime)
+    if (!mime) {
+      throw createError({ statusCode: 400, statusMessage: 'mime é obrigatório para imagem ou áudio.' })
+    }
+    url_midia = await uploadMidiaDisparoEmMassa({
+      workspaceId,
+      mensagem_type: tipo_mensagem,
+      mime,
+      data_base64,
+    })
+  }
+
+  return {
+    sequencia_tipos: [tipo_mensagem],
+    sequencia_textos: [conteudo_texto],
+    sequencia_midias: [url_midia],
+    tipo_mensagem,
+    conteudo_texto,
+    url_midia,
+  }
+}
+
 function aplicarFiltroIsGroupDestinatarios<
   T extends { or: (filters: string) => T },
 >(query: T, enviaParaGrupo: boolean): T {
@@ -377,11 +511,8 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     throw createError({ statusCode: 400, statusMessage: 'nome é obrigatório.' })
   }
 
-  const tipo_mensagem = parseTipoMensagem(body.tipo_mensagem)
   const status = parseCampanhaStatus(body.status)
   const ia_ligada = parseIaLigada(body.ia_ligada)
-  const visualizacao_unica = visualizacaoUnicaDaCampanha(tipo_mensagem, body.visualizacao_unica)
-  const conteudo_texto = trimOrNull(body.conteudo_texto)
   const canais_ids = parseCanaisIds(body)
   const canal_id = canais_ids[0]!
   const coluna_ids = parseColunaIds(body.coluna_ids)
@@ -428,10 +559,6 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     throw createError({ statusCode: 403, statusMessage: 'Canal fonte inválido ou sem permissão.' })
   }
 
-  if (tipo_mensagem === 'texto' && !conteudo_texto) {
-    throw createError({ statusCode: 400, statusMessage: 'conteudo_texto é obrigatório para mensagem de texto.' })
-  }
-
   const admin = serverSupabaseServiceRole<any>(event)
 
   if (!funil_id && coluna_id) {
@@ -457,27 +584,16 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
   )
   const total_contatos = conversaKeys.length
 
-  let url_midia: string | null = null
-
-  if (tipo_mensagem === 'imagem' || tipo_mensagem === 'audio') {
-    const data_base64 = typeof body.data_base64 === 'string' ? body.data_base64.trim() : ''
-    if (!data_base64) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Informe data_base64 para campanha com imagem ou áudio.',
-      })
-    }
-    const mime = safeMime(body.mime)
-    if (!mime) {
-      throw createError({ statusCode: 400, statusMessage: 'mime é obrigatório para imagem ou áudio.' })
-    }
-    url_midia = await uploadMidiaDisparoEmMassa({
-      workspaceId,
-      mensagem_type: tipo_mensagem,
-      mime,
-      data_base64,
-    })
-  }
+  const seq = await processarSequenciaMensagens(workspaceId, body)
+  const {
+    sequencia_tipos,
+    sequencia_textos,
+    sequencia_midias,
+    tipo_mensagem,
+    conteudo_texto,
+    url_midia,
+  } = seq
+  const visualizacao_unica = visualizacaoUnicaDaCampanha(sequencia_tipos, body.visualizacao_unica)
 
   const data_local = trimOrNull(body.data_local)
   const hora_local = trimOrNull(body.hora_local)
@@ -527,13 +643,16 @@ export default defineEventHandler(async (event): Promise<CriarCampanhaResponse> 
     coluna_erro_id,
     funil_erro_id,
     timezone_escolhido,
+    sequencia_tipos,
+    sequencia_textos,
+    sequencia_midias,
   }
 
   const { data: campanhaInsert, error: campanhaErr } = await admin
     .from('campanhas')
     .insert(insertCampanha)
     .select(
-      'id, nome, tipo_mensagem, conteudo_texto, url_midia, webhook_url, intervalo_minimo_minutos, intervalo_maximo_minutos, status, criado_em, canal_id, canais_ids, ultimo_canal_id, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id, funil_id, timezone_escolhido, tamanho_lote, pausa_lote_minutos, coluna_erro_id, funil_erro_id',
+      'id, nome, tipo_mensagem, conteudo_texto, url_midia, webhook_url, intervalo_minimo_minutos, intervalo_maximo_minutos, status, criado_em, canal_id, canais_ids, ultimo_canal_id, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id, funil_id, timezone_escolhido, tamanho_lote, pausa_lote_minutos, coluna_erro_id, funil_erro_id, sequencia_tipos, sequencia_textos, sequencia_midias',
     )
     .single()
 

@@ -9,7 +9,7 @@ import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 const CAMPANHA_SELECT =
-  'id, nome, tipo_mensagem, conteudo_texto, url_midia, intervalo_minimo_minutos, intervalo_maximo_minutos, status, canal_id, canais_ids, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id, funil_id, timezone_escolhido, tamanho_lote, pausa_lote_minutos, coluna_erro_id, funil_erro_id'
+  'id, nome, tipo_mensagem, conteudo_texto, url_midia, intervalo_minimo_minutos, intervalo_maximo_minutos, status, canal_id, canais_ids, data_inicio, total_contatos, total_enviados, proximo_disparo, ia_ligada, visualizacao_unica, hora_permitida_inicio, hora_permitida_fim, fonte_canal_id, envia_para_grupo, coluna_id, funil_id, timezone_escolhido, tamanho_lote, pausa_lote_minutos, coluna_erro_id, funil_erro_id, sequencia_tipos, sequencia_textos, sequencia_midias'
 
 type Body = Record<string, unknown>
 type SupabaseAdmin = ReturnType<typeof serverSupabaseServiceRole<any>>

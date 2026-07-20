@@ -2,7 +2,15 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
-import type { CampanhaStatusCriacao, CampanhaListItem, CriarCampanhaResponse, AtualizarCampanhaResponse, EnfileirarFilaDisparoResponse } from '#shared/types/disparoEmMassa'
+import type {
+  CampanhaStatusCriacao,
+  CampanhaListItem,
+  CampanhaTipoMensagem,
+  CriarCampanhaResponse,
+  AtualizarCampanhaResponse,
+  EnfileirarFilaDisparoResponse,
+  CampanhaSequenciaItemBody,
+} from '#shared/types/disparoEmMassa'
 import { OPCOES_FUSO_CAMPANHA, defaultFusoCampanhaDoNavegador, normalizarTimezoneCampanhaParaFormulario } from '#shared/constants/ianaTimezonesBrasil'
 import BaseButton from '~/components/BaseButton.vue'
 import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
@@ -11,8 +19,31 @@ import { useDisparoEmMassaStore } from '~/stores/disparoEmMassa'
 import { useKanbanStore } from '~/stores/kanban'
 import { useWorkspacesStore } from '~/stores/workspaces'
 
-export type CampanhaTipoMensagem = 'texto' | 'imagem' | 'audio'
 export type CampanhaFiltroDestinatario = 'coluna'
+
+type MensagemTipoForm = Extract<CampanhaTipoMensagem, 'texto' | 'imagem' | 'audio'>
+
+type MensagemSequenciaForm = {
+  id: string
+  tipo: MensagemTipoForm
+  texto: string
+  arquivo: File | null
+  previewUrl: string | null
+  nomeArquivo: string | null
+  urlExistente: string | null
+}
+
+function novaMensagemSequencia(tipo: MensagemTipoForm = 'texto'): MensagemSequenciaForm {
+  return {
+    id: crypto.randomUUID(),
+    tipo,
+    texto: '',
+    arquivo: null,
+    previewUrl: null,
+    nomeArquivo: null,
+    urlExistente: null,
+  }
+}
 
 const props = withDefaults(
   defineProps<{
@@ -103,9 +134,11 @@ function workspaceIdAtual(): number | null {
 const nomeCampanha = ref('')
 const statusCampanha = ref<CampanhaStatusCriacao>('processando')
 const iaLigada = ref(true)
-const tipo = ref<CampanhaTipoMensagem>('texto')
-const mensagem = ref('')
+const mensagensSequencia = ref<MensagemSequenciaForm[]>([novaMensagemSequencia('texto')])
 const visualizacaoUnica = ref(false)
+const temMidiaNaSequencia = computed(() =>
+  mensagensSequencia.value.some((m) => m.tipo === 'imagem' || m.tipo === 'audio'),
+)
 const dataCampo = ref('')
 const horaCampo = ref('')
 const ianaTimezone = ref<string>(defaultFusoCampanhaDoNavegador())
@@ -231,16 +264,18 @@ function classeChipAcao() {
   ].join(' ')
 }
 
-function inserirVariavelMensagem(variavelId: string) {
+function inserirVariavelMensagem(variavelId: string, mensagemId: string) {
   const token = `{{${variavelId}}}`
-  const el = mensagemTextareaRef.value
+  const msg = mensagensSequencia.value.find((m) => m.id === mensagemId)
+  if (!msg) return
+  const el = mensagemTextareaRefs.value[mensagemId]
   if (!el) {
-    mensagem.value += token
+    msg.texto += token
     return
   }
-  const start = el.selectionStart ?? mensagem.value.length
+  const start = el.selectionStart ?? msg.texto.length
   const end = el.selectionEnd ?? start
-  mensagem.value = mensagem.value.slice(0, start) + token + mensagem.value.slice(end)
+  msg.texto = msg.texto.slice(0, start) + token + msg.texto.slice(end)
   void nextTick(() => {
     el.focus()
     const pos = start + token.length
@@ -272,16 +307,25 @@ function classeColunaItem(selecionada: boolean) {
   ].join(' ')
 }
 
-const imagemInputRef = ref<HTMLInputElement | null>(null)
-const audioInputRef = ref<HTMLInputElement | null>(null)
-const mensagemTextareaRef = ref<HTMLTextAreaElement | null>(null)
-const imagemNome = ref<string | null>(null)
-const audioNome = ref<string | null>(null)
-const imagemArquivo = ref<File | null>(null)
-const audioArquivo = ref<File | null>(null)
-const imagemPreviewUrl = ref<string | null>(null)
+const imagemInputRefs = ref<Record<string, HTMLInputElement | null>>({})
+const audioInputRefs = ref<Record<string, HTMLInputElement | null>>({})
+const mensagemTextareaRefs = ref<Record<string, HTMLTextAreaElement | null>>({})
+
+function setImagemInputRef(id: string, el: unknown) {
+  if (el instanceof HTMLInputElement) imagemInputRefs.value[id] = el
+  else delete imagemInputRefs.value[id]
+}
+function setAudioInputRef(id: string, el: unknown) {
+  if (el instanceof HTMLInputElement) audioInputRefs.value[id] = el
+  else delete audioInputRefs.value[id]
+}
+function setMensagemTextareaRef(id: string, el: unknown) {
+  if (el instanceof HTMLTextAreaElement) mensagemTextareaRefs.value[id] = el
+  else delete mensagemTextareaRefs.value[id]
+}
 
 const gravandoUi = ref(false)
+const gravandoMensagemId = ref<string | null>(null)
 const gravacaoPausada = ref(false)
 const elapsedSegundos = ref(0)
 let intervalId: ReturnType<typeof setInterval> | null = null
@@ -290,18 +334,6 @@ let descartarGravacaoAoParar = false
 let mediaRecorderInst: MediaRecorder | null = null
 let gravacaoStreamRef: MediaStream | null = null
 const gravacaoChunks: Blob[] = []
-
-const audioObjectUrl = ref<string | null>(null)
-
-watch(audioArquivo, (file) => {
-  if (audioObjectUrl.value) {
-    globalThis.URL.revokeObjectURL(audioObjectUrl.value)
-    audioObjectUrl.value = null
-  }
-  if (file) {
-    audioObjectUrl.value = globalThis.URL.createObjectURL(file)
-  }
-})
 
 function limparTimerGravacao() {
   if (intervalId != null) {
@@ -349,6 +381,8 @@ function finalizarGravacaoNoStop(mr: MediaRecorder, mimeEscolhido: string) {
 
   const descartar = descartarGravacaoAoParar
   descartarGravacaoAoParar = false
+  const targetId = gravandoMensagemId.value
+  gravandoMensagemId.value = null
 
   if (descartar) {
     gravacaoChunks.length = 0
@@ -372,9 +406,18 @@ function finalizarGravacaoNoStop(mr: MediaRecorder, mimeEscolhido: string) {
         : 'webm'
   const nome = `gravacao-${Date.now()}.${ext}`
   const file = new File([blob], nome, { type: blob.type || 'audio/webm' })
-  audioArquivo.value = file
-  audioNome.value = nome
-  if (audioInputRef.value) audioInputRef.value.value = ''
+  const msg = targetId
+    ? mensagensSequencia.value.find((m) => m.id === targetId)
+    : null
+  if (msg) {
+    if (msg.previewUrl?.startsWith('blob:')) globalThis.URL.revokeObjectURL(msg.previewUrl)
+    msg.arquivo = file
+    msg.previewUrl = globalThis.URL.createObjectURL(file)
+    msg.nomeArquivo = nome
+    msg.urlExistente = null
+  }
+  const input = targetId ? audioInputRefs.value[targetId] : null
+  if (input) input.value = ''
 }
 
 function pararTracksGravacao() {
@@ -390,16 +433,22 @@ function revogarObjectUrlSeBlob(url: string | null) {
 
 function abortarMidiaTemporariaNavegador() {
   encerrarSomenteGravadorMicrofone()
+  gravandoMensagemId.value = null
 
-  revogarObjectUrlSeBlob(imagemPreviewUrl.value)
-  imagemPreviewUrl.value = null
-  imagemArquivo.value = null
-  imagemNome.value = null
-  if (imagemInputRef.value) imagemInputRef.value.value = ''
+  for (const m of mensagensSequencia.value) {
+    revogarObjectUrlSeBlob(m.previewUrl)
+  }
+  mensagensSequencia.value = [novaMensagemSequencia('texto')]
+  imagemInputRefs.value = {}
+  audioInputRefs.value = {}
+  mensagemTextareaRefs.value = {}
+}
 
-  audioArquivo.value = null
-  audioNome.value = null
-  if (audioInputRef.value) audioInputRef.value.value = ''
+async function iniciarGravacaoAudio(mensagemId: string) {
+  if (gravandoUi.value) return
+  gravandoMensagemId.value = mensagemId
+  await toggleGravacaoAudio()
+  if (!gravandoUi.value) gravandoMensagemId.value = null
 }
 
 async function toggleGravacaoAudio() {
@@ -443,6 +492,7 @@ async function toggleGravacaoAudio() {
   } catch {
     toast.error('Não foi possível acessar o microfone. Verifique permissões do navegador.')
     encerrarSomenteGravadorMicrofone()
+    gravandoMensagemId.value = null
   }
 }
 
@@ -477,26 +527,68 @@ function cancelarGravacaoAudio() {
     return
   }
   encerrarSomenteGravadorMicrofone()
+  gravandoMensagemId.value = null
 }
 
-function removerAudioAnexado() {
-  if (gravandoUi.value) encerrarSomenteGravadorMicrofone()
-  audioArquivo.value = null
-  audioNome.value = null
-  if (audioInputRef.value) audioInputRef.value.value = ''
+function removerAudioAnexado(mensagemId: string) {
+  if (gravandoUi.value && gravandoMensagemId.value === mensagemId) {
+    encerrarSomenteGravadorMicrofone()
+    gravandoMensagemId.value = null
+  }
+  const msg = mensagensSequencia.value.find((m) => m.id === mensagemId)
+  if (!msg) return
+  revogarObjectUrlSeBlob(msg.previewUrl)
+  msg.arquivo = null
+  msg.previewUrl = null
+  msg.nomeArquivo = null
+  msg.urlExistente = null
+  const input = audioInputRefs.value[mensagemId]
+  if (input) input.value = ''
 }
 
-watch(tipo, (t) => {
-  if (t !== 'audio') encerrarSomenteGravadorMicrofone()
-  if (t === 'texto') visualizacaoUnica.value = false
-})
+function moverMensagem(idx: number, dir: -1 | 1) {
+  const j = idx + dir
+  if (j < 0 || j >= mensagensSequencia.value.length) return
+  const arr = [...mensagensSequencia.value]
+  const [item] = arr.splice(idx, 1)
+  arr.splice(j, 0, item!)
+  mensagensSequencia.value = arr
+}
+
+function removerMensagem(idx: number) {
+  if (mensagensSequencia.value.length <= 1) return
+  const item = mensagensSequencia.value[idx]
+  if (item && gravandoMensagemId.value === item.id) {
+    encerrarSomenteGravadorMicrofone()
+    gravandoMensagemId.value = null
+  }
+  if (item?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(item.previewUrl)
+  mensagensSequencia.value.splice(idx, 1)
+}
+
+function adicionarMensagem() {
+  mensagensSequencia.value.push(novaMensagemSequencia('texto'))
+}
+
+function setTipoMensagem(id: string, tipo: MensagemTipoForm) {
+  const m = mensagensSequencia.value.find((x) => x.id === id)
+  if (!m) return
+  if (m.tipo === tipo) return
+  if (m.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(m.previewUrl)
+  m.tipo = tipo
+  m.arquivo = null
+  m.previewUrl = null
+  m.nomeArquivo = null
+  m.urlExistente = null
+  if (gravandoMensagemId.value === id) {
+    encerrarSomenteGravadorMicrofone()
+    gravandoMensagemId.value = null
+  }
+  if (!temMidiaNaSequencia.value) visualizacaoUnica.value = false
+}
 
 onUnmounted(() => {
   abortarMidiaTemporariaNavegador()
-  if (audioObjectUrl.value) {
-    globalThis.URL.revokeObjectURL(audioObjectUrl.value)
-    audioObjectUrl.value = null
-  }
 })
 
 function resetFormulario() {
@@ -504,8 +596,7 @@ function resetFormulario() {
   nomeCampanha.value = ''
   statusCampanha.value = 'processando'
   iaLigada.value = true
-  tipo.value = 'texto'
-  mensagem.value = ''
+  mensagensSequencia.value = [novaMensagemSequencia('texto')]
   visualizacaoUnica.value = false
   dataCampo.value = ''
   horaCampo.value = ''
@@ -525,8 +616,6 @@ function resetFormulario() {
   funilIdAposDisparo.value = null
   colunaErroId.value = null
   funilErroId.value = null
-  imagemNome.value = null
-  audioNome.value = null
 }
 
 function horaBancoParaInput(hora: string | null | undefined): string {
@@ -603,12 +692,19 @@ function aplicarColunaErroDoPinia(campanha: CampanhaListItem) {
   }
 }
 
-function inferirTipoMensagem(campanha: CampanhaListItem): CampanhaTipoMensagem {
+function inferirTipoMensagem(campanha: CampanhaListItem): MensagemTipoForm {
+  const t = campanha.tipo_mensagem
+  if (t === 'texto' || t === 'imagem' || t === 'audio') return t
   if (campanha.url_midia) {
     const u = campanha.url_midia.toLowerCase()
     if (/\.(mp3|ogg|wav|m4a|aac|opus|weba?)(\?|$)/.test(u)) return 'audio'
     return 'imagem'
   }
+  return 'texto'
+}
+
+function normalizarTipoSequencia(raw: string | null | undefined): MensagemTipoForm {
+  if (raw === 'texto' || raw === 'imagem' || raw === 'audio') return raw
   return 'texto'
 }
 
@@ -619,17 +715,39 @@ function normalizarStatusEdicao(status: CampanhaListItem['status']): CampanhaSta
 
 function preencherFormulario(campanha: CampanhaListItem) {
   abortarMidiaTemporariaNavegador()
-  if (audioObjectUrl.value) {
-    revogarObjectUrlSeBlob(audioObjectUrl.value)
-    audioObjectUrl.value = null
-  }
 
   nomeCampanha.value = campanha.nome
   statusCampanha.value = normalizarStatusEdicao(campanha.status)
   iaLigada.value = campanha.ia_ligada ?? true
-  tipo.value = inferirTipoMensagem(campanha)
-  mensagem.value = campanha.conteudo_texto ?? ''
   visualizacaoUnica.value = campanha.visualizacao_unica ?? false
+
+  const tipos = campanha.sequencia_tipos
+  if (tipos && tipos.length > 0) {
+    const textos = campanha.sequencia_textos ?? []
+    const midias = campanha.sequencia_midias ?? []
+    mensagensSequencia.value = tipos.map((tipoRaw, i) => {
+      const tipo = normalizarTipoSequencia(tipoRaw)
+      const item = novaMensagemSequencia(tipo)
+      item.texto = textos[i] ?? ''
+      const url = midias[i] ?? null
+      if (url && (tipo === 'imagem' || tipo === 'audio')) {
+        item.previewUrl = url
+        item.urlExistente = url
+        item.nomeArquivo = tipo === 'imagem' ? 'Imagem da campanha' : 'Áudio da campanha'
+      }
+      return item
+    })
+  } else {
+    const tipo = inferirTipoMensagem(campanha)
+    const item = novaMensagemSequencia(tipo)
+    item.texto = campanha.conteudo_texto ?? ''
+    if ((tipo === 'imagem' || tipo === 'audio') && campanha.url_midia) {
+      item.previewUrl = campanha.url_midia
+      item.urlExistente = campanha.url_midia
+      item.nomeArquivo = tipo === 'imagem' ? 'Imagem da campanha' : 'Áudio da campanha'
+    }
+    mensagensSequencia.value = [item]
+  }
 
   ianaTimezone.value = normalizarTimezoneCampanhaParaFormulario(campanha.timezone_escolhido)
   const { data, hora } = isoParaCamposLocais(campanha.data_inicio, ianaTimezone.value)
@@ -650,19 +768,6 @@ function preencherFormulario(campanha: CampanhaListItem) {
   colunasSelecionadas.value = []
   aplicarMoverAposDisparoDoPinia(campanha)
   aplicarColunaErroDoPinia(campanha)
-
-  imagemArquivo.value = null
-  audioArquivo.value = null
-  imagemNome.value = null
-  audioNome.value = null
-
-  if (tipo.value === 'imagem' && campanha.url_midia) {
-    imagemPreviewUrl.value = campanha.url_midia
-    imagemNome.value = 'Imagem da campanha'
-  } else if (tipo.value === 'audio' && campanha.url_midia) {
-    audioObjectUrl.value = campanha.url_midia
-    audioNome.value = 'Áudio da campanha'
-  }
 }
 
 function aplicarEstadoAoAbrir() {
@@ -815,7 +920,7 @@ function funilErroIdParaCampanha(): string | null {
   return null
 }
 
-function onImagemChange(e: Event) {
+function onImagemChange(e: Event, mensagemId: string) {
   const input = e.target as HTMLInputElement
   const f = input.files?.[0]
   if (!f) return
@@ -823,14 +928,20 @@ function onImagemChange(e: Event) {
     input.value = ''
     return
   }
-  if (imagemPreviewUrl.value) URL.revokeObjectURL(imagemPreviewUrl.value)
-  imagemPreviewUrl.value = URL.createObjectURL(f)
-  imagemArquivo.value = f
-  imagemNome.value = f.name
+  const msg = mensagensSequencia.value.find((m) => m.id === mensagemId)
+  if (!msg) return
+  if (msg.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(msg.previewUrl)
+  msg.previewUrl = URL.createObjectURL(f)
+  msg.arquivo = f
+  msg.nomeArquivo = f.name
+  msg.urlExistente = null
 }
 
-function onAudioChange(e: Event) {
-  if (gravandoUi.value) encerrarSomenteGravadorMicrofone()
+function onAudioChange(e: Event, mensagemId: string) {
+  if (gravandoUi.value && gravandoMensagemId.value === mensagemId) {
+    encerrarSomenteGravadorMicrofone()
+    gravandoMensagemId.value = null
+  }
   const input = e.target as HTMLInputElement
   const f = input.files?.[0]
   if (!f) return
@@ -838,16 +949,25 @@ function onAudioChange(e: Event) {
     input.value = ''
     return
   }
-  audioArquivo.value = f
-  audioNome.value = f.name
+  const msg = mensagensSequencia.value.find((m) => m.id === mensagemId)
+  if (!msg) return
+  if (msg.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(msg.previewUrl)
+  msg.arquivo = f
+  msg.nomeArquivo = f.name
+  msg.previewUrl = URL.createObjectURL(f)
+  msg.urlExistente = null
 }
 
-function removerImagemAnexada() {
-  if (imagemPreviewUrl.value) globalThis.URL.revokeObjectURL(imagemPreviewUrl.value)
-  imagemPreviewUrl.value = null
-  imagemNome.value = null
-  imagemArquivo.value = null
-  if (imagemInputRef.value) imagemInputRef.value.value = ''
+function removerImagemAnexada(mensagemId: string) {
+  const msg = mensagensSequencia.value.find((m) => m.id === mensagemId)
+  if (!msg) return
+  if (msg.previewUrl?.startsWith('blob:')) globalThis.URL.revokeObjectURL(msg.previewUrl)
+  msg.previewUrl = null
+  msg.nomeArquivo = null
+  msg.arquivo = null
+  msg.urlExistente = null
+  const input = imagemInputRefs.value[mensagemId]
+  if (input) input.value = ''
 }
 
 function arquivoParaBase64Payload(arquivo: File): Promise<{ data_base64: string; mime: string; filename: string }> {
@@ -956,13 +1076,19 @@ function validar(): string | null {
   if (fonteCanaisSelecionados.value.length === 0) {
     return 'Selecione pelo menos um canal fonte para buscar destinatários.'
   }
-  if (tipo.value === 'texto' && !mensagem.value.trim()) return 'Preencha a mensagem.'
   if (gravandoUi.value) return 'Finalize ou cancele a gravação antes de salvar.'
-  if (tipo.value === 'imagem' && !imagemArquivo.value && !imagemPreviewUrl.value) {
-    return 'Anexe uma imagem.'
-  }
-  if (tipo.value === 'audio' && !audioArquivo.value && !audioObjectUrl.value) {
-    return 'Grave um áudio no navegador ou importe um arquivo de áudio.'
+  for (let i = 0; i < mensagensSequencia.value.length; i++) {
+    const m = mensagensSequencia.value[i]!
+    const n = i + 1
+    if (m.tipo === 'texto' && !m.texto.trim()) {
+      return `Preencha o texto da mensagem ${n}.`
+    }
+    if (m.tipo === 'imagem' && !m.arquivo && !m.previewUrl && !m.urlExistente) {
+      return `Anexe uma imagem na mensagem ${n}.`
+    }
+    if (m.tipo === 'audio' && !m.arquivo && !m.previewUrl && !m.urlExistente) {
+      return `Grave ou importe um áudio na mensagem ${n}.`
+    }
   }
   if (colunaErroId.value == null) {
     return 'Selecione a coluna para mover o contato em caso de erro no envio.'
@@ -970,86 +1096,40 @@ function validar(): string | null {
   return null
 }
 
-function montarCorpoCampanha(workspaceId: number) {
-  let mime: string | null = null
-  let data_base64: string | null = null
-  let filename: string | null = null
-
-  if (tipo.value === 'imagem' && imagemArquivo.value) {
-    return arquivoParaBase64Payload(imagemArquivo.value).then((part) => ({
-      workspace_id: workspaceId,
-      nome: nomeCampanha.value.trim(),
-      status: statusCampanha.value,
-      ia_ligada: iaLigada.value,
-      visualizacao_unica:
-        tipo.value === 'imagem' || tipo.value === 'audio' ? visualizacaoUnica.value : false,
-      tipo_mensagem: tipo.value,
-      conteudo_texto: mensagem.value.trim() || null,
-      canais_ids: [...canaisSelecionados.value],
-      coluna_ids: colunasSelecionadas.value.length > 0 ? [...colunasSelecionadas.value] : undefined,
-      funil_id: funilIdAposDisparoParaCampanha(),
-      coluna_id: colunaAposDisparoId.value,
-      coluna_erro_id: colunaErroId.value!,
-      funil_erro_id: funilErroIdParaCampanha(),
-      fonte_canais_ids: [...fonteCanaisSelecionados.value],
-      envia_para_grupo: enviaParaGrupo.value,
-      intervalo_minimo_minutos: intervaloMinimo.value,
-      intervalo_maximo_minutos: intervaloMaximo.value,
-      tamanho_lote: tamanhoLote.value,
-      pausa_lote_minutos: pausaLoteMinutos.value,
-      data_local: dataCampo.value.trim(),
-      hora_local: horaCampo.value.trim(),
-      timezone_escolhido: ianaTimezone.value,
-      hora_permitida_inicio: horaPermitidaInicio.value.trim(),
-      hora_permitida_fim: horaPermitidaFim.value.trim(),
-      mime: part.mime,
-      data_base64: part.data_base64,
-      filename: part.filename,
-    }))
+async function montarCorpoCampanha(workspaceId: number) {
+  const sequencia: CampanhaSequenciaItemBody[] = []
+  for (const m of mensagensSequencia.value) {
+    if (m.tipo === 'texto') {
+      sequencia.push({ tipo: 'texto', texto: m.texto.trim() })
+      continue
+    }
+    if (m.arquivo) {
+      const part = await arquivoParaBase64Payload(m.arquivo)
+      sequencia.push({
+        tipo: m.tipo,
+        texto: m.texto.trim() || null,
+        mime: part.mime,
+        data_base64: part.data_base64,
+        filename: part.filename,
+      })
+    } else {
+      sequencia.push({
+        tipo: m.tipo,
+        texto: m.texto.trim() || null,
+        url_midia: m.urlExistente || m.previewUrl,
+      })
+    }
   }
-
-  if (tipo.value === 'audio' && audioArquivo.value) {
-    return arquivoParaBase64Payload(audioArquivo.value).then((part) => ({
-      workspace_id: workspaceId,
-      nome: nomeCampanha.value.trim(),
-      status: statusCampanha.value,
-      ia_ligada: iaLigada.value,
-      visualizacao_unica:
-        tipo.value === 'imagem' || tipo.value === 'audio' ? visualizacaoUnica.value : false,
-      tipo_mensagem: tipo.value,
-      conteudo_texto: mensagem.value.trim() || null,
-      canais_ids: [...canaisSelecionados.value],
-      coluna_ids: colunasSelecionadas.value.length > 0 ? [...colunasSelecionadas.value] : undefined,
-      funil_id: funilIdAposDisparoParaCampanha(),
-      coluna_id: colunaAposDisparoId.value,
-      coluna_erro_id: colunaErroId.value!,
-      funil_erro_id: funilErroIdParaCampanha(),
-      fonte_canais_ids: [...fonteCanaisSelecionados.value],
-      envia_para_grupo: enviaParaGrupo.value,
-      intervalo_minimo_minutos: intervaloMinimo.value,
-      intervalo_maximo_minutos: intervaloMaximo.value,
-      tamanho_lote: tamanhoLote.value,
-      pausa_lote_minutos: pausaLoteMinutos.value,
-      data_local: dataCampo.value.trim(),
-      hora_local: horaCampo.value.trim(),
-      timezone_escolhido: ianaTimezone.value,
-      hora_permitida_inicio: horaPermitidaInicio.value.trim(),
-      hora_permitida_fim: horaPermitidaFim.value.trim(),
-      mime: part.mime,
-      data_base64: part.data_base64,
-      filename: part.filename,
-    }))
-  }
-
-  return Promise.resolve({
+  const primeiro = mensagensSequencia.value[0]!
+  return {
     workspace_id: workspaceId,
     nome: nomeCampanha.value.trim(),
     status: statusCampanha.value,
     ia_ligada: iaLigada.value,
-    visualizacao_unica:
-      tipo.value === 'imagem' || tipo.value === 'audio' ? visualizacaoUnica.value : false,
-    tipo_mensagem: tipo.value,
-    conteudo_texto: mensagem.value.trim() || null,
+    visualizacao_unica: temMidiaNaSequencia.value ? visualizacaoUnica.value : false,
+    tipo_mensagem: primeiro.tipo,
+    conteudo_texto: primeiro.texto.trim() || null,
+    sequencia,
     canais_ids: [...canaisSelecionados.value],
     coluna_ids: colunasSelecionadas.value.length > 0 ? [...colunasSelecionadas.value] : undefined,
     funil_id: funilIdAposDisparoParaCampanha(),
@@ -1070,7 +1150,7 @@ function montarCorpoCampanha(workspaceId: number) {
     mime: null as string | null,
     data_base64: null as string | null,
     filename: null as string | null,
-  })
+  }
 }
 
 async function salvarEdicao(workspaceId: number, signal: AbortSignal) {
@@ -1316,241 +1396,307 @@ async function salvar() {
           >
             <span class="material-symbols-outlined text-[20px]">forum</span>
           </span>
-          <div class="min-w-0 flex-1">
-            <p :class="[labelCls, 'mb-2']">
-              Tipo de mensagem <span class="text-danger" aria-hidden="true">*</span>
+          <div class="min-w-0 flex-1 space-y-4">
+            <p :class="labelCls">
+              Sequência de mensagens <span class="text-danger" aria-hidden="true">*</span>
             </p>
-            <div class="mb-4 flex flex-wrap gap-2" role="group" aria-label="Tipo de mensagem">
-          <button
-            v-for="t in tiposOpcoes"
-            :key="t.id"
-            type="button"
-            :class="classeSegmento(tipo === t.id)"
-            :aria-pressed="tipo === t.id"
-            @click="tipo = t.id"
-          >
-            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">{{ t.icon }}</span>
-            {{ t.label }}
-          </button>
-        </div>
+            <p :class="hintCls">
+              As mensagens serão enviadas nesta ordem. Você pode misturar texto, imagem e áudio.
+            </p>
 
-        <div
-          class="rounded-xl border border-outline/25 bg-surface-container-lowest/70 p-4 shadow-inner dark:border-dark-outline/20 dark:bg-dark-surface-container-low/60"
-        >
-          <template v-if="tipo === 'texto'">
-            <label :class="labelCls" for="campanha-mensagem">Mensagem</label>
-            <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="Variáveis da mensagem">
-              <button
-                v-for="v in variaveisMensagem"
-                :key="v.id"
-                type="button"
-                :class="classeChipAcao()"
-                :title="v.hint"
-                @click="inserirVariavelMensagem(v.id)"
-              >
-                <span class="font-mono text-[11px] text-primary-700 dark:text-violet-300">{{ rotuloVariavelMensagem(v.id) }}</span>
-                <span class="ml-1.5 text-on-surface-variant dark:text-dark-on-surface-variant">{{ v.label }}</span>
-              </button>
-            </div>
-            <textarea
-              id="campanha-mensagem"
-              ref="mensagemTextareaRef"
-              v-model="mensagem"
-              rows="5"
-              placeholder="Insira a mensagem da campanha"
-              :class="[inputCls, 'mt-2 resize-none']"
-            />
-          </template>
-
-          <template v-else-if="tipo === 'imagem'">
-            <label :class="labelCls" for="campanha-legenda">Legenda (opcional)</label>
-            <div class="mt-2 flex flex-wrap gap-2" role="group" aria-label="Variáveis da legenda">
-              <button
-                v-for="v in variaveisMensagem"
-                :key="v.id"
-                type="button"
-                :class="classeChipAcao()"
-                :title="v.hint"
-                @click="inserirVariavelMensagem(v.id)"
-              >
-                <span class="font-mono text-[11px] text-primary-700 dark:text-violet-300">{{ rotuloVariavelMensagem(v.id) }}</span>
-                <span class="ml-1.5 text-on-surface-variant dark:text-dark-on-surface-variant">{{ v.label }}</span>
-              </button>
-            </div>
-            <textarea
-              id="campanha-legenda"
-              ref="mensagemTextareaRef"
-              v-model="mensagem"
-              rows="3"
-              placeholder="Legenda da imagem"
-              :class="[inputCls, 'mt-2 resize-none']"
-            />
-            <input ref="imagemInputRef" type="file" accept="image/*" class="hidden" @change="onImagemChange" />
-            <div class="mt-3">
-              <BaseButton variant="secondary" :block="false" @click="imagemInputRef?.click()">
-                <span class="inline-flex items-center gap-2">
-                  <span class="material-symbols-outlined text-[18px]" aria-hidden="true">attach_file</span>
-                  Selecionar imagem
-                </span>
-              </BaseButton>
-            </div>
             <div
-              v-if="imagemPreviewUrl"
-              class="mt-3 flex items-start gap-3 rounded-xl border border-outline/30 bg-surface p-3 shadow-sm dark:border-dark-outline/30 dark:bg-dark-surface-container"
+              v-for="(msg, idx) in mensagensSequencia"
+              :key="msg.id"
+              class="rounded-xl border border-outline/25 bg-surface-container-lowest/70 p-4 shadow-inner dark:border-dark-outline/20 dark:bg-dark-surface-container-low/60"
             >
-              <div class="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-outline/25 shadow-sm dark:border-dark-outline/25">
-                <img :src="imagemPreviewUrl" alt="Prévia da imagem" class="h-full w-full object-cover" />
-              </div>
-              <div class="min-w-0 flex-1 pt-0.5">
-                <p class="truncate text-sm font-bold text-on-surface dark:text-dark-on-surface">{{ imagemNome }}</p>
-              </div>
-              <button
-                type="button"
-                class="rounded-lg px-2 py-1 text-xs font-semibold text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30"
-                @click="removerImagemAnexada"
-              >
-                Remover
-              </button>
-            </div>
-          </template>
-
-          <template v-else>
-            <p :class="labelCls">Áudio da campanha</p>
-            <input ref="audioInputRef" type="file" accept="audio/*" class="hidden" @change="onAudioChange" />
-            <div class="mt-3 flex flex-wrap gap-2">
-              <BaseButton
-                variant="secondary"
-                :block="false"
-                :disabled="gravandoUi"
-                class="!border-sky-300/80 !bg-sky-50 !text-sky-950 shadow-sm hover:!border-sky-400 hover:!bg-sky-100 hover:!text-sky-950 dark:!border-sky-500/55 dark:!bg-sky-950/50 dark:!text-sky-100 dark:hover:!border-sky-400/70 dark:hover:!bg-sky-900/55 dark:hover:!text-white"
-                @click="audioInputRef?.click()"
-              >
-                <span class="inline-flex items-center gap-2">
-                  <span class="material-symbols-outlined text-[18px]" aria-hidden="true">upload_file</span>
-                  Importar áudio
-                </span>
-              </BaseButton>
-              <BaseButton variant="secondary" :block="false" :disabled="gravandoUi" @click="toggleGravacaoAudio">
-                <span class="inline-flex items-center gap-2">
-                  <span class="material-symbols-outlined text-[18px]" aria-hidden="true">mic</span>
-                  Gravar áudio
-                </span>
-              </BaseButton>
-            </div>
-            <div
-              v-if="gravandoUi"
-              class="relative z-10 mt-4 rounded-xl border border-danger/25 bg-gradient-to-r from-danger/5 to-transparent p-4 dark:from-danger/10"
-            >
-              <div class="flex items-center justify-between gap-2">
-                <span class="inline-flex items-center gap-2 text-sm font-bold text-on-surface dark:text-dark-on-surface">
-                  <span class="relative flex h-2.5 w-2.5">
-                    <span
-                      v-if="!gravacaoPausada"
-                      class="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger opacity-70"
-                    />
-                    <span
-                      class="relative inline-flex h-2.5 w-2.5 rounded-full"
-                      :class="gravacaoPausada ? 'bg-amber-500' : 'bg-danger'"
-                    />
-                  </span>
-                  {{ gravacaoPausada ? 'Gravação pausada' : 'Gravando…' }}
-                </span>
-                <span class="font-mono text-sm font-semibold tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-                  {{ String(Math.floor(elapsedSegundos / 60)).padStart(2, '0') }}:{{ String(elapsedSegundos % 60).padStart(2, '0') }}
-                </span>
-              </div>
-              <div class="relative z-10 mt-3 flex flex-wrap gap-2">
-                <BaseButton variant="secondary" :block="false" type="button" @click="togglePausaGravacao">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="material-symbols-outlined text-[18px]" aria-hidden="true">
-                      {{ gravacaoPausada ? 'play_arrow' : 'pause' }}
-                    </span>
-                    {{ gravacaoPausada ? 'Retomar' : 'Pausar' }}
-                  </span>
-                </BaseButton>
-                <BaseButton variant="primary" :block="false" type="button" @click="finalizarGravacaoAudio">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="material-symbols-outlined text-[18px]" aria-hidden="true">stop_circle</span>
-                    Finalizar
-                  </span>
-                </BaseButton>
-                <button
-                  type="button"
-                  class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-danger/40 bg-danger/10 px-4 py-2 text-sm font-semibold text-danger shadow-sm transition-all duration-200 hover:bg-danger/15 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/35 active:scale-[0.98] dark:border-danger/50 dark:bg-danger/15 dark:text-red-300 dark:hover:bg-danger/25"
-                  @click="cancelarGravacaoAudio"
-                >
-                  <span class="material-symbols-outlined text-[18px]" aria-hidden="true">close</span>
-                  Cancelar
-                </button>
-              </div>
-            </div>
-            <div
-              v-if="audioObjectUrl && !gravandoUi"
-              class="mt-4 rounded-xl border border-outline/30 bg-surface p-4 shadow-sm dark:border-dark-outline/30 dark:bg-dark-surface-container"
-            >
-              <div class="mb-2 flex items-start justify-between gap-3">
-                <p v-if="audioNome" class="min-w-0 flex-1 truncate text-xs font-bold text-on-surface-variant dark:text-dark-on-surface-variant">
-                  {{ audioNome }}
+              <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p class="text-sm font-bold text-on-surface dark:text-dark-on-surface">
+                  Mensagem {{ idx + 1 }}
                 </p>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    :class="classeChipAcao()"
+                    :disabled="idx === 0"
+                    :aria-label="`Mover mensagem ${idx + 1} para cima`"
+                    @click="moverMensagem(idx, -1)"
+                  >
+                    <span class="material-symbols-outlined text-[16px]" aria-hidden="true">arrow_upward</span>
+                  </button>
+                  <button
+                    type="button"
+                    :class="classeChipAcao()"
+                    :disabled="idx >= mensagensSequencia.length - 1"
+                    :aria-label="`Mover mensagem ${idx + 1} para baixo`"
+                    @click="moverMensagem(idx, 1)"
+                  >
+                    <span class="material-symbols-outlined text-[16px]" aria-hidden="true">arrow_downward</span>
+                  </button>
+                  <button
+                    type="button"
+                    :class="classeChipAcao()"
+                    :disabled="mensagensSequencia.length <= 1"
+                    :aria-label="`Remover mensagem ${idx + 1}`"
+                    @click="removerMensagem(idx)"
+                  >
+                    <span class="material-symbols-outlined text-[16px]" aria-hidden="true">delete</span>
+                    Remover
+                  </button>
+                </div>
+              </div>
+
+              <div class="mb-4 flex flex-wrap gap-2" role="group" :aria-label="`Tipo da mensagem ${idx + 1}`">
                 <button
+                  v-for="t in tiposOpcoes"
+                  :key="t.id"
                   type="button"
-                  class="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30"
-                  @click="removerAudioAnexado"
+                  :class="classeSegmento(msg.tipo === t.id, true)"
+                  :aria-pressed="msg.tipo === t.id"
+                  @click="setTipoMensagem(msg.id, t.id)"
                 >
-                  Remover
+                  <span class="material-symbols-outlined text-[16px]" aria-hidden="true">{{ t.icon }}</span>
+                  {{ t.label }}
                 </button>
               </div>
-              <audio :src="audioObjectUrl" controls class="w-full max-w-full" />
-            </div>
-          </template>
 
-          <div
-            v-if="tipo === 'imagem' || tipo === 'audio'"
-            class="mt-4 border-t border-outline/20 pt-4 dark:border-dark-outline/20"
-          >
-            <label
-              class="group flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-all duration-200"
-              :class="
-                visualizacaoUnica
-                  ? 'border-violet-400/50 bg-gradient-to-r from-violet-50/80 to-indigo-50/40 shadow-[0_2px_10px_rgba(124,58,237,0.1)] dark:border-violet-500/40 dark:from-violet-950/35 dark:to-indigo-950/25'
-                  : 'border-outline/30 bg-surface-container-lowest/50 hover:border-outline/45 hover:bg-surface-container-high/40 dark:border-dark-outline/30 dark:bg-dark-surface-container/40 dark:hover:border-dark-outline/45'
-              "
+              <template v-if="msg.tipo === 'texto'">
+                <label :class="labelCls" :for="`campanha-mensagem-${msg.id}`">Mensagem</label>
+                <div class="mt-2 flex flex-wrap gap-2" role="group" :aria-label="`Variáveis da mensagem ${idx + 1}`">
+                  <button
+                    v-for="v in variaveisMensagem"
+                    :key="v.id"
+                    type="button"
+                    :class="classeChipAcao()"
+                    :title="v.hint"
+                    @click="inserirVariavelMensagem(v.id, msg.id)"
+                  >
+                    <span class="font-mono text-[11px] text-primary-700 dark:text-violet-300">{{ rotuloVariavelMensagem(v.id) }}</span>
+                    <span class="ml-1.5 text-on-surface-variant dark:text-dark-on-surface-variant">{{ v.label }}</span>
+                  </button>
+                </div>
+                <textarea
+                  :id="`campanha-mensagem-${msg.id}`"
+                  :ref="(el) => setMensagemTextareaRef(msg.id, el)"
+                  v-model="msg.texto"
+                  rows="5"
+                  placeholder="Insira a mensagem da campanha"
+                  :class="[inputCls, 'mt-2 resize-none']"
+                />
+              </template>
+
+              <template v-else-if="msg.tipo === 'imagem'">
+                <label :class="labelCls" :for="`campanha-legenda-${msg.id}`">Legenda (opcional)</label>
+                <div class="mt-2 flex flex-wrap gap-2" role="group" :aria-label="`Variáveis da legenda ${idx + 1}`">
+                  <button
+                    v-for="v in variaveisMensagem"
+                    :key="v.id"
+                    type="button"
+                    :class="classeChipAcao()"
+                    :title="v.hint"
+                    @click="inserirVariavelMensagem(v.id, msg.id)"
+                  >
+                    <span class="font-mono text-[11px] text-primary-700 dark:text-violet-300">{{ rotuloVariavelMensagem(v.id) }}</span>
+                    <span class="ml-1.5 text-on-surface-variant dark:text-dark-on-surface-variant">{{ v.label }}</span>
+                  </button>
+                </div>
+                <textarea
+                  :id="`campanha-legenda-${msg.id}`"
+                  :ref="(el) => setMensagemTextareaRef(msg.id, el)"
+                  v-model="msg.texto"
+                  rows="3"
+                  placeholder="Legenda da imagem"
+                  :class="[inputCls, 'mt-2 resize-none']"
+                />
+                <input
+                  :ref="(el) => setImagemInputRef(msg.id, el)"
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="onImagemChange($event, msg.id)"
+                />
+                <div class="mt-3">
+                  <BaseButton variant="secondary" :block="false" @click="imagemInputRefs[msg.id]?.click()">
+                    <span class="inline-flex items-center gap-2">
+                      <span class="material-symbols-outlined text-[18px]" aria-hidden="true">attach_file</span>
+                      Selecionar imagem
+                    </span>
+                  </BaseButton>
+                </div>
+                <div
+                  v-if="msg.previewUrl"
+                  class="mt-3 flex items-start gap-3 rounded-xl border border-outline/30 bg-surface p-3 shadow-sm dark:border-dark-outline/30 dark:bg-dark-surface-container"
+                >
+                  <div class="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-outline/25 shadow-sm dark:border-dark-outline/25">
+                    <img :src="msg.previewUrl" alt="Prévia da imagem" class="h-full w-full object-cover" />
+                  </div>
+                  <div class="min-w-0 flex-1 pt-0.5">
+                    <p class="truncate text-sm font-bold text-on-surface dark:text-dark-on-surface">{{ msg.nomeArquivo }}</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="rounded-lg px-2 py-1 text-xs font-semibold text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30"
+                    @click="removerImagemAnexada(msg.id)"
+                  >
+                    Remover
+                  </button>
+                </div>
+              </template>
+
+              <template v-else>
+                <p :class="labelCls">Áudio da mensagem</p>
+                <input
+                  :ref="(el) => setAudioInputRef(msg.id, el)"
+                  type="file"
+                  accept="audio/*"
+                  class="hidden"
+                  @change="onAudioChange($event, msg.id)"
+                />
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <BaseButton
+                    variant="secondary"
+                    :block="false"
+                    :disabled="gravandoUi"
+                    class="!border-sky-300/80 !bg-sky-50 !text-sky-950 shadow-sm hover:!border-sky-400 hover:!bg-sky-100 hover:!text-sky-950 dark:!border-sky-500/55 dark:!bg-sky-950/50 dark:!text-sky-100 dark:hover:!border-sky-400/70 dark:hover:!bg-sky-900/55 dark:hover:!text-white"
+                    @click="audioInputRefs[msg.id]?.click()"
+                  >
+                    <span class="inline-flex items-center gap-2">
+                      <span class="material-symbols-outlined text-[18px]" aria-hidden="true">upload_file</span>
+                      Importar áudio
+                    </span>
+                  </BaseButton>
+                  <BaseButton
+                    variant="secondary"
+                    :block="false"
+                    :disabled="gravandoUi"
+                    @click="iniciarGravacaoAudio(msg.id)"
+                  >
+                    <span class="inline-flex items-center gap-2">
+                      <span class="material-symbols-outlined text-[18px]" aria-hidden="true">mic</span>
+                      Gravar áudio
+                    </span>
+                  </BaseButton>
+                </div>
+                <div
+                  v-if="gravandoUi && gravandoMensagemId === msg.id"
+                  class="relative z-10 mt-4 rounded-xl border border-danger/25 bg-gradient-to-r from-danger/5 to-transparent p-4 dark:from-danger/10"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="inline-flex items-center gap-2 text-sm font-bold text-on-surface dark:text-dark-on-surface">
+                      <span class="relative flex h-2.5 w-2.5">
+                        <span
+                          v-if="!gravacaoPausada"
+                          class="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger opacity-70"
+                        />
+                        <span
+                          class="relative inline-flex h-2.5 w-2.5 rounded-full"
+                          :class="gravacaoPausada ? 'bg-amber-500' : 'bg-danger'"
+                        />
+                      </span>
+                      {{ gravacaoPausada ? 'Gravação pausada' : 'Gravando…' }}
+                    </span>
+                    <span class="font-mono text-sm font-semibold tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
+                      {{ String(Math.floor(elapsedSegundos / 60)).padStart(2, '0') }}:{{ String(elapsedSegundos % 60).padStart(2, '0') }}
+                    </span>
+                  </div>
+                  <div class="relative z-10 mt-3 flex flex-wrap gap-2">
+                    <BaseButton variant="secondary" :block="false" type="button" @click="togglePausaGravacao">
+                      <span class="inline-flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">
+                          {{ gravacaoPausada ? 'play_arrow' : 'pause' }}
+                        </span>
+                        {{ gravacaoPausada ? 'Retomar' : 'Pausar' }}
+                      </span>
+                    </BaseButton>
+                    <BaseButton variant="primary" :block="false" type="button" @click="finalizarGravacaoAudio">
+                      <span class="inline-flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[18px]" aria-hidden="true">stop_circle</span>
+                        Finalizar
+                      </span>
+                    </BaseButton>
+                    <button
+                      type="button"
+                      class="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-danger/40 bg-danger/10 px-4 py-2 text-sm font-semibold text-danger shadow-sm transition-all duration-200 hover:bg-danger/15 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/35 active:scale-[0.98] dark:border-danger/50 dark:bg-danger/15 dark:text-red-300 dark:hover:bg-danger/25"
+                      @click="cancelarGravacaoAudio"
+                    >
+                      <span class="material-symbols-outlined text-[18px]" aria-hidden="true">close</span>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+                <div
+                  v-if="msg.previewUrl && !(gravandoUi && gravandoMensagemId === msg.id)"
+                  class="mt-4 rounded-xl border border-outline/30 bg-surface p-4 shadow-sm dark:border-dark-outline/30 dark:bg-dark-surface-container"
+                >
+                  <div class="mb-2 flex items-start justify-between gap-3">
+                    <p v-if="msg.nomeArquivo" class="min-w-0 flex-1 truncate text-xs font-bold text-on-surface-variant dark:text-dark-on-surface-variant">
+                      {{ msg.nomeArquivo }}
+                    </p>
+                    <button
+                      type="button"
+                      class="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30"
+                      @click="removerAudioAnexado(msg.id)"
+                    >
+                      Remover
+                    </button>
+                  </div>
+                  <audio :src="msg.previewUrl" controls class="w-full max-w-full" />
+                </div>
+              </template>
+            </div>
+
+            <BaseButton variant="secondary" :block="false" @click="adicionarMensagem">
+              <span class="inline-flex items-center gap-2">
+                <span class="material-symbols-outlined text-[18px]" aria-hidden="true">add</span>
+                Adicionar mensagem
+              </span>
+            </BaseButton>
+
+            <div
+              v-if="temMidiaNaSequencia"
+              class="border-t border-outline/20 pt-4 dark:border-dark-outline/20"
             >
-              <span
-                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors duration-200"
+              <label
+                class="group flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-all duration-200"
                 :class="
                   visualizacaoUnica
-                    ? 'bg-violet-500/15 text-violet-600 dark:bg-violet-400/20 dark:text-violet-300'
-                    : 'bg-surface-container-high text-on-surface-variant group-hover:text-on-surface dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant dark:group-hover:text-dark-on-surface'
+                    ? 'border-violet-400/50 bg-gradient-to-r from-violet-50/80 to-indigo-50/40 shadow-[0_2px_10px_rgba(124,58,237,0.1)] dark:border-violet-500/40 dark:from-violet-950/35 dark:to-indigo-950/25'
+                    : 'border-outline/30 bg-surface-container-lowest/50 hover:border-outline/45 hover:bg-surface-container-high/40 dark:border-dark-outline/30 dark:bg-dark-surface-container/40 dark:hover:border-dark-outline/45'
                 "
-                aria-hidden="true"
               >
-                <span class="material-symbols-outlined text-[20px]">
-                  {{ visualizacaoUnica ? 'looks_one' : 'visibility' }}
+                <span
+                  class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors duration-200"
+                  :class="
+                    visualizacaoUnica
+                      ? 'bg-violet-500/15 text-violet-600 dark:bg-violet-400/20 dark:text-violet-300'
+                      : 'bg-surface-container-high text-on-surface-variant group-hover:text-on-surface dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant dark:group-hover:text-dark-on-surface'
+                  "
+                  aria-hidden="true"
+                >
+                  <span class="material-symbols-outlined text-[20px]">
+                    {{ visualizacaoUnica ? 'looks_one' : 'visibility' }}
+                  </span>
                 </span>
-              </span>
-              <span class="min-w-0 flex-1 text-sm font-bold text-on-surface dark:text-dark-on-surface">
-                Visualização única
-              </span>
-              <span class="relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center">
-                <input
-                  v-model="visualizacaoUnica"
-                  type="checkbox"
-                  class="peer sr-only"
-                  aria-label="Enviar com visualização única"
-                />
-                <span
-                  class="h-6 w-11 rounded-full border border-outline/40 bg-surface-container-high shadow-inner transition-all duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-violet-500/35 peer-checked:border-violet-500/50 peer-checked:bg-violet-500 dark:border-dark-outline/45 dark:bg-dark-surface-container-high dark:peer-focus-visible:ring-violet-400/35 dark:peer-checked:border-violet-400/55 dark:peer-checked:bg-violet-500"
-                  aria-hidden="true"
-                />
-                <span
-                  class="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 peer-checked:translate-x-5 dark:bg-slate-100"
-                  aria-hidden="true"
-                />
-              </span>
-            </label>
-          </div>
-        </div>
+                <span class="min-w-0 flex-1 text-sm font-bold text-on-surface dark:text-dark-on-surface">
+                  Visualização única
+                </span>
+                <span class="relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center">
+                  <input
+                    v-model="visualizacaoUnica"
+                    type="checkbox"
+                    class="peer sr-only"
+                    aria-label="Enviar com visualização única"
+                  />
+                  <span
+                    class="h-6 w-11 rounded-full border border-outline/40 bg-surface-container-high shadow-inner transition-all duration-200 peer-focus-visible:ring-2 peer-focus-visible:ring-violet-500/35 peer-checked:border-violet-500/50 peer-checked:bg-violet-500 dark:border-dark-outline/45 dark:bg-dark-surface-container-high dark:peer-focus-visible:ring-violet-400/35 dark:peer-checked:border-violet-400/55 dark:peer-checked:bg-violet-500"
+                    aria-hidden="true"
+                  />
+                  <span
+                    class="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 peer-checked:translate-x-5 dark:bg-slate-100"
+                    aria-hidden="true"
+                  />
+                </span>
+              </label>
+            </div>
           </div>
         </div>
       </section>

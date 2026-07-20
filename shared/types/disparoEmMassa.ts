@@ -4,13 +4,30 @@ export type CampanhaStatus = 'rascunho' | 'processando' | 'pausado' | 'concluido
 export type CampanhaStatusCriacao = 'rascunho' | 'processando'
 export type FilaDisparoStatus = 'pendente' | 'agendado' | 'enviado' | 'erro'
 
+/** Item da sequência de mensagens enviada no POST/PATCH. */
+export type CampanhaSequenciaItemBody = {
+  tipo: CampanhaTipoMensagem
+  texto?: string | null
+  mime?: string | null
+  data_base64?: string | null
+  filename?: string | null
+  /** URL já persistida (edição sem trocar mídia). */
+  url_midia?: string | null
+}
+
 /** Corpo de `POST /api/kanban/disparo_em_massa`. */
 export type CriarCampanhaBody = {
   workspace_id: number
   nome: string
   status: CampanhaStatusCriacao
+  /**
+   * Tipo da 1ª mensagem (legado / compatibilidade).
+   * Preferir `sequencia` quando houver múltiplas mensagens.
+   */
   tipo_mensagem: CampanhaTipoMensagem
   conteudo_texto?: string | null
+  /** Sequência de mensagens a enviar na ordem. */
+  sequencia?: CampanhaSequenciaItemBody[]
   /** Um ou mais canais de envio. */
   canais_ids: number[]
   coluna_ids: number[]
@@ -90,6 +107,12 @@ export type CampanhaRow = {
   coluna_erro_id: number | null
   /** Funil da coluna de erro (`funil_workspace.id` como texto). */
   funil_erro_id: string | null
+  /** Tipos das mensagens na sequência de envio. */
+  sequencia_tipos: CampanhaTipoMensagem[] | null
+  /** Textos/legendas alinhados a `sequencia_tipos`. */
+  sequencia_textos: (string | null)[] | null
+  /** URLs de mídia alinhadas a `sequencia_tipos`. */
+  sequencia_midias: (string | null)[] | null
 }
 
 /** Item retornado por `GET /api/kanban/disparo_em_massa`. */
@@ -122,6 +145,9 @@ export type CampanhaListItem = Pick<
   | 'pausa_lote_minutos'
   | 'coluna_erro_id'
   | 'funil_erro_id'
+  | 'sequencia_tipos'
+  | 'sequencia_textos'
+  | 'sequencia_midias'
 >
 
 /** Corpo de `PATCH /api/kanban/disparo_em_massa`. */
