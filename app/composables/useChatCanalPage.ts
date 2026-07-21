@@ -1,33 +1,7 @@
 import AreaChat from '~/components/chat/area-chat.vue'
 import AreaConversa from '~/components/chat/area-conversa.vue'
 import AreaInfoConversa from '~/components/chat/area-info-conversa.vue'
-import {
-  parseConversaKeyParam,
-  parsePositiveIntParam,
-} from '~/utils/chatRouteParams'
-
-function parsePositiveInt(raw: unknown): number | null {
-  return parsePositiveIntParam(raw)
-}
-
-function parseConversaKeyParamLocal(raw: unknown): string {
-  return parseConversaKeyParam(raw)
-}
-
-type Options = {
-  /** Lê `conversaKey` da rota e sincroniza com o Pinia (página com conversa na URL). */
-  syncConversaFromRoute?: boolean
-  /** Quando `conversaAtual` muda no Pinia, navega para a URL com a conversa. */
-  syncConversaToRoute?: boolean
-  /** Ao entrar na rota sem conversa, limpa a seleção no Pinia. */
-  clearConversaOnEnter?: boolean
-}
-
-function isSameCanalChatPath(toPath: string, wid: number | null, cid: number | null): boolean {
-  if (wid == null || cid == null) return false
-  const base = `/workspaces/${wid}/chat/${cid}`
-  return toPath === base || toPath.startsWith(`${base}/`)
-}
+import { parsePositiveIntParam } from '~/utils/chatRouteParams'
 
 function isWorkspaceChatPath(path: string, wid: number | null): boolean {
   if (wid == null) return false
@@ -35,21 +9,24 @@ function isWorkspaceChatPath(path: string, wid: number | null): boolean {
   return path === base || path.startsWith(`${base}/`)
 }
 
+type Options = {
+  /** Ao entrar no canal, limpa a conversa selecionada no Pinia. */
+  clearConversaOnEnter?: boolean
+}
+
+/**
+ * Layout do chat por canal. Seleção de conversa = Pinia (`conversas.conversaAtual`).
+ */
 export function useChatCanalPage(options: Options = {}) {
-  const {
-    syncConversaFromRoute = false,
-    syncConversaToRoute = false,
-    clearConversaOnEnter = false,
-  } = options
+  const { clearConversaOnEnter = false } = options
 
   const route = useRoute()
   const canaisStore = useCanaisStore()
   const conversasStore = useConversasStore()
   const mensagensStore = useMensagensStore()
 
-  const canalId = computed(() => parsePositiveInt(route.params.canalId))
-  const workspaceId = computed(() => parsePositiveInt(route.params.id))
-  const conversaKeyFromRoute = computed(() => parseConversaKeyParamLocal(route.params.conversaKey))
+  const canalId = computed(() => parsePositiveIntParam(route.params.canalId))
+  const workspaceId = computed(() => parsePositiveIntParam(route.params.id))
 
   const cookieName = computed(() => {
     const wid = workspaceId.value
@@ -58,14 +35,6 @@ export function useChatCanalPage(options: Options = {}) {
   const lastCanalCookie = useCookie<string | null>(cookieName.value)
 
   const mobilePane = useState<'list' | 'chat' | 'info'>('chat_mobile_pane', () => 'list')
-  /** Evita redirect para `/chat/:canal` ao sair do chat (ex.: voltar ao kanban). */
-  const suppressConversaUrlSync = ref(false)
-  /** Invalida handlers async antigos ao trocar `conversaKey` na URL. */
-  let routeConversaSyncGen = 0
-
-  function isRouteConversaSyncStale(expectedKey: string, gen: number): boolean {
-    return gen !== routeConversaSyncGen || conversaKeyFromRoute.value !== expectedKey
-  }
 
   watch(
     () => conversasStore.conversaAtual,
@@ -79,11 +48,9 @@ export function useChatCanalPage(options: Options = {}) {
     { immediate: true },
   )
 
-  const canalIdSnapshot = ref<number | null>(null)
   watch(
     canalId,
     (id) => {
-      if (id != null) canalIdSnapshot.value = id
       if (id != null) lastCanalCookie.value = String(id)
     },
     { immediate: true },
@@ -96,6 +63,7 @@ export function useChatCanalPage(options: Options = {}) {
         throw createError({ statusCode: 404, statusMessage: 'Canal inválido.' })
       }
       canaisStore.setCurrentCanalId(id)
+      conversasStore.setActiveCanalId(id)
 
       if (canaisStore.items.length > 0 && canaisStore.currentCanalId == null) {
         const wid = workspaceId.value
@@ -112,76 +80,17 @@ export function useChatCanalPage(options: Options = {}) {
   if (clearConversaOnEnter) {
     watch(
       canalId,
-      (id) => {
-        if (id != null) conversasStore.setConversaAtual(null, id)
-      },
-      { immediate: true },
-    )
-  }
-
-  if (syncConversaFromRoute) {
-    watch(
-      conversaKeyFromRoute,
-      async (key) => {
-        const gen = ++routeConversaSyncGen
-        const id = canalId.value
-        if (id == null) return
-        if (key) {
-          if (key.startsWith('temp:')) return
-
-          mensagensStore.setActiveKey(key)
-          await mensagensStore.ensureLoaded(id, key, 1, { activate: false }).catch(() => {
-            /* erro fica em mensagens.error */
-          })
-          if (isRouteConversaSyncStale(key, gen)) return
-
-          await conversasStore.ensureLoaded(id).catch(() => {
-            /* erro fica em conversas.error */
-          })
-          if (isRouteConversaSyncStale(key, gen)) return
-
-          await conversasStore.marcarComoLida(key).catch(() => {
-            /* falha silenciosa; badge pode voltar no próximo fetch */
-          })
-          return
-        }
-        if (!conversaKeyFromRoute.value) conversasStore.setConversaAtual(null, id)
-      },
-      { immediate: true },
-    )
-  }
-
-  if (syncConversaToRoute) {
-    watch(
-      () => conversasStore.conversaAtual,
-      (key) => {
-        const wid = workspaceId.value
-        const cid = canalId.value
-        if (!key || wid == null || cid == null) return
-        if (conversaKeyFromRoute.value === key) return
-        void navegarParaConversaChat(wid, cid, key)
-      },
-    )
-  }
-
-  if (syncConversaFromRoute) {
-    watch(
-      () => conversasStore.conversaAtual,
-      (key) => {
-        if (suppressConversaUrlSync.value) return
-        const wid = workspaceId.value
-        const cid = canalId.value
-        if (wid == null || cid == null) return
-        if (key) return
-        if (!conversaKeyFromRoute.value) return
-        if (!isSameCanalChatPath(route.path, wid, cid)) return
-        void navigateTo(`/workspaces/${wid}/chat/${cid}`, { replace: true })
+      (id, prev) => {
+        // Só limpa ao trocar de canal — não ao montar (ex.: veio do kanban com seleção).
+        if (id == null || prev == null) return
+        if (id === prev) return
+        conversasStore.setConversaAtual(null, id)
+        mensagensStore.setActiveKey(null)
       },
     )
   }
 
   function limparConversaAoSairDoChat() {
-    suppressConversaUrlSync.value = true
     conversasStore.clearAllConversaAtual()
     mensagensStore.setActiveKey(null)
   }
@@ -203,7 +112,6 @@ export function useChatCanalPage(options: Options = {}) {
   })
 
   onMounted(async () => {
-    suppressConversaUrlSync.value = false
     const wid = workspaceId.value
     if (wid != null) {
       await canaisStore.ensureCanaisLoaded(wid).catch(() => {})

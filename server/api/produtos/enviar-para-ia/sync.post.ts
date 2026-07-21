@@ -9,7 +9,7 @@ import {
 } from '../../../utils/enviarParaIa/documentsVectorStore'
 import { createEmbeddings } from '../../../utils/enviarParaIa/openaiEmbeddings'
 import { parseWorkspaceId } from '../../../utils/enviarParaIa/parseWorkspaceId'
-import { buildProdutoEmbeddingPayload } from '../../../utils/enviarParaIa/produtoEmbeddingText'
+import { buildProdutoEmbeddingPayload, isProdutoIndexavel } from '../../../utils/enviarParaIa/produtoEmbeddingText'
 import {
   countProdutosIndexaveis,
   fetchProdutosIndexaveisChunk,
@@ -55,6 +55,8 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
   let skipped = 0
 
   for (const row of rows) {
+    if (!isProdutoIndexavel(row)) continue
+
     const payload = buildProdutoEmbeddingPayload(row, workspaceId)
     if (!payload) continue
 

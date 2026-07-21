@@ -12,7 +12,6 @@ type ConversaListaItem = {
   id: string
   nome: string
   ultimaMensagem: string
-  horario: string
   avatarSrc: string | null
   messatype: MessageType | null
   fechada: boolean
@@ -91,13 +90,6 @@ function labelPreview(m: Conversa): string {
   return 'Enviou uma mensagem'
 }
 
-function formatHora(iso: string | null): string {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(d)
-}
-
 function sortIsoAsc(a: string | null, b: string | null): number {
   const da = a ? new Date(a).getTime() : 0
   const db = b ? new Date(b).getTime() : 0
@@ -125,7 +117,6 @@ const itens = computed<ConversaListaItem[]>(() => {
     id: m.key,
     nome: firstNonEmpty(m.name, m.phone, m.lid, m.key),
     ultimaMensagem: previewTexto(m) || ' ',
-    horario: formatHora(m.updated_at ?? m.created_at),
     avatarSrc: m.photo ?? null,
     messatype: m.messatype ?? null,
     fechada: m.conversa_aberta === false,
@@ -228,7 +219,6 @@ function maybeLoadMore() {
           :conversa-id="c.id"
           :nome="c.nome"
           :ultima-mensagem="c.ultimaMensagem"
-          :horario="c.horario"
           :avatar-src="c.avatarSrc"
           :messatype="c.messatype"
           :fechada="c.fechada"

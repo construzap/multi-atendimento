@@ -1,21 +1,15 @@
-import { parseConversaKeyParam } from '~/utils/chatRouteParams'
-
 /**
- * Key da conversa ativa no chat: lê `route.params.conversaKey` (URL = fonte da verdade).
- * Pinia é sincronizado pelo plugin `conversas-route-sync.client.ts`.
+ * Key da conversa ativa no chat: Pinia `conversas.conversaAtual`.
  */
 export function useConversaKeyAtiva() {
-  const route = useRoute()
+  const conversas = useConversasStore()
 
-  const conversaKeyFromRoute = computed(() => {
-    const key = parseConversaKeyParam(route.params.conversaKey)
+  const conversaKeyAtiva = computed(() => {
+    const key = conversas.conversaAtual?.trim()
     return key || null
   })
 
-  const conversaKeyAtiva = conversaKeyFromRoute
-
   return {
-    conversaKeyFromRoute,
     conversaKeyAtiva,
   }
 }

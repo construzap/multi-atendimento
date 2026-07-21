@@ -13,18 +13,20 @@ const props = withDefaults(
     conversaId: string
     nome: string
     ultimaMensagem: string
-    horario: string
+    /** @deprecated Preferir data do Pinia (`updated_at` / `created_at`). */
+    horario?: string
     avatarSrc?: string | null
     alt?: string
     selected?: boolean
     multiSelected?: boolean
     forceShowCheckbox?: boolean
     messatype?: MessageType | null
-  fechada?: boolean
-  isGrupo?: boolean
-  naoLidas?: number
+    fechada?: boolean
+    isGrupo?: boolean
+    naoLidas?: number
   }>(),
   {
+    horario: '',
     avatarSrc: null,
     alt: '',
     selected: false,
@@ -68,6 +70,40 @@ const colunaId = computed(() => {
   if (!key) return null
   const conv = conversasStore.findConversaByKey(key)
   return conv?.coluna_id ?? null
+})
+
+function inicioDoDiaMs(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+}
+
+function formatHora(d: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' }).format(d)
+}
+
+function formatData(d: Date): string {
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(d)
+}
+
+/**
+ * Hoje / ontem → só hora. Dias anteriores → data + hora (Pinia `updated_at` / `created_at`).
+ */
+const horarioExibido = computed(() => {
+  const key = props.conversaId.trim()
+  const conv = key ? conversasStore.findConversaByKey(key) : null
+  const iso = conv?.updated_at ?? conv?.created_at ?? null
+  if (!iso) return props.horario?.trim() || ''
+
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return props.horario?.trim() || ''
+
+  const hora = formatHora(d)
+  const diffDias = Math.round((inicioDoDiaMs(new Date()) - inicioDoDiaMs(d)) / 86_400_000)
+  if (diffDias === 0 || diffDias === 1) return hora
+  return `${formatData(d)} ${hora}`
 })
 
 function corDot(cor: string | null | undefined): string {
@@ -181,14 +217,19 @@ function onToggleSelected(e: Event) {
 function onSelect() {
   emit('select')
 
-  const workspaceId = String(route.params.id ?? '')
-  const canalId = route.params.canalId
-  if (!workspaceId || !canalId) return
+  const key = props.conversaId?.trim()
+  if (!key) return
 
-  const cid = Number.parseInt(String(canalId), 10)
-  if (!Number.isFinite(cid) || cid < 1) return
+  const canalIdRaw = route.params.canalId
+  const cid = Number.parseInt(String(canalIdRaw ?? ''), 10)
+  const canalId =
+    Number.isFinite(cid) && cid >= 1
+      ? cid
+      : (conversasStore.activeCanalId ?? null)
 
-  void navegarParaConversaChat(workspaceId, cid, props.conversaId)
+  if (canalId == null) return
+
+  selecionarConversaNoChat(canalId, key)
 }
 </script>
 
@@ -234,7 +275,7 @@ function onSelect() {
           >
             Fechada
           </span>
-          <span class="text-[10px] text-on-surface-variant dark:text-slate-400">{{ horario }}</span>
+          <span class="text-[10px] text-on-surface-variant dark:text-slate-400">{{ horarioExibido }}</span>
         </div>
       </div>
       <div v-if="podeAlterarStatus" class="mb-0.5">

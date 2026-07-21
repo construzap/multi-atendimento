@@ -6,7 +6,7 @@ import { useMensagensStore } from '~/stores/mensagens'
 
 /**
  * Quando o painel de info do kanban abre uma conversa, garante mensagens carregadas.
- * Marcar como lida no chat principal ocorre ao abrir a rota `[conversaKey]`.
+ * No chat principal, marcar como lida ocorre ao selecionar no Pinia (`ItemConversa` / `abrirConversaNoChat`).
  */
 export default defineNuxtPlugin(() => {
   const mensagens = useMensagensStore()

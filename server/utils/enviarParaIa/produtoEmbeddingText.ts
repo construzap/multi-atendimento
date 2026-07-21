@@ -90,6 +90,8 @@ export function buildProdutoEmbeddingPayload(
   row: Record<string, unknown>,
   workspaceId: number,
 ): ProdutoEmbeddingPayload | null {
+  if (!isProdutoIndexavel(row)) return null
+
   const id = Number(row.id)
   if (!Number.isFinite(id)) return null
 
@@ -146,8 +148,15 @@ export function parseProdutoIdFromContent(content: string): string | null {
   return value || null
 }
 
+/** Produto ativo para indexação (`status` true); não entra no `content`. */
+export function isProdutoStatusAtivo(status: unknown): boolean {
+  if (status === true || status === 1) return true
+  if (status === 'true' || status === '1') return true
+  return false
+}
+
 export function isProdutoIndexavel(row: Record<string, unknown>): boolean {
-  if (row.status === false) return false
+  if (!isProdutoStatusAtivo(row.status)) return false
   const parentId = row.parent_id
   if (parentId != null && parentId !== '') return false
   return true

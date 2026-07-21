@@ -5,7 +5,6 @@ definePageMeta({
 
 const { AreaChat, AreaConversa, AreaInfoConversa, mobilePane } = useChatCanalPage({
   clearConversaOnEnter: true,
-  syncConversaToRoute: true,
 })
 </script>
 

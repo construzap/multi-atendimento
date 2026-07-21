@@ -383,7 +383,7 @@ function onCardOpen(card: KanbanCardModel) {
   const kanban = useKanbanStore()
   kanban.closeInfoContatoConversa()
 
-  void navegarParaConversaChat(props.workspaceId, Math.trunc(canalId), conversaKey)
+  void abrirConversaNoChat(props.workspaceId, Math.trunc(canalId), conversaKey)
 }
 
 function onCardToggleSelected(payload: { conversa_key: string; nextSelected: boolean }) {

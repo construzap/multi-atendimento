@@ -1,141 +1,65 @@
-import {
-
-  chatConversaPath,
-
-  parseChatRouteParams,
-
-  parseConversaKeyParam,
-
-} from '~/utils/chatRouteParams'
-
-
+import { chatCanalPath, parsePositiveIntParam } from '~/utils/chatRouteParams'
 
 /**
-
- * Aplica canal + conversa ativa nos stores a partir da rota (URL = fonte da verdade).
-
+ * Define canal + conversa ativa no Pinia (fonte da verdade da UI do chat).
  */
-
-export function aplicarConversaDaRota(canalId: number, conversaKey: string | null) {
-
+export function selecionarConversaNoChat(canalId: number, conversaKey: string) {
   const canais = useCanaisStore()
-
   const conversas = useConversasStore()
-
   const mensagens = useMensagensStore()
 
-
-
-  canais.setCurrentCanalId(canalId)
-
-  conversas.setActiveCanalId(canalId)
-
-
-
-  const key = conversaKey?.trim() || null
-
-  conversas.setConversaAtual(key, canalId)
-
-  mensagens.setActiveKey(key)
-
-
-
-  if (key && !key.startsWith('temp:')) {
-
-    void conversas.ensureConversaNaLista(canalId, key)
-
-  }
-
-}
-
-
-
-/** Navega para conversa no chat e sincroniza Pinia antes da troca de rota. */
-
-export function navegarParaConversaChat(
-
-  workspaceId: number | string,
-
-  canalId: number,
-
-  conversaKey: string,
-
-  options?: { replace?: boolean },
-
-) {
-
   const cid = Math.trunc(canalId)
-
   const key = conversaKey.trim()
+  if (!key || cid < 1) return
 
-  if (!key || cid < 1) return Promise.resolve()
-
-
-
-  aplicarConversaDaRota(cid, key)
-
-  return navigateTo(chatConversaPath(workspaceId, cid, key), {
-
-    replace: options?.replace ?? true,
-
-  })
-
+  canais.setCurrentCanalId(cid)
+  conversas.setActiveCanalId(cid)
+  conversas.setConversaAtual(key, cid)
+  void mensagens.ensureLoaded(cid, key, 1)
+  void conversas.marcarComoLida(key).catch(() => {})
+  void conversas.ensureConversaNaLista(cid, key)
 }
-
-
 
 /**
-
- * Sincroniza Pinia com `route.params` quando a URL é de chat.
-
- * Usado pelo plugin global e pode ser chamado manualmente após navegação.
-
+ * Vai para `/workspaces/:id/chat/:canalId` e seleciona a conversa no Pinia
+ * (sem colocar a key na URL). Seleciona depois do navigate para não perder
+ * a seleção se a página limpar ao trocar de canal.
  */
+export async function abrirConversaNoChat(
+  workspaceId: number | string,
+  canalId: number,
+  conversaKey: string,
+  options?: { replace?: boolean },
+) {
+  const cid = Math.trunc(canalId)
+  const key = conversaKey.trim()
+  if (!key || cid < 1) return
 
-export function syncConversasStoresFromRoute(route = useRoute()) {
-
-  const parsed = parseChatRouteParams(route)
-
-  if (!parsed) return
-
-  aplicarConversaDaRota(parsed.canalId, parsed.conversaKey)
-
+  await navigateTo(chatCanalPath(workspaceId, cid), {
+    replace: options?.replace ?? true,
+  })
+  selecionarConversaNoChat(cid, key)
 }
 
-
+/** @deprecated Use `abrirConversaNoChat`. */
+export function navegarParaConversaChat(
+  workspaceId: number | string,
+  canalId: number,
+  conversaKey: string,
+  options?: { replace?: boolean },
+) {
+  return abrirConversaNoChat(workspaceId, canalId, conversaKey, options)
+}
 
 export function useConversasRouteSync() {
-
   const route = useRoute()
 
-
-
-  const conversaKeyFromRoute = computed(() =>
-
-    parseConversaKeyParam(route.params.conversaKey) || null,
-
-  )
-
-
-
-  const canalIdFromRoute = computed(() => parseChatRouteParams(route)?.canalId ?? null)
-
-
+  const canalIdFromRoute = computed(() => parsePositiveIntParam(route.params.canalId))
 
   return {
-
-    conversaKeyFromRoute,
-
     canalIdFromRoute,
-
-    aplicarConversaDaRota,
-
+    selecionarConversaNoChat,
+    abrirConversaNoChat,
     navegarParaConversaChat,
-
-    syncConversasStoresFromRoute,
-
   }
-
 }
-
-
