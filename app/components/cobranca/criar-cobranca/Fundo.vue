@@ -15,7 +15,6 @@ import {
 import { dataHoraLocalEmFuso } from '#shared/utils/agendamentoDataUtc'
 import Cliente from '~/components/cobranca/criar-cobranca/cliente/Cliente.vue'
 import Mensagem from '~/components/cobranca/criar-cobranca/mensagem/Mensagem.vue'
-import MultaEJuros from '~/components/cobranca/criar-cobranca/multa-e-juros/MultaEJuros.vue'
 import Pagamento from '~/components/cobranca/criar-cobranca/pagamento/Pagamento.vue'
 import Produtos from '~/components/cobranca/criar-cobranca/produtos/Produtos.vue'
 import { mensagemErroFetch } from '~/stores/canais'
@@ -45,8 +44,7 @@ const passos = [
   { id: 1, label: 'Cliente' },
   { id: 2, label: 'Produtos' },
   { id: 3, label: 'Pagamento' },
-  { id: 4, label: 'Multa/Juros' },
-  { id: 5, label: 'Mensagem' },
+  { id: 4, label: 'Mensagem' },
 ] as const
 
 const passoAtual = ref(1)
@@ -97,9 +95,6 @@ const frequenciaRecorrencia = ref<FrequenciaRecorrencia>('mensal')
 const frequenciaCobranca = ref<FrequenciaCobranca>('semanal')
 const dataFim = ref('')
 
-const porcentagemMulta = ref('2,00')
-const porcentagemJurosMes = ref('1,00')
-
 const templateMensagem = ref(
   '{saudacao} {cliente}, tudo bem? Sua cobrança no valor de {valor} vence em {vencimento}. Produtos: {produtos}.',
 )
@@ -110,16 +105,6 @@ const templateMensagemVencida = ref(
 function parseMoedaPtBr(value: string): number {
   const numero = Number.parseFloat(value.replace(/\./g, '').replace(',', '.'))
   return Number.isFinite(numero) ? numero : 0
-}
-
-function parsePercentPtBr(value: string): number {
-  const numero = Number.parseFloat(value.replace(',', '.'))
-  return Number.isFinite(numero) && numero >= 0 ? numero : 0
-}
-
-function formatPercentPtBr(value: number | null | undefined, fallback = '0,00'): string {
-  if (value == null || !Number.isFinite(value)) return fallback
-  return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function formatPrecoUnitario(value: number): string {
@@ -173,8 +158,6 @@ function resetarFormulario() {
   frequenciaRecorrencia.value = 'mensal'
   frequenciaCobranca.value = 'semanal'
   dataFim.value = ''
-  porcentagemMulta.value = '2,00'
-  porcentagemJurosMes.value = '1,00'
   templateMensagem.value =
     '{saudacao} {cliente}, tudo bem? Sua cobrança no valor de {valor} vence em {vencimento}. Produtos: {produtos}.'
   templateMensagemVencida.value =
@@ -199,8 +182,6 @@ function carregarDaCobranca(cobranca: Cobranca) {
   frequenciaRecorrencia.value = cobranca.frequencia_recorrencia || 'mensal'
   frequenciaCobranca.value = cobranca.frequencia_cobranca || 'semanal'
   dataFim.value = cobranca.data_fim ? cobranca.data_fim.slice(0, 10) : ''
-  porcentagemMulta.value = formatPercentPtBr(cobranca.porcentagem_multa, '2,00')
-  porcentagemJurosMes.value = formatPercentPtBr(cobranca.porcentagem_juros_mes, '1,00')
   templateMensagem.value = cobranca.template_mensagem || templateMensagem.value
   templateMensagemVencida.value =
     cobranca.template_mensagem_vencida || templateMensagemVencida.value
@@ -237,8 +218,8 @@ function montarBody(wid: number) {
     hora_proxima_local: horaProximaLocal.value,
     iana_timezone: ianaTimezone.value,
     data_fim: tipoCobranca.value === 'assinatura' ? dataFim.value || null : null,
-    porcentagem_multa: parsePercentPtBr(porcentagemMulta.value),
-    porcentagem_juros_mes: parsePercentPtBr(porcentagemJurosMes.value),
+    porcentagem_multa: 0,
+    porcentagem_juros_mes: 0,
     template_mensagem: templateMensagem.value.trim(),
     template_mensagem_vencida: templateMensagemVencida.value.trim(),
     produtos: produtos.value.map((p) => ({
@@ -292,12 +273,12 @@ function validarFormulario(): boolean {
   }
   if (!templateMensagem.value.trim()) {
     toast.error('Informe o template da mensagem.')
-    passoAtual.value = 5
+    passoAtual.value = 4
     return false
   }
   if (!templateMensagemVencida.value.trim()) {
     toast.error('Informe o template da mensagem para cobrança vencida.')
-    passoAtual.value = 5
+    passoAtual.value = 4
     return false
   }
   return true
@@ -450,12 +431,6 @@ watch(
         v-model:data-fim="dataFim"
       />
 
-      <MultaEJuros
-        v-else-if="passoAtual === 4"
-        v-model:porcentagem-multa="porcentagemMulta"
-        v-model:porcentagem-juros-mes="porcentagemJurosMes"
-      />
-
       <Mensagem
         v-else
         v-model:template-mensagem="templateMensagem"
@@ -474,7 +449,7 @@ watch(
           Total:
         </span>
         {{ valorTotalFormatado }}
-        <span v-if="passoAtual === 5" class="ml-2 hidden sm:inline">
+        <span v-if="passoAtual === 4" class="ml-2 hidden sm:inline">
           · {{ clienteNome || '—' }} · {{ produtosResumo }}
         </span>
       </div>

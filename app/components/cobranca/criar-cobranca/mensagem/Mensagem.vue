@@ -22,7 +22,7 @@ function inserirNoTemplate(model: Ref<string>, token: string) {
   <section class="space-y-6">
     <header class="space-y-2">
       <p class="font-label text-sm font-semibold uppercase tracking-wide text-primary dark:text-dark-primary">
-        Passo 5
+        Passo 4
       </p>
       <h2 class="font-headline text-2xl font-bold tracking-tight text-on-surface dark:text-dark-on-surface">
         Mensagem de WhatsApp

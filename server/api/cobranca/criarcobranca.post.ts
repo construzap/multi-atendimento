@@ -38,18 +38,6 @@ function parseMoney(raw: unknown, label: string): number {
   throw createError({ statusCode: 400, statusMessage: `${label} inválido.` })
 }
 
-function parsePercent(raw: unknown, label: string, fallback = 0): number {
-  if (raw === undefined || raw === null || raw === '') return fallback
-  if (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) {
-    return Math.round(raw * 100) / 100
-  }
-  if (typeof raw === 'string') {
-    const n = Number.parseFloat(raw.replace(',', '.'))
-    if (Number.isFinite(n) && n >= 0) return Math.round(n * 100) / 100
-  }
-  throw createError({ statusCode: 400, statusMessage: `${label} inválido.` })
-}
-
 function parseTipoCobranca(raw: unknown): TipoCobranca {
   const s = String(raw ?? '').trim().toLowerCase()
   if (s === 'fiado' || s === 'unico') return 'unico'
@@ -298,12 +286,8 @@ export default defineEventHandler(async (event): Promise<CriarCobrancaResponse> 
     throw createError({ statusCode: 400, statusMessage: 'template_mensagem_vencida é obrigatório.' })
   }
 
-  const porcentagemMulta = parsePercent(body.porcentagem_multa, 'porcentagem_multa', 0)
-  const porcentagemJurosMes = parsePercent(
-    body.porcentagem_juros_mes,
-    'porcentagem_juros_mes',
-    0,
-  )
+  const porcentagemMulta = 0
+  const porcentagemJurosMes = 0
 
   let totalParcelas: number | null = 1
   let frequenciaRecorrencia: FrequenciaRecorrencia | null = null
