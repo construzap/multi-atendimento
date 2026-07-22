@@ -365,7 +365,7 @@ function findCardNoPinia(conversaKey: string): KanbanCardModel | null {
   return null
 }
 
-function onCardOpen(card: KanbanCardModel) {
+async function onCardOpen(card: KanbanCardModel) {
   const fromStore = findCardNoPinia(card.conversa_key) ?? card
   const conversaKey = fromStore.conversa_key?.trim()
   const canalId = fromStore.id_canal
@@ -380,10 +380,18 @@ function onCardOpen(card: KanbanCardModel) {
     return
   }
 
-  const kanban = useKanbanStore()
-  kanban.closeInfoContatoConversa()
+  const kanbanStore = useKanbanStore()
+  kanbanStore.closeInfoContatoConversa()
 
-  void abrirConversaNoChat(props.workspaceId, Math.trunc(canalId), conversaKey)
+  const conversasStore = useConversasStore()
+  await abrirConversaNoChat(props.workspaceId, Math.trunc(canalId), conversaKey)
+  await conversasStore.aplicarContextoAoAbrirDoKanban({
+    conversaKey,
+    colunaId: fromStore.coluna_id,
+    funilId: props.funilId,
+    isGroup: fromStore.is_group,
+    conversaAberta: fromStore.conversa_aberta,
+  })
 }
 
 function onCardToggleSelected(payload: { conversa_key: string; nextSelected: boolean }) {

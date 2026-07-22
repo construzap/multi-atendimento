@@ -138,6 +138,50 @@ export type ProdutosBuscaResponse = {
   total_pages: number
 }
 
+/** Item de `ocorrencias` (jsonb_agg de buscas em `view_produtos_nao_encontrados`). */
+export type ProdutoOportunidadeVendaOcorrencia = {
+  id: number
+  conversa_key: string | null
+  phone: string | null
+  contato_nome: string | null
+  n8n_execution_url: string | null
+  created_at: string | null
+}
+
+/** Linha de `view_produtos_nao_encontrados`. */
+export type ProdutoOportunidadeVendaItem = {
+  workspace_id: number
+  canal_id: number | null
+  canal_nome: string | null
+  produto_sugerido: string
+  produto_chave: string
+  total_buscas: number
+  clientes_unicos: number
+  ultima_busca: string | null
+  ocorrencias: ProdutoOportunidadeVendaOcorrencia[]
+}
+
+/** `GET /api/produtos/oportunidades-de-vendas/total`. */
+export type ProdutosOportunidadesVendasTotalResponse = {
+  total: number
+}
+
+/** `GET /api/produtos/oportunidades-de-vendas` (lista paginada). */
+export type ProdutosOportunidadesVendasListaResponse = {
+  data: ProdutoOportunidadeVendaItem[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+/** `POST /api/produtos/oportunidades-de-vendas/excluir`. */
+export type ProdutosOportunidadesVendasExcluirResponse = {
+  removidos: number
+  /** Ids efetivamente apagados em `produtos_nao_encontrados`. */
+  ids: number[]
+}
+
 /** Resposta de `POST /api/produtos/enviar-para-ia/excluir`. */
 export type ProdutosExcluirResponse = {
   removidos: number

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 
 import { storeToRefs } from 'pinia'
 
@@ -9,6 +9,8 @@ import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
 
 import BaseModal from '~/components/BaseModal.vue'
+
+import ModalAlerta from '~/components/ModalAlerta.vue'
 
 import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
 
@@ -54,7 +56,27 @@ const progressoEnviados = ref(0)
 
 const progressoErro = ref<string | null>(null)
 
+const alertaLinhasSemNomeAberto = ref(false)
+
 let abortController: AbortController | null = null
+
+
+
+const linhasComNome = computed(() =>
+  criarEmMassaItems.value.filter((r) => String(r.nome ?? '').trim().length > 0),
+)
+
+const linhasSemNomeCount = computed(
+  () => criarEmMassaItems.value.length - linhasComNome.value.length,
+)
+
+const textoAlertaLinhasSemNome = computed(() => {
+  const sem = linhasSemNomeCount.value
+  const com = linhasComNome.value.length
+  const linhaSem = sem === 1 ? '1 linha sem nome' : `${sem} linhas sem nome`
+  const linhaCom = com === 1 ? '1 produto com nome' : `${com} produtos com nome`
+  return `Há ${linhaSem}. Só vamos enviar ${linhaCom}; as linhas sem nome do produto serão apagadas.`
+})
 
 
 
@@ -94,9 +116,17 @@ function garantirWorkspaceRascunho() {
 
 
 
-function adicionarProduto() {
+const produtosTabelaRef = ref<{
+  focarNomeUltimaLinha: () => Promise<void>
+  sincronizarInputsRascunho: () => void
+} | null>(null)
+
+async function adicionarProduto() {
   if (salvando.value) return
+  produtosTabelaRef.value?.sincronizarInputsRascunho()
   produtosStore.adicionarLinhaCriarEmMassa()
+  await nextTick()
+  await produtosTabelaRef.value?.focarNomeUltimaLinha()
 }
 
 
@@ -110,6 +140,10 @@ function aplicarAtualizado(row: ProdutoWorkspaceItem) {
 
 
 const podeSalvar = computed(() => !salvando.value && criarEmMassaItems.value.length > 0)
+
+const podeFecharModalPrincipal = computed(
+  () => !salvando.value && !alertaLinhasSemNomeAberto.value && !progressoAberto.value,
+)
 
 
 
@@ -141,13 +175,69 @@ function cancelar() {
 
 
 
+function sincronizarAntesDeSalvar() {
+  produtosTabelaRef.value?.sincronizarInputsRascunho()
+}
+
+
+
 async function salvar() {
 
-  if (!criarEmMassaItems.value.length) return
+  if (!criarEmMassaItems.value.length || salvando.value) return
+
+  sincronizarAntesDeSalvar()
+  await nextTick()
+
+  if (linhasComNome.value.length === 0) {
+    toast.error('Informe o nome de pelo menos um produto.')
+    return
+  }
+
+  if (linhasSemNomeCount.value > 0) {
+    alertaLinhasSemNomeAberto.value = true
+    return
+  }
+
+  await executarSalvar()
+
+}
 
 
 
-  progressoTotal.value = criarEmMassaItems.value.length
+async function confirmarDescarteLinhasSemNome() {
+  sincronizarAntesDeSalvar()
+  await nextTick()
+
+  // Marca salvando antes de fechar o alerta para o clique não atravessar
+  // o backdrop do modal principal e abortar o envio.
+  salvando.value = true
+  await nextTick()
+  await new Promise<void>((resolve) => setTimeout(resolve, 0))
+  alertaLinhasSemNomeAberto.value = false
+
+  try {
+    await executarSalvar({ jaSalvando: true })
+  } catch {
+    salvando.value = false
+  }
+}
+
+
+
+async function executarSalvar(opts?: { jaSalvando?: boolean }) {
+  sincronizarAntesDeSalvar()
+  await nextTick()
+
+  // Garante que só linhas com nome do produto seguem para a API.
+  produtosStore.removerLinhasCriarEmMassaSemNome()
+
+  if (!linhasComNome.value.length) {
+    salvando.value = false
+    toast.error('Informe o nome de pelo menos um produto.')
+    return
+  }
+
+  progressoTotal.value = linhasComNome.value.length
 
   progressoEnviados.value = 0
 
@@ -157,7 +247,7 @@ async function salvar() {
 
 
 
-  salvando.value = true
+  if (!opts?.jaSalvando) salvando.value = true
 
   abortController = new AbortController()
 
@@ -261,6 +351,8 @@ watch(open, (isOpen) => {
 
   progressoErro.value = null
 
+  alertaLinhasSemNomeAberto.value = false
+
 })
 
 </script>
@@ -269,7 +361,13 @@ watch(open, (isOpen) => {
 
 <template>
 
-  <BaseModal v-model:open="open" title="Criar produtos em massa" panel-class="w-full max-w-[min(92rem,95vw)]">
+  <BaseModal
+    v-model:open="open"
+    title="Criar produtos em massa"
+    panel-class="w-full max-w-[min(92rem,95vw)]"
+    :close-on-backdrop="podeFecharModalPrincipal"
+    :close-on-escape="podeFecharModalPrincipal"
+  >
 
     <template #subtitle>
 
@@ -306,6 +404,8 @@ watch(open, (isOpen) => {
 
 
     <ProdutosTabela
+
+      ref="produtosTabelaRef"
 
       :items="criarEmMassaItems"
 
@@ -358,6 +458,30 @@ watch(open, (isOpen) => {
   </BaseModal>
 
 
+
+  <ModalAlerta
+
+    v-model:open="alertaLinhasSemNomeAberto"
+
+    title="Linhas sem nome do produto"
+
+    :texto="textoAlertaLinhasSemNome"
+
+    variante="aviso"
+
+    texto-confirmar="Continuar e enviar"
+
+    texto-cancelar="Voltar"
+
+    :mostrar-fechar="false"
+
+    :cancelar-desabilitado="salvando"
+
+    :confirmar-desabilitado="salvando"
+
+    @confirmar="confirmarDescarteLinhasSemNome"
+
+  />
 
   <ModalEnvioProdutos
 

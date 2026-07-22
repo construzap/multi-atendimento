@@ -97,7 +97,7 @@ function onCancelar() {
         </BaseButton>
       </div>
       <div class="w-full sm:w-44">
-        <BaseButton type="button" :disabled="confirmarDesabilitado" @click="onConfirmar">
+        <BaseButton type="button" :disabled="confirmarDesabilitado" @mousedown.prevent="onConfirmar">
           {{ textoConfirmar }}
         </BaseButton>
       </div>

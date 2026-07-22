@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type {
   ProdutoCriarEmMassaLinha,
   ProdutoImagemItem,
+  ProdutoOportunidadeVendaItem,
   ProdutoSelecionadoRef,
   ProdutoWorkspaceItem,
   ProdutosBuscaResponse,
@@ -9,6 +10,9 @@ import type {
   ProdutosFotosExcluirResponse,
   ProdutosFotosReordenarResponse,
   ProdutosFotosUploadResponse,
+  ProdutosOportunidadesVendasExcluirResponse,
+  ProdutosOportunidadesVendasListaResponse,
+  ProdutosOportunidadesVendasTotalResponse,
 } from '#shared/types/produtos'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useWorkspacesStore } from '~/stores/workspaces'
@@ -153,6 +157,17 @@ export const useProdutosStore = defineStore('produtos', {
     progressoFotosEnviados: 0,
     progressoFotosErro: null as string | null,
     salvandoImagens: false,
+
+    /** Oportunidades de vendas (`view_produtos_nao_encontrados`). */
+    oportunidadesVendas: [] as ProdutoOportunidadeVendaItem[],
+    oportunidadesVendasTotal: 0,
+    oportunidadesVendasPage: 0,
+    oportunidadesVendasPageSize: 10,
+    oportunidadesVendasTotalPages: 1,
+    oportunidadesVendasWorkspaceId: null as number | null,
+    oportunidadesVendasTotalPending: false,
+    oportunidadesVendasListPending: false,
+    oportunidadesVendasError: null as string | null,
   }),
   getters: {
     totalPages(state): number {
@@ -167,6 +182,10 @@ export const useProdutosStore = defineStore('produtos', {
 
     quantidadeSelecionados(state): number {
       return state.selecionados.length
+    },
+
+    oportunidadesVendasTemMais(state): boolean {
+      return state.oportunidadesVendasPage > 0 && state.oportunidadesVendasPage < state.oportunidadesVendasTotalPages
     },
   },
   actions: {
@@ -255,6 +274,63 @@ export const useProdutosStore = defineStore('produtos', {
       }
     },
 
+    /**
+     * Remove produtos da listagem Pinia de imediato (exclusão otimista).
+     * Retorna snapshot para restaurar se a API falhar.
+     */
+    removerProdutosOtimista(ids: number[]): {
+      items: ProdutoWorkspaceItem[]
+      total: number
+      idsAfetados: number[]
+    } {
+      const idSet = new Set(ids.filter((id) => Number.isFinite(id) && id >= 1))
+      const snapshot = {
+        items: this.items.map((p) => ({
+          ...p,
+          variacoes: (p.variacoes ?? []).map((v) => ({ ...v })),
+        })),
+        total: this.total,
+        idsAfetados: [...idSet],
+      }
+      if (!idSet.size) return snapshot
+
+      let paisRemovidos = 0
+      const next: ProdutoWorkspaceItem[] = []
+      for (const pai of this.items) {
+        if (idSet.has(pai.id)) {
+          paisRemovidos += 1
+          continue
+        }
+        const vars = (pai.variacoes ?? []).filter((v) => !idSet.has(v.id))
+        if (vars.length !== (pai.variacoes ?? []).length) {
+          next.push({
+            ...pai,
+            variacoes: vars,
+            tem_variacoes: vars.length > 0,
+          })
+        } else {
+          next.push(pai)
+        }
+      }
+      this.items = next
+      this.total = Math.max(0, this.total - paisRemovidos)
+      this.ultimoSnapshotKey = null
+      return snapshot
+    },
+
+    /** Restaura listagem após falha na exclusão otimista. */
+    restaurarProdutosOtimista(snapshot: {
+      items: ProdutoWorkspaceItem[]
+      total: number
+    }) {
+      this.items = snapshot.items.map((p) => ({
+        ...p,
+        variacoes: (p.variacoes ?? []).map((v) => ({ ...v })),
+      }))
+      this.total = snapshot.total
+      this.ultimoSnapshotKey = null
+    },
+
     reset() {
       this.items = []
       this.total = 0
@@ -264,6 +340,197 @@ export const useProdutosStore = defineStore('produtos', {
       this.listError = null
       this.ultimoSnapshotKey = null
       this.limparCriarEmMassa()
+      this.resetOportunidadesVendas()
+    },
+
+    resetOportunidadesVendas() {
+      this.oportunidadesVendas = []
+      this.oportunidadesVendasTotal = 0
+      this.oportunidadesVendasPage = 0
+      this.oportunidadesVendasTotalPages = 1
+      this.oportunidadesVendasWorkspaceId = null
+      this.oportunidadesVendasTotalPending = false
+      this.oportunidadesVendasListPending = false
+      this.oportunidadesVendasError = null
+    },
+
+    /** Contagem para o banner (sem carregar a lista). */
+    async fetchOportunidadesVendasTotal(workspaceId: number) {
+      if (!Number.isFinite(workspaceId) || workspaceId < 1) return
+      if (this.oportunidadesVendasWorkspaceId != null && this.oportunidadesVendasWorkspaceId !== workspaceId) {
+        this.oportunidadesVendas = []
+        this.oportunidadesVendasPage = 0
+        this.oportunidadesVendasTotalPages = 1
+      }
+      this.oportunidadesVendasWorkspaceId = workspaceId
+      this.oportunidadesVendasTotalPending = true
+      this.oportunidadesVendasError = null
+      try {
+        const res = await $fetch<ProdutosOportunidadesVendasTotalResponse>(
+          '/api/produtos/oportunidades-de-vendas/total',
+          {
+            method: 'GET',
+            query: { workspace_id: workspaceId },
+          },
+        )
+        this.oportunidadesVendasTotal = res.total ?? 0
+      } catch (err) {
+        this.oportunidadesVendasTotal = 0
+        this.oportunidadesVendasError = mensagemErroFetch(
+          err,
+          'Não foi possível carregar o total de oportunidades.',
+        )
+      } finally {
+        this.oportunidadesVendasTotalPending = false
+      }
+    },
+
+    /**
+     * Lista paginada (10). `reset: true` na abertura do modal; senão anexa («Carregar mais»).
+     */
+    async fetchOportunidadesVendasPagina(opts?: { reset?: boolean }) {
+      const workspaceId = this.oportunidadesVendasWorkspaceId ?? parseWorkspaceIdFromPinia()
+      if (workspaceId == null) {
+        throw new Error('Workspace inválido.')
+      }
+      this.oportunidadesVendasWorkspaceId = workspaceId
+
+      const reset = opts?.reset === true || this.oportunidadesVendasPage < 1
+      const nextPage = reset ? 1 : this.oportunidadesVendasPage + 1
+      if (!reset && nextPage > this.oportunidadesVendasTotalPages) return
+
+      this.oportunidadesVendasListPending = true
+      this.oportunidadesVendasError = null
+      try {
+        const res = await $fetch<ProdutosOportunidadesVendasListaResponse>(
+          '/api/produtos/oportunidades-de-vendas',
+          {
+            method: 'GET',
+            query: {
+              workspace_id: workspaceId,
+              page: nextPage,
+              page_size: this.oportunidadesVendasPageSize,
+            },
+          },
+        )
+        const batch = res.data ?? []
+        this.oportunidadesVendas = reset ? batch : [...this.oportunidadesVendas, ...batch]
+        this.oportunidadesVendasPage = res.page
+        this.oportunidadesVendasPageSize = res.page_size
+        this.oportunidadesVendasTotalPages = res.total_pages
+        this.oportunidadesVendasTotal = res.total
+      } catch (err) {
+        this.oportunidadesVendasError = mensagemErroFetch(
+          err,
+          'Não foi possível carregar as sugestões de produtos.',
+        )
+        throw err
+      } finally {
+        this.oportunidadesVendasListPending = false
+      }
+    },
+
+    removerOportunidadeVenda(item: ProdutoOportunidadeVendaItem) {
+      const chave = `${item.workspace_id}:${item.canal_id ?? 'x'}:${item.produto_chave}`
+      const before = this.oportunidadesVendas.length
+      this.oportunidadesVendas = this.oportunidadesVendas.filter(
+        (x) => `${x.workspace_id}:${x.canal_id ?? 'x'}:${x.produto_chave}` !== chave,
+      )
+      if (this.oportunidadesVendas.length < before) {
+        this.oportunidadesVendasTotal = Math.max(0, this.oportunidadesVendasTotal - 1)
+      }
+    },
+
+    /**
+     * Apaga todas as ocorrências da oportunidade em `produtos_nao_encontrados`
+     * (ids de `item.ocorrencias[].id`) e remove a linha do Pinia.
+     */
+    async excluirOportunidadeVenda(opts: {
+      workspaceId: number
+      item: ProdutoOportunidadeVendaItem
+      onProgress?: (enviados: number, total: number) => void
+    }): Promise<ProdutosOportunidadesVendasExcluirResponse> {
+      const ids = [
+        ...new Set(
+          (opts.item.ocorrencias ?? [])
+            .map((o) => o.id)
+            .filter((id): id is number => typeof id === 'number' && Number.isFinite(id) && id > 0),
+        ),
+      ]
+      if (ids.length === 0) {
+        throw new Error('Esta sugestão não tem ocorrências para apagar.')
+      }
+
+      const total = ids.length
+      opts.onProgress?.(0, total)
+
+      const res = await $fetch<ProdutosOportunidadesVendasExcluirResponse>(
+        '/api/produtos/oportunidades-de-vendas/excluir',
+        {
+          method: 'POST',
+          body: {
+            workspace_id: opts.workspaceId,
+            ids,
+          },
+        },
+      )
+
+      opts.onProgress?.(total, total)
+      this.removerOportunidadeVenda(opts.item)
+      return res
+    },
+
+    /**
+     * Cria produto via `POST /api/produtos/criar-em-massa` (já valida `checkLimiteProdutos`).
+     * Em sucesso apaga as ocorrências em `produtos_nao_encontrados` e remove a sugestão do Pinia.
+     */
+    async cadastrarProdutoDeOportunidade(opts: {
+      workspaceId: number
+      item: ProdutoOportunidadeVendaItem
+      preco: number
+      /** Id de `produto_termo_de_pesquisa` → coluna `termo_pesquisa`. */
+      termoPesquisaId?: number | null
+    }): Promise<void> {
+      const nome = String(opts.item.produto_sugerido ?? '').trim()
+      if (!nome) throw new Error('Nome do produto inválido.')
+      const preco = Number.isFinite(opts.preco) && opts.preco >= 0 ? opts.preco : 0
+      const termoId =
+        opts.termoPesquisaId != null &&
+        Number.isFinite(opts.termoPesquisaId) &&
+        opts.termoPesquisaId > 0
+          ? Math.trunc(opts.termoPesquisaId)
+          : null
+
+      await $fetch<ProdutosCriarEmMassaResponse>('/api/produtos/criar-em-massa', {
+        method: 'POST',
+        body: {
+          workspace_id: opts.workspaceId,
+          linhas: [{ nome, preco, termo_pesquisa: termoId }],
+        },
+      })
+
+      const idsOcorrencias = [
+        ...new Set(
+          (opts.item.ocorrencias ?? [])
+            .map((o) => o.id)
+            .filter((id): id is number => typeof id === 'number' && Number.isFinite(id) && id > 0),
+        ),
+      ]
+      if (idsOcorrencias.length > 0) {
+        await $fetch<ProdutosOportunidadesVendasExcluirResponse>(
+          '/api/produtos/oportunidades-de-vendas/excluir',
+          {
+            method: 'POST',
+            body: {
+              workspace_id: opts.workspaceId,
+              ids: idsOcorrencias,
+            },
+          },
+        )
+      }
+
+      this.removerOportunidadeVenda(opts.item)
+      this.ultimoSnapshotKey = null
     },
 
     /** Limpa o rascunho de criação em massa (após envio bem-sucedido ou cancelar). */
@@ -808,8 +1075,17 @@ export const useProdutosStore = defineStore('produtos', {
       this.criarEmMassaItems = next
     },
 
+    /** Remove rascunhos sem nome (não serão enviados). */
+    removerLinhasCriarEmMassaSemNome() {
+      this.criarEmMassaItems = this.criarEmMassaItems.filter(
+        (r) => String(r.nome ?? '').trim().length > 0,
+      )
+    },
+
     montarPayloadCriarEmMassa(): ProdutoCriarEmMassaLinha[] {
-      return this.criarEmMassaItems.map((r) => linhaParaPayload(r))
+      return this.criarEmMassaItems
+        .map((r) => linhaParaPayload(r))
+        .filter((r) => r.nome.trim().length > 0)
     },
 
     /** Linha mínima para variação: só `nome` + `parent_id`. */

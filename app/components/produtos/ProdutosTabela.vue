@@ -262,10 +262,30 @@ let abortExclusao: AbortController | null = null
 type EstadoCelulaSalvamento = 'pending' | 'error'
 /** `${produtoId}:${campo}` — permite editar outras linhas enquanto uma célula grava. */
 const celulaSalvamento = ref<Record<string, EstadoCelulaSalvamento>>({})
+/** Evita que um PATCH antigo sobrescreva um valor já alterado de novo pelo user. */
+const celulaPatchGeracao = new Map<string, number>()
 const celulaErroTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 function cellKeySalvamento(produtoId: number, campo: string): string {
   return `${produtoId}:${campo}`
+}
+
+function bumpGeracaoCelulas(produtoId: number, campos: string[]): Map<string, number> {
+  const geracoes = new Map<string, number>()
+  for (const campo of campos) {
+    const k = cellKeySalvamento(produtoId, campo)
+    const next = (celulaPatchGeracao.get(k) ?? 0) + 1
+    celulaPatchGeracao.set(k, next)
+    geracoes.set(k, next)
+  }
+  return geracoes
+}
+
+function geracaoAindaValida(produtoId: number, campos: string[], geracoes: Map<string, number>): boolean {
+  return campos.every((campo) => {
+    const k = cellKeySalvamento(produtoId, campo)
+    return celulaPatchGeracao.get(k) === geracoes.get(k)
+  })
 }
 
 function estadoCelula(produtoId: number, campo: string): EstadoCelulaSalvamento | null {
@@ -303,7 +323,6 @@ function classesCelula(produtoId: number, campo: string, base: string): string {
   if (st === 'error') {
     return `${base} !bg-red-50/80 ring-1 ring-inset ring-red-400/60 dark:!bg-red-950/35 dark:ring-red-500/50`
   }
-  if (st === 'pending') return `${base} opacity-60`
   return base
 }
 
@@ -312,7 +331,6 @@ function classesInput(produtoId: number, campo: string, base: string): string {
   if (st === 'error') {
     return `${base} text-red-700 dark:text-red-400`
   }
-  if (st === 'pending') return `${base} opacity-60`
   return base
 }
 
@@ -462,6 +480,10 @@ async function excluirSelecionados() {
   abortExclusao = new AbortController()
   const signal = abortExclusao.signal
 
+  // Otimista: some da UI primeiro; se a API falhar, restaura com marcação vermelha.
+  const snapshot = produtosStore.removerProdutosOtimista(ids)
+  selecionadosIds.value = []
+
   let totalRemovidos = 0
   let cancelado = false
 
@@ -483,9 +505,11 @@ async function excluirSelecionados() {
 
     if (cancelado) {
       toast.info('Eliminação cancelada.')
+      // Re-sincroniza a listagem: parte pode já ter sido apagada no servidor.
+      emit('eliminados')
       progressoExclusaoAberto.value = false
     } else {
-      selecionadosIds.value = []
+      progressoExclusaoAberto.value = false
       if (totalRemovidos <= 0) {
         toast.info('Nenhum produto foi eliminado (ids podem já não existir).')
       } else if (totalRemovidos === 1) {
@@ -493,21 +517,25 @@ async function excluirSelecionados() {
       } else {
         toast.success(`${totalRemovidos} produtos eliminados.`)
       }
-      progressoExclusaoAberto.value = false
-    }
-
-    if (totalRemovidos > 0 || progressoExclusaoProcessados.value > 0) {
-      emit('eliminados')
     }
   } catch (err: unknown) {
     const e = err as { name?: string }
     if (e?.name === 'AbortError') {
       toast.info('Eliminação cancelada.')
-      if (progressoExclusaoProcessados.value > 0) emit('eliminados')
+      emit('eliminados')
       progressoExclusaoAberto.value = false
-    } else {
+    } else if (progressoExclusaoProcessados.value > 0) {
+      // Parte já foi apagada no servidor — recarrega para sincronizar.
       progressoExclusaoErro.value = mensagemErroFetch(err, 'Não foi possível eliminar os produtos.')
-      if (progressoExclusaoProcessados.value > 0) emit('eliminados')
+      emit('eliminados')
+    } else {
+      produtosStore.restaurarProdutosOtimista(snapshot)
+      for (const id of snapshot.idsAfetados) {
+        flashErroCelulas(id, ['nome'])
+      }
+      selecionadosIds.value = [...snapshot.idsAfetados]
+      progressoExclusaoAberto.value = false
+      toast.error(mensagemErroFetch(err, 'Não foi possível eliminar os produtos.'))
     }
   } finally {
     excluindo.value = false
@@ -559,7 +587,28 @@ function resetarEstadoPosImportacao() {
   expandedParentIds.value = new Set()
 }
 
-defineExpose({ resetarEstadoPosImportacao })
+/**
+ * Em modo rascunho, o input é one-way (`:value`); o Pinia só atualiza no blur.
+ * Antes de salvar, força sincronizar o que ainda está digitado no DOM.
+ */
+function sincronizarInputsRascunho() {
+  if (props.modo !== 'rascunho') return
+  const root = tabelaScrollRef.value
+  if (!root) return
+
+  for (const input of root.querySelectorAll<HTMLInputElement>('[data-campo-produto="nome"]')) {
+    const tr = input.closest('tr')
+    const id = Number(tr?.dataset.linhaProdutoId)
+    if (!Number.isFinite(id)) continue
+    const row = itemsExibicao.value.find((p) => p.id === id)
+    if (!row) continue
+    const v = input.value.trim()
+    if (!v || v === String(row.nome ?? '').trim()) continue
+    emitLinhaLocal(row, { nome: v })
+  }
+}
+
+defineExpose({ resetarEstadoPosImportacao, focarNomeUltimaLinha, sincronizarInputsRascunho })
 
 watch(
   itemsExibicao,
@@ -711,25 +760,43 @@ function gravarPatch(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch) 
   const campos = camposDoPatch(patch)
   if (!campos.length) return
 
+  // 1) Pinia primeiro — UI livre para editar várias células em paralelo.
   const rowAntes = clonarLinhaParaSalvar(row)
   emitLinhaLocal(row, patch)
-  marcarCelulas(row.id, campos, 'pending')
+  const geracoes = bumpGeracaoCelulas(row.id, campos)
+  // Sem estado "pending" (não trava/opaca a célula).
+  marcarCelulas(row.id, campos, null)
+
+  const produtoId = row.id
 
   void $fetch<ProdutoAtualizarResponse>('/api/produtos/atualizar', {
     method: 'PATCH',
     body: {
       workspace_id: props.workspaceId,
-      id: row.id,
+      id: produtoId,
       patch,
     },
   })
-    .then((res) => {
-      emitLinhaLocal(res.data, {})
-      marcarCelulas(row.id, campos, null)
+    .then(() => {
+      if (!geracaoAindaValida(produtoId, campos, geracoes)) return
+      // Sucesso: valor otimista já está no Pinia; não reaplica a linha inteira.
+      marcarCelulas(produtoId, campos, null)
     })
     .catch((err: unknown) => {
-      emitLinhaLocal(rowAntes, {})
-      flashErroCelulas(row.id, campos)
+      if (!geracaoAindaValida(produtoId, campos, geracoes)) return
+
+      const atual =
+        itemsPinia.value.find((p) => p.id === produtoId) ??
+        itemsPinia.value.flatMap((p) => p.variacoes ?? []).find((v) => v.id === produtoId) ??
+        rowAntes
+
+      const revert: Record<string, unknown> = {}
+      const antes = rowAntes as Record<string, unknown>
+      for (const c of campos) {
+        if (c in antes) revert[c] = antes[c]
+      }
+      emitLinhaLocal(atual as ProdutoWorkspaceCampos, revert as ProdutoWorkspacePatch)
+      flashErroCelulas(produtoId, campos)
       toast.error(mensagemErroFetch(err, 'Não foi possível guardar a alteração.'), { duration: 5000 })
     })
 }
@@ -739,6 +806,15 @@ function focarCampoNaLinha(tr: Element, campo: string) {
   if (!input || input.disabled) return
   input.focus()
   input.select()
+}
+
+async function focarNomeUltimaLinha() {
+  await nextTick()
+  const root = tabelaScrollRef.value
+  if (!root) return
+  const rows = Array.from(root.querySelectorAll<HTMLElement>('tbody tr[data-linha-produto-id]'))
+  const last = rows[rows.length - 1]
+  if (last) focarCampoNaLinha(last, 'nome')
 }
 
 async function onEnterCelula(ev: Event) {

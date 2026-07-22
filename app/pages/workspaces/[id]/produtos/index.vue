@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import ProdutosBarraAcoes from '~/components/produtos/ProdutosBarraAcoes.vue'
 import ProdutosBuscaInput from '~/components/produtos/ProdutosBuscaInput.vue'
+import ProdutosOportunidadeVendas from '~/components/produtos/ProdutosOportunidadeVendas.vue'
 import FerramentaImportarProduto from '~/components/produtos/FerramentaImportarProduto.vue'
 import ProdutosModalCriarProdutosEmMassa from '~/components/produtos/ProdutosModalCriarProdutosEmMassa.vue'
 import ProdutosTabela from '~/components/produtos/ProdutosTabela.vue'
@@ -138,6 +139,18 @@ async function aoProdutoNovoGravado() {
   })
 }
 
+/** Após cadastrar via oportunidades de vendas e fechar o modal: refresca workspace + lista/total. */
+async function aposOportunidadesSincronizar() {
+  const wid = workspaceId.value
+  await workspacesStore.ensureAllLoaded({ force: true })
+  if (wid == null) return
+  produtosStore.ultimoSnapshotKey = null
+  await produtosStore.fetchPagina(wid, {
+    page: produtosStore.page,
+    q: termoPesquisa.value,
+  })
+}
+
 function onPageSizeChanged(n: number) {
   produtosStore.pageSize = n
   produtosStore.page = 1
@@ -170,6 +183,11 @@ function aposImportacao() {
         {{ textoLimiteProdutos }}
       </p>
     </header>
+
+    <ProdutosOportunidadeVendas
+      :workspace-id="workspaceId"
+      @sincronizar="void aposOportunidadesSincronizar()"
+    />
 
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
       <ProdutosBuscaInput v-model="busca" :termo-aplicado="termoPesquisa" @pesquisar="aoPesquisar" />

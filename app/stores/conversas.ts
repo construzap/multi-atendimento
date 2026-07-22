@@ -512,6 +512,53 @@ export const useConversasStore = defineStore('conversas', {
       await this.fetchPage(1, idCanal, this.listFetchOptions())
     },
 
+    /**
+     * Ao abrir conversa a partir do kanban: alinha filtros da lista (coluna/funil)
+     * e liga “fechadas”/“grupos” se a conversa exigir para aparecer na lista.
+     */
+    async aplicarContextoAoAbrirDoKanban(input: {
+      conversaKey?: string | null
+      colunaId?: number | null
+      funilId?: number | null
+      isGroup?: boolean | null
+      conversaAberta?: boolean | null
+    }) {
+      this.filtros.termoPesquisa = ''
+
+      const colunaRaw = input.colunaId
+      const colunaId =
+        colunaRaw != null && Number.isFinite(colunaRaw) && colunaRaw > 0
+          ? Math.trunc(colunaRaw)
+          : null
+
+      if (colunaId != null) {
+        this.filtros.kanban.colunaId = colunaId
+        const funilRaw = input.funilId
+        const funilId =
+          funilRaw != null && Number.isFinite(funilRaw) && funilRaw > 0
+            ? Math.trunc(funilRaw)
+            : this._funilIdDaColunaKanban(colunaId)
+        this.filtros.kanban.funilId = funilId
+      }
+
+      if (input.conversaAberta === false) {
+        this.filtros.mostrarFechadas = true
+      }
+      if (input.isGroup === true) {
+        this.filtros.mostrarGrupos = true
+      }
+
+      const idCanal = this.activeCanalId
+      if (idCanal == null) return
+      await this.fetchPage(1, idCanal, this.listFetchOptions())
+
+      const key = input.conversaKey?.trim()
+      if (key) {
+        await this.ensureConversaNaLista(idCanal, key)
+        this.setConversaAtual(key, idCanal)
+      }
+    },
+
     async limparFiltroKanban() {
       const tinhaFiltro =
         this.filtros.kanban.colunaId != null || this.filtros.kanban.funilId != null
