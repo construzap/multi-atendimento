@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import BaseAvatar from '~/components/BaseAvatar.vue'
@@ -231,8 +231,30 @@ const iconeToggleGrupos = computed(() =>
   mostrarGrupos.value ? 'group_off' : 'groups'
 )
 
-function executarPesquisa() {
-  void conversasStore.aplicarPesquisa(pesquisa.value)
+const DEBOUNCE_BUSCA_MS = 400
+let buscaTimer: ReturnType<typeof setTimeout> | null = null
+
+function agendarPesquisa() {
+  if (buscaTimer) clearTimeout(buscaTimer)
+  buscaTimer = setTimeout(() => {
+    buscaTimer = null
+    void executarPesquisa()
+  }, DEBOUNCE_BUSCA_MS)
+}
+
+async function executarPesquisa() {
+  if (buscaTimer) {
+    clearTimeout(buscaTimer)
+    buscaTimer = null
+  }
+  const termo = pesquisa.value.trim()
+  if (termo === termoPesquisa.value.trim()) return
+  try {
+    await conversasStore.aplicarPesquisa(pesquisa.value)
+  } catch (err: unknown) {
+    const msg = mensagemErroFetch(err, 'Não foi possível buscar conversas.')
+    toast.error(msg, { duration: 8000 })
+  }
 }
 
 watch(
@@ -244,6 +266,20 @@ watch(
 
 watch(termoPesquisa, (t) => {
   if (pesquisa.value !== t) pesquisa.value = t
+})
+
+watch(pesquisa, (valor, anterior) => {
+  if (valor === anterior) return
+  // Sync externo do Pinia → não dispara nova busca.
+  if (valor === termoPesquisa.value) return
+  agendarPesquisa()
+})
+
+onBeforeUnmount(() => {
+  if (buscaTimer) {
+    clearTimeout(buscaTimer)
+    buscaTimer = null
+  }
 })
 
 async function alternarMostrarConversasFechadas() {
@@ -439,7 +475,7 @@ async function atualizarListaConversas() {
           v-model="pesquisa"
           type="search"
           name="pesquisa-conversas"
-          placeholder="Buscar conversas… (Enter)"
+          placeholder="Buscar conversas…"
           autocomplete="off"
           wrapper-id="conversas-pesquisa-wrap"
           class="w-full"

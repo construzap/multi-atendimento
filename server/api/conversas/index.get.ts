@@ -6,6 +6,7 @@ import { checkChannel } from '../../utils/checkChannel'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 const PER_PAGE = 20
+const PER_PAGE_BUSCA = 10
 const VIEW_KANBAN_CONVERSAS = 'view_kanban_conversas'
 
 const VIEW_SELECT =
@@ -103,7 +104,8 @@ function parseSearchTerm(raw: unknown): string | undefined {
 
 /**
  * GET /api/conversas?id_canal=&page=&conversa_aberta=&is_group=
- * Lista conversas do canal via `view_kanban_conversas`, paginadas (20 por página).
+ * Lista conversas do canal via `view_kanban_conversas`, paginadas
+ * (20 por página na lista; 10 na busca com `q`).
  *
  * Query:
  * - `id_canal` (obrigatório): id do canal em `canais.id`
@@ -206,8 +208,9 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
     }
   }
 
-  const from = (page - 1) * PER_PAGE
-  const to = from + PER_PAGE - 1
+  const perPage = searchTerm ? PER_PAGE_BUSCA : PER_PAGE
+  const from = (page - 1) * perPage
+  const to = from + perPage - 1
 
   let query = admin
     .from(VIEW_KANBAN_CONVERSAS)
@@ -252,7 +255,7 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
   return {
     data: rows.map(mapViewRowToConversa),
     page,
-    perPage: PER_PAGE,
+    perPage,
     total: count ?? 0
   }
 })
