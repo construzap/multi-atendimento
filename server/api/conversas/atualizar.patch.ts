@@ -7,7 +7,7 @@ import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 const CONVERSA_SELECT =
-  'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group, nao_lidas, funil_id, coluna_id, atendente_id'
+  'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group, nao_lidas, funil_id, coluna_id, atendente_id, ia_ligada'
 
 type Body = {
   workspace_id?: unknown
@@ -37,6 +37,7 @@ type ConversaRow = {
   funil_id: number | null
   coluna_id: number | null
   atendente_id: number | null
+  ia_ligada: boolean | null
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -60,6 +61,16 @@ function intOrNull(v: unknown): number | null {
   if (v === undefined || v === null || v === '') return null
   const n = typeof v === 'number' ? Math.trunc(v) : Number.parseInt(String(v).trim(), 10)
   return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : null
+}
+
+function boolFromUnknown(v: unknown): boolean | undefined {
+  if (v === undefined) return undefined
+  if (typeof v === 'boolean') return v
+  if (typeof v === 'number') return v !== 0
+  const s = String(v).trim().toLowerCase()
+  if (['0', 'n', 'nao', 'não', 'false', 'f', 'off'].includes(s)) return false
+  if (['1', 's', 'sim', 'true', 't', 'on'].includes(s)) return true
+  return undefined
 }
 
 function normalizePhoneInput(input: unknown): string {
@@ -104,6 +115,7 @@ function mapRowToConversa(row: ConversaRow): Conversa {
     funil_id: row.funil_id,
     coluna_id: row.coluna_id,
     atendente_id: row.atendente_id,
+    ia_ligada: row.ia_ligada === true ? true : row.ia_ligada === false ? false : null,
   }
 }
 
@@ -148,7 +160,7 @@ async function validarColunaNoWorkspace(
 
 /**
  * PATCH /api/conversas/atualizar
- * Body: `{ workspace_id, key, patch }` — atualiza `name`, `phone` (limpa `lid`) e `coluna_id`.
+ * Body: `{ workspace_id, key, patch }` — atualiza `name`, `phone` (limpa `lid`), `coluna_id` e `ia_ligada`.
  * Não altera `funil_id`.
  */
 export default defineEventHandler(async (event): Promise<ConversaAtualizarResponse> => {
@@ -180,7 +192,7 @@ export default defineEventHandler(async (event): Promise<ConversaAtualizarRespon
 
   const p = rawPatch as Record<string, unknown>
   const keys = Object.keys(p)
-  const allowed = new Set(['name', 'phone', 'coluna_id'])
+  const allowed = new Set(['name', 'phone', 'coluna_id', 'ia_ligada'])
 
   for (const k of keys) {
     if (!allowed.has(k)) {
@@ -230,6 +242,14 @@ export default defineEventHandler(async (event): Promise<ConversaAtualizarRespon
       await validarColunaNoWorkspace(admin, workspaceId, colunaId)
       update.coluna_id = colunaId
     }
+  }
+
+  if (p.ia_ligada !== undefined) {
+    const b = boolFromUnknown(p.ia_ligada)
+    if (b === undefined) {
+      throw createError({ statusCode: 400, statusMessage: 'ia_ligada inválido.' })
+    }
+    update.ia_ligada = b
   }
 
   if (Object.keys(update).length === 0) {

@@ -54,9 +54,12 @@ export default defineNuxtConfig({
       pusherAppId: '',
       pusherKey: '',
       pusherCluster: '',
-      /** WhatsApp comercial (wa.me) — `.env`: WHATSAPP_COMERCIAL_NUMERO ou NUXT_PUBLIC_WHATSAPP_COMERCIAL_NUMERO */
+      /** WhatsApp comercial (wa.me) — `.env`: NUXT_WHATSAPP_COMERCIAL_NUMERO, WHATSAPP_COMERCIAL_NUMERO ou NUXT_PUBLIC_WHATSAPP_COMERCIAL_NUMERO */
       whatsappComercialNumero:
-        process.env.WHATSAPP_COMERCIAL_NUMERO || process.env.NUXT_PUBLIC_WHATSAPP_COMERCIAL_NUMERO || '',
+        process.env.NUXT_WHATSAPP_COMERCIAL_NUMERO ||
+        process.env.WHATSAPP_COMERCIAL_NUMERO ||
+        process.env.NUXT_PUBLIC_WHATSAPP_COMERCIAL_NUMERO ||
+        '',
     },
   },
   vite: {

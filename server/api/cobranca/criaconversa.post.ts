@@ -16,7 +16,7 @@ type Body = {
 type SupabaseAdmin = ReturnType<typeof serverSupabaseServiceRole<any>>
 
 const CONVERSA_SELECT =
-  'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group, nao_lidas, funil_id, coluna_id, atendente_id'
+  'key, message, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group, nao_lidas, funil_id, coluna_id, atendente_id, ia_ligada'
 
 const CODIGO_COLUNA_ORIGEM_LEADS_NAO_CONFIGURADA = 'COLUNA_ORIGEM_LEADS_NAO_CONFIGURADA'
 

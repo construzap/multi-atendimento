@@ -24,6 +24,7 @@ const carregandoMetadados = ref(false)
 const campoEmEdicao = ref<CampoEditavel | null>(null)
 const draftValor = ref('')
 const salvandoCampo = ref<CampoEditavel | null>(null)
+const salvandoIa = ref(false)
 const modalApagarMemoriaIaAberto = ref(false)
 const apagandoMemoriaIa = ref(false)
 
@@ -67,6 +68,8 @@ const telefoneLabel = computed(() => {
   return phone || '—'
 })
 
+const iaLigada = computed(() => conversa.value?.ia_ligada === true)
+
 const podeApagarMemoriaIa = computed(() => {
   const c = conversa.value
   const wsId = workspaceId.value
@@ -107,6 +110,9 @@ async function confirmarApagarMemoriaIa() {
         phone,
       },
     })
+    if (c.ia_ligada !== true) {
+      await conversasStore.atualizarConversa(wsId, key, { ia_ligada: true }).catch(() => undefined)
+    }
     modalApagarMemoriaIaAberto.value = false
     toast.success('Memória da I.A. apagada para este contato.')
   } catch (err: unknown) {
@@ -240,6 +246,27 @@ async function salvarCampo(campo: CampoEditavel) {
     toast.error(msg || 'Não foi possível salvar o dado.')
   } finally {
     salvandoCampo.value = null
+  }
+}
+
+async function alternarIaLigada() {
+  const c = conversa.value
+  const wsId = workspaceId.value
+  if (!c || !wsId || salvandoIa.value) return
+
+  const novoValor = !iaLigada.value
+  salvandoIa.value = true
+  try {
+    await conversasStore.atualizarConversa(wsId, c.key, { ia_ligada: novoValor })
+    toast.success(novoValor ? 'I.A. ligada.' : 'I.A. desligada.')
+  } catch (err: unknown) {
+    const msg =
+      err && typeof err === 'object' && 'data' in err
+        ? String((err as { data?: { statusMessage?: string } }).data?.statusMessage ?? '')
+        : ''
+    toast.error(msg || 'Não foi possível atualizar a I.A.')
+  } finally {
+    salvandoIa.value = false
   }
 }
 
@@ -475,6 +502,65 @@ watch(
           :class="{ 'italic text-on-surface-variant dark:text-dark-on-surface-variant': funilLabel === 'Carregando…' }"
         >
           {{ funilLabel }}
+        </dd>
+      </div>
+
+      <!-- I.A. ligada -->
+      <div class="flex flex-col gap-1.5">
+        <dt class="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+          I.A.
+        </dt>
+        <dd>
+          <div
+            class="flex items-center justify-between gap-3 rounded-xl border border-outline/25 bg-white/70 px-3 py-2.5 dark:border-dark-outline/30 dark:bg-dark-surface-container-low/70"
+            :class="salvandoIa ? 'opacity-70' : ''"
+          >
+            <div class="min-w-0 flex items-center gap-2.5">
+              <span
+                class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors"
+                :class="iaLigada
+                  ? 'bg-emerald-500/15 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300'
+                  : 'bg-zinc-500/10 text-zinc-500 dark:bg-zinc-400/10 dark:text-zinc-400'"
+                aria-hidden="true"
+              >
+                <span class="material-symbols-outlined text-[18px]">
+                  {{ iaLigada ? 'smart_toy' : 'psychology_alt' }}
+                </span>
+              </span>
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-on-surface dark:text-dark-on-surface">
+                  Atendimento automático
+                </p>
+                <p
+                  class="text-[11px] font-semibold tracking-wide"
+                  :class="iaLigada
+                    ? 'text-emerald-700 dark:text-emerald-300'
+                    : 'text-on-surface-variant dark:text-dark-on-surface-variant'"
+                >
+                  {{ iaLigada ? 'Ligada' : 'Desligada' }}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="iaLigada"
+              :aria-label="iaLigada ? 'Desligar I.A.' : 'Ligar I.A.'"
+              :disabled="salvandoIa"
+              class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 ease-out focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 dark:focus-visible:ring-offset-dark-surface-container-low"
+              :class="iaLigada
+                ? 'bg-emerald-500 shadow-inner shadow-emerald-900/20 dark:bg-emerald-500'
+                : 'bg-zinc-300 dark:bg-zinc-600'"
+              @click="alternarIaLigada"
+            >
+              <span
+                aria-hidden="true"
+                class="pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-md ring-1 ring-black/5 transition-[left] duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] dark:ring-white/10"
+                :class="iaLigada ? 'left-[calc(100%-1.4rem)]' : 'left-1'"
+              />
+            </button>
+          </div>
         </dd>
       </div>
     </dl>

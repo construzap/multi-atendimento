@@ -222,6 +222,16 @@ export const useConversasStore = defineStore('conversas', {
       }
     },
 
+    /** `ia_ligada` da conversa selecionada no canal ativo. */
+    iaLigadaConversaAtual(state): boolean | null {
+      if (state.activeCanalId == null) return null
+      const bucket = state.byCanal[state.activeCanalId]
+      const key = bucket?.conversaAtual?.trim()
+      if (!key || !bucket) return null
+      const found = bucket.items.find((c) => c.key === key)
+      return found?.ia_ligada ?? null
+    },
+
     /** Filtros da lista lateral — espelham `state.filtros`. */
     mostrarFechadas(state): boolean {
       return state.filtros.mostrarFechadas
@@ -429,6 +439,7 @@ export const useConversasStore = defineStore('conversas', {
         funil_id: null,
         coluna_id: null,
         atendente_id: null,
+        ia_ligada: true,
       }
 
       this.addOrUpdateLocalConversa(temp, idCanal)
@@ -953,6 +964,7 @@ export const useConversasStore = defineStore('conversas', {
           funil_id: null,
           coluna_id: null,
           atendente_id: null,
+          ia_ligada: null,
         }
 
         if (payload.is_group) {

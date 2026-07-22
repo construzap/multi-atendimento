@@ -507,6 +507,7 @@ export const useKanbanStore = defineStore('kanban', {
         lid: conversa.lid,
         updated_at: conversa.updated_at,
         coluna_id: novoColunaId,
+        ia_ligada: conversa.ia_ligada,
       })
 
       const targetColIdx = next.findIndex((c) => c.id === novoColunaId)

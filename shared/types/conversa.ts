@@ -35,6 +35,8 @@ export interface Conversa {
   funil_id: number | null
   coluna_id: number | null
   atendente_id: number | null
+  /** I.A. ligada (`conversas.ia_ligada`). */
+  ia_ligada: boolean | null
   /**
    * Campos personalizados da conversa (definição + valor).
    * `undefined` = ainda não carregados; array (mesmo vazio) = já buscados na API.
@@ -47,6 +49,7 @@ export type ConversaPatch = {
   name?: string | null
   phone?: string
   coluna_id?: number | null
+  ia_ligada?: boolean
 }
 
 /** Resposta de `PATCH /api/conversas/atualizar`. */

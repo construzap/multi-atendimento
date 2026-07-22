@@ -10,7 +10,7 @@ const PER_PAGE_BUSCA = 10
 const VIEW_KANBAN_CONVERSAS = 'view_kanban_conversas'
 
 const VIEW_SELECT =
-  'conversa_key, preview, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group, nao_lidas, funil_id, coluna_id, atendente_id'
+  'conversa_key, preview, messatype, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, from_me, media_url, conversa_aberta, is_group, id_group, name_group, nao_lidas, funil_id, coluna_id, atendente_id, ia_ligada'
 
 type ViewKanbanConversaRow = {
   conversa_key: string
@@ -34,6 +34,7 @@ type ViewKanbanConversaRow = {
   funil_id: number | null
   coluna_id: number | null
   atendente_id: number | null
+  ia_ligada: boolean | null
 }
 
 function mapViewRowToConversa(row: ViewKanbanConversaRow): Conversa {
@@ -59,6 +60,7 @@ function mapViewRowToConversa(row: ViewKanbanConversaRow): Conversa {
     funil_id: row.funil_id,
     coluna_id: row.coluna_id,
     atendente_id: row.atendente_id,
+    ia_ligada: row.ia_ligada === true ? true : row.ia_ligada === false ? false : null,
   }
 }
 

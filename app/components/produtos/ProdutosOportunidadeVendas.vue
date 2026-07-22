@@ -62,7 +62,7 @@ const whatsappLimiteUrl = computed(() => {
   const n = whatsappComercialNumero.value
   if (!n) return null
   const texto = encodeURIComponent(
-    'Olá! Preciso aumentar o limite de produtos do meu workspace no multi-atendimento.',
+    'Olá! Preciso aumentar o limite de produtos do meu workspace na I.A.',
   )
   return `https://wa.me/${n}?text=${texto}`
 })
