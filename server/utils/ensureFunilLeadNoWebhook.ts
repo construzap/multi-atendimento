@@ -19,7 +19,7 @@ function parseColunaId(raw: unknown): number | null {
  * Garante posição inicial no funil para conversas novas no webhook.
  *
  * Grava `coluna_id` e `funil_id` em `public.conversas` (não usa `funil_conversa_status`).
- * Usa `workspace.coluna_origem_leads` como coluna de entrada.
+ * Usa `workspace.funil_origem_leads` + `workspace.coluna_origem_leads` como entrada.
  * Não altera conversas já posicionadas (`coluna_id` preenchido).
  */
 export async function ensureFunilLeadNoWebhook(
@@ -49,7 +49,7 @@ export async function ensureFunilLeadNoWebhook(
 
   const { data: ws, error: wsErr } = await admin
     .from('workspace')
-    .select('coluna_origem_leads')
+    .select('funil_origem_leads, coluna_origem_leads')
     .eq('id', workspaceId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -63,9 +63,29 @@ export async function ensureFunilLeadNoWebhook(
   const colunaId = parseColunaId((ws as { coluna_origem_leads?: unknown }).coluna_origem_leads)
   if (colunaId == null) return
 
+  let funilId = parseColunaId((ws as { funil_origem_leads?: unknown }).funil_origem_leads)
+
+  if (funilId == null) {
+    const { data: colunaRow, error: colLookupErr } = await admin
+      .from('funil_workspace_colunas')
+      .select('funil_id')
+      .eq('id', colunaId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (colLookupErr) {
+      console.warn('[webhook] funil_workspace_colunas lookup:', colLookupErr.message)
+      return
+    }
+    funilId = parseColunaId((colunaRow as { funil_id?: unknown } | null)?.funil_id)
+  }
+
+  if (funilId == null) return
+
   const { data: funil, error: funilErr } = await admin
     .from('funil_workspace')
     .select('id')
+    .eq('id', funilId)
     .eq('workspace_id', workspaceId)
     .maybeSingle()
 
@@ -74,9 +94,6 @@ export async function ensureFunilLeadNoWebhook(
     return
   }
   if (!funil?.id) return
-
-  const funilId = typeof funil.id === 'number' ? funil.id : Number(funil.id)
-  if (!Number.isFinite(funilId) || funilId < 1) return
 
   const { data: coluna, error: colErr } = await admin
     .from('funil_workspace_colunas')

@@ -60,7 +60,7 @@ async function resolverColunaOrigemEFunil(
 ): Promise<{ colunaId: number; funilId: number }> {
   const { data: ws, error: wsErr } = await admin
     .from('workspace')
-    .select('coluna_origem_leads')
+    .select('funil_origem_leads, coluna_origem_leads')
     .eq('id', workspaceId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -70,13 +70,37 @@ async function resolverColunaOrigemEFunil(
   }
 
   const colunaId = toInt((ws as { coluna_origem_leads?: unknown } | null)?.coluna_origem_leads)
+  const funilSalvo = toInt((ws as { funil_origem_leads?: unknown } | null)?.funil_origem_leads)
   if (colunaId == null) {
+    throw erroColunaOrigemNaoConfigurada()
+  }
+
+  let funilId = funilSalvo
+
+  if (funilId == null) {
+    // Compatibilidade: se só a coluna estiver salva, resolve o funil pela coluna.
+    const { data: colunaRow, error: colLookupErr } = await admin
+      .from('funil_workspace_colunas')
+      .select('funil_id')
+      .eq('id', colunaId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (colLookupErr) {
+      throw createError({ statusCode: 500, statusMessage: colLookupErr.message })
+    }
+
+    funilId = toInt((colunaRow as { funil_id?: unknown } | null)?.funil_id)
+  }
+
+  if (funilId == null) {
     throw erroColunaOrigemNaoConfigurada()
   }
 
   const { data: funil, error: funilErr } = await admin
     .from('funil_workspace')
     .select('id')
+    .eq('id', funilId)
     .eq('workspace_id', workspaceId)
     .maybeSingle()
 
@@ -84,14 +108,6 @@ async function resolverColunaOrigemEFunil(
     throw createError({ statusCode: 500, statusMessage: funilErr.message })
   }
   if (!funil?.id) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Funil não encontrado para este workspace.',
-    })
-  }
-
-  const funilId = typeof funil.id === 'number' ? funil.id : Number(funil.id)
-  if (!Number.isFinite(funilId) || funilId < 1) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Funil não encontrado para este workspace.',

@@ -25,7 +25,6 @@ type NavItem = {
     | 'contato'
     | 'canais'
     | 'produtos'
-    | 'vectorStore'
     | 'buscarProdutosIa'
     | 'atendentes'
     | 'frete'
@@ -47,8 +46,6 @@ const isAdmin = computed(() => verificarAdmin.value?.isAdmin === true)
 
 const workspaceId = computed(() => workspaces.currentWorkspaceId ?? String(route.params.id ?? ''))
 const base = computed(() => `/workspaces/${workspaceId.value}`)
-const enviarIaBase = computed(() => `${base.value}/produtos/enviar-para-ia`)
-
 watch(
   () => [workspaces.currentWorkspaceId ?? String(route.params.id ?? ''), profile.me?.id] as const,
   async ([wsRaw, profileId]) => {
@@ -73,7 +70,6 @@ const items = computed<NavItem[]>(() => {
     { label: 'Contato', to: `${base.value}/contato`, page: 'contato', icon: 'contato' },
     { label: 'Canais', to: `${base.value}/canais`, page: 'canais', icon: 'canais' },
     { label: 'Produtos', to: `${base.value}/produtos`, page: 'produtos', icon: 'produtos' },
-    { label: 'Vector Store (IA)', to: `${enviarIaBase.value}/vector-store`, page: 'vector-store', icon: 'vectorStore' },
     { label: 'Atendentes', to: `${base.value}/atendentes`, page: 'atendentes', icon: 'atendentes' },
     { label: 'Frete', to: `${base.value}/frete`, page: 'frete', icon: 'frete' },
     { label: 'Cobrança', to: `${base.value}/cobranca`, page: 'cobranca', icon: 'cobranca' },
@@ -194,11 +190,6 @@ function closeMobileSidebar() {
               <svg v-else-if="it.icon === 'produtos'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round" />
                 <path d="M3.27 6.96 12 12.01 20.73 6.96M12 22.08V12" stroke-linecap="round" stroke-linejoin="round" />
-              </svg>
-              <svg v-else-if="it.icon === 'vectorStore'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <ellipse cx="12" cy="5" rx="9" ry="3" />
-                <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
-                <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6" />
               </svg>
               <svg v-else-if="it.icon === 'buscarProdutosIa'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="11" cy="11" r="8" />
@@ -349,11 +340,6 @@ function closeMobileSidebar() {
             <svg v-else-if="it.icon === 'produtos'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke-linejoin="round" />
               <path d="M3.27 6.96 12 12.01 20.73 6.96M12 22.08V12" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <svg v-else-if="it.icon === 'vectorStore'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <ellipse cx="12" cy="5" rx="9" ry="3" />
-              <path d="M3 5v6c0 1.66 4.03 3 9 3s9-1.34 9-3V5" />
-              <path d="M3 11v6c0 1.66 4.03 3 9 3s9-1.34 9-3v-6" />
             </svg>
             <svg v-else-if="it.icon === 'buscarProdutosIa'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="11" cy="11" r="8" />

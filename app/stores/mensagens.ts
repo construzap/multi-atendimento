@@ -171,6 +171,15 @@ export const useMensagensStore = defineStore('mensagens', {
       const a = state.activeKey ? state.byKey[state.activeKey] : null
       return Boolean(a && a.loadedAt != null)
     },
+    /**
+     * Loading da conversa ativa (primeiro GET / troca sem cache).
+     * Não cobre “carregar mais” (já há mensagens no bucket).
+     */
+    carregandoConversaAtiva(state): boolean {
+      const a = state.activeKey ? state.byKey[state.activeKey] : null
+      if (!a?.pending) return false
+      return a.loadedAt == null || a.items.length === 0
+    },
     /** Mensagem da conversa ativa pelo `message_id` (ex.: resolver `replyid`). */
     mensagemPorId(state) {
       return (messageId: string | null | undefined): Mensagem | null => {
@@ -482,6 +491,10 @@ export const useMensagensStore = defineStore('mensagens', {
         bucket = emptyKeyState()
         this.byKey[key] = bucket
       }
+
+      // Marca pending antes do GET para a UI da conversa ativa mostrar loading na hora.
+      bucket.pending = true
+      bucket.error = null
 
       const promise = this.fetchPage(idCanal, conversaKey, page)
         .then(() => undefined)

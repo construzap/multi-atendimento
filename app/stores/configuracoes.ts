@@ -24,6 +24,14 @@ function parseWorkspaceIdAtual(): number | null {
 function normalizarConfiguracoes(config: WorkspaceConfiguracoes): WorkspaceConfiguracoes {
   return {
     ...config,
+    funil_origem_leads:
+      config.funil_origem_leads != null && String(config.funil_origem_leads).trim()
+        ? String(config.funil_origem_leads).trim()
+        : null,
+    coluna_origem_leads:
+      config.coluna_origem_leads != null && String(config.coluna_origem_leads).trim()
+        ? String(config.coluna_origem_leads).trim()
+        : null,
     tempo_resposta:
       typeof config.tempo_resposta === 'number' && Number.isFinite(config.tempo_resposta)
         ? Math.trunc(config.tempo_resposta)
@@ -184,6 +192,12 @@ export const useConfiguracoesStore = defineStore('configuracoes', {
             numero_notificacao: config.numero_notificacao?.trim() || null,
             tempo_resposta: config.tempo_resposta,
             tempo_pausa: config.tempo_pausa,
+            funil_origem_leads: (() => {
+              const raw = config.funil_origem_leads?.trim() || ''
+              if (!raw) return null
+              const n = Number.parseInt(raw, 10)
+              return Number.isFinite(n) && n >= 1 ? n : null
+            })(),
             coluna_origem_leads: (() => {
               const raw = config.coluna_origem_leads?.trim() || ''
               if (!raw) return null

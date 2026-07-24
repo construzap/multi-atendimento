@@ -14,7 +14,7 @@ const route = useRoute()
 const workspaces = useWorkspacesStore()
 const configuracoes = useConfiguracoesStore()
 const kanbanStore = useKanbanStore()
-const { columns: colunasKanban, pending: kanbanPending } = storeToRefs(kanbanStore)
+const { funis, funisPending } = storeToRefs(kanbanStore)
 
 const workspaceId = computed(() => {
   const raw = workspaces.currentWorkspaceId ?? String(route.params.id ?? '')
@@ -59,27 +59,56 @@ const descricao = computed({
   },
 })
 
-const colunaOrigemLeads = computed({
+/** Valor do select: `funilId:colunaId` (ou '' se vazio). */
+const origemLeadsSelecionada = computed({
   get: () => {
     const id = workspaceId.value
-    return id != null ? configuracoes.doWorkspace(id)?.coluna_origem_leads ?? '' : ''
+    if (id == null) return ''
+    const cfg = configuracoes.doWorkspace(id)
+    const funilId = cfg?.funil_origem_leads?.trim() ?? ''
+    const colunaId = cfg?.coluna_origem_leads?.trim() ?? ''
+    if (!funilId || !colunaId) return ''
+    return `${funilId}:${colunaId}`
   },
   set: (v: string) => {
     const id = workspaceId.value
-    if (id != null) configuracoes.atualizarCampo(id, 'coluna_origem_leads', v.trim() || null)
+    if (id == null) return
+    const raw = v.trim()
+    if (!raw) {
+      configuracoes.atualizarCampo(id, 'funil_origem_leads', null)
+      configuracoes.atualizarCampo(id, 'coluna_origem_leads', null)
+      return
+    }
+    const [funilRaw, colunaRaw] = raw.split(':')
+    const funilId = (funilRaw ?? '').trim()
+    const colunaId = (colunaRaw ?? '').trim()
+    configuracoes.atualizarCampo(id, 'funil_origem_leads', funilId || null)
+    configuracoes.atualizarCampo(id, 'coluna_origem_leads', colunaId || null)
   },
 })
 
-const colunaSalvaValida = computed(() => {
-  const valor = colunaOrigemLeads.value
-  if (!valor) return true
-  return colunasKanban.value.some((col) => String(col.id) === valor)
+const opcoesOrigemLeads = computed(() => {
+  const itens: Array<{ value: string }> = []
+  for (const funil of funis.value) {
+    for (const col of funil.columns ?? []) {
+      itens.push({ value: `${funil.id}:${col.id}` })
+    }
+  }
+  return itens
 })
+
+const origemSalvaValida = computed(() => {
+  const valor = origemLeadsSelecionada.value
+  if (!valor) return true
+  return opcoesOrigemLeads.value.some((o) => o.value === valor)
+})
+
+const totalColunasFunis = computed(() => opcoesOrigemLeads.value.length)
 
 watch(
   workspaceId,
   (wid) => {
-    if (wid != null) void kanbanStore.ensureBoardLoaded(wid).catch(() => {})
+    if (wid != null) void kanbanStore.ensureFunisLoaded(wid).catch(() => {})
   },
   { immediate: true },
 )
@@ -198,37 +227,47 @@ async function confirmarExclusaoWorkspace() {
             Coluna origem dos leads
           </label>
           <p class="mb-3 text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
-            Coluna do funil em que novos leads serão registrados pela IA.
+            Funil e coluna em que novos leads serão registrados pela IA.
           </p>
           <select
             id="ws-config-coluna-origem-leads"
-            v-model="colunaOrigemLeads"
-            name="coluna_origem_leads"
+            v-model="origemLeadsSelecionada"
+            name="origem_leads"
             class="w-full rounded-xl border border-outline/40 bg-white px-4 py-3 text-sm text-on-surface outline-none focus:border-primary disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
-            :disabled="desabilitado || kanbanPending"
+            :disabled="desabilitado || funisPending"
           >
             <option value="">Nenhuma coluna selecionada</option>
             <option
-              v-if="colunaOrigemLeads && !colunaSalvaValida"
-              :value="colunaOrigemLeads"
+              v-if="origemLeadsSelecionada && !origemSalvaValida"
+              :value="origemLeadsSelecionada"
             >
-              Coluna ID {{ colunaOrigemLeads }} (não listada)
+              Funil/coluna {{ origemLeadsSelecionada }} (não listados)
             </option>
-            <option v-for="col in colunasKanban" :key="col.id" :value="String(col.id)">
-              {{ col.nome }}
-            </option>
+            <optgroup
+              v-for="funil in funis"
+              :key="funil.id"
+              :label="funil.nome?.trim() || `Funil #${funil.id}`"
+            >
+              <option
+                v-for="col in funil.columns"
+                :key="`${funil.id}:${col.id}`"
+                :value="`${funil.id}:${col.id}`"
+              >
+                {{ col.nome?.trim() || `Coluna #${col.id}` }}
+              </option>
+            </optgroup>
           </select>
           <p
-            v-if="kanbanPending"
+            v-if="funisPending"
             class="mt-2 text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
           >
-            Carregando colunas do funil…
+            Carregando funis e colunas…
           </p>
           <p
-            v-else-if="!colunasKanban.length"
+            v-else-if="!totalColunasFunis"
             class="mt-2 text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
           >
-            Nenhuma coluna encontrada. Crie colunas no kanban do workspace.
+            Nenhuma coluna encontrada. Crie funis/colunas no kanban do workspace.
           </p>
         </div>
 

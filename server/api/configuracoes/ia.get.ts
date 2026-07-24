@@ -34,8 +34,8 @@ function inteiroOuPadrao(raw: unknown, padrao: number): number {
   return padrao
 }
 
-/** `workspace.coluna_origem_leads` é bigint no banco; API expõe string do id. */
-function colunaOrigemLeadsParaApi(raw: unknown): string | null {
+/** Bigint no banco → string do id na API. */
+function idOrigemParaApi(raw: unknown): string | null {
   if (raw === null || raw === undefined || raw === '') return null
   const n =
     typeof raw === 'number' && Number.isFinite(raw)
@@ -73,7 +73,7 @@ export default defineEventHandler(async (event): Promise<WorkspaceConfiguracoes>
   const { data, error } = await admin
     .from('workspace')
     .select(
-      'nome, descricao, fase_teste, numero_testes, numero_notificacao, tempo_resposta, tempo_pausa, coluna_origem_leads',
+      'nome, descricao, fase_teste, numero_testes, numero_notificacao, tempo_resposta, tempo_pausa, funil_origem_leads, coluna_origem_leads',
     )
     .eq('id', workspaceId)
     .is('deleted_at', null)
@@ -96,6 +96,7 @@ export default defineEventHandler(async (event): Promise<WorkspaceConfiguracoes>
     numero_notificacao?: unknown
     tempo_resposta?: unknown
     tempo_pausa?: unknown
+    funil_origem_leads?: unknown
     coluna_origem_leads?: unknown
   }
 
@@ -107,6 +108,7 @@ export default defineEventHandler(async (event): Promise<WorkspaceConfiguracoes>
     numero_notificacao: textoOuNull(row.numero_notificacao),
     tempo_resposta: inteiroOuPadrao(row.tempo_resposta, 10),
     tempo_pausa: inteiroOuPadrao(row.tempo_pausa, 28800),
-    coluna_origem_leads: colunaOrigemLeadsParaApi(row.coluna_origem_leads),
+    funil_origem_leads: idOrigemParaApi(row.funil_origem_leads),
+    coluna_origem_leads: idOrigemParaApi(row.coluna_origem_leads),
   }
 })

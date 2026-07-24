@@ -17,6 +17,7 @@ type Body = {
   numero_notificacao?: unknown
   tempo_resposta?: unknown
   tempo_pausa?: unknown
+  funil_origem_leads?: unknown
   coluna_origem_leads?: unknown
 }
 
@@ -92,21 +93,21 @@ function parseNotificacaoOpcional(raw: unknown): string | null {
 }
 
 /** Aceita id numérico ou string; `0` / vazio → null (limpa seleção). */
-function parseColunaOrigemLeads(raw: unknown): number | null {
+function parseIdOrigemOpcional(raw: unknown, label: string): number | null {
   if (raw === null || raw === undefined || raw === '') return null
   const n =
     typeof raw === 'number' && Number.isFinite(raw)
       ? Math.trunc(raw)
       : Number.parseInt(String(raw).trim(), 10)
   if (!Number.isFinite(n) || !Number.isInteger(n)) {
-    throw createError({ statusCode: 400, statusMessage: 'coluna_origem_leads inválido.' })
+    throw createError({ statusCode: 400, statusMessage: `${label} inválido.` })
   }
   if (n < 1) return null
   return n
 }
 
-/** `workspace.coluna_origem_leads` é bigint no banco; API expõe string do id. */
-function colunaOrigemLeadsParaApi(raw: unknown): string | null {
+/** Bigint no banco → string do id na API. */
+function idOrigemParaApi(raw: unknown): string | null {
   if (raw === null || raw === undefined || raw === '') return null
   const n =
     typeof raw === 'number' && Number.isFinite(raw)
@@ -155,14 +156,15 @@ function mapRow(row: Record<string, unknown>): WorkspaceConfiguracoes {
       typeof row.tempo_pausa === 'number' && Number.isFinite(row.tempo_pausa)
         ? Math.trunc(row.tempo_pausa)
         : 28800,
-    coluna_origem_leads: colunaOrigemLeadsParaApi(row.coluna_origem_leads),
+    funil_origem_leads: idOrigemParaApi(row.funil_origem_leads),
+    coluna_origem_leads: idOrigemParaApi(row.coluna_origem_leads),
   }
 }
 
 /**
  * PATCH /api/configuracoes/ia
  *
- * Body: configurações editáveis do workspace (`nome`, `descricao`, `fase_teste`, `numero_testes`, `numero_notificacao`, `tempo_resposta`, `tempo_pausa`, `coluna_origem_leads`).
+ * Body: configurações editáveis do workspace, incluindo `funil_origem_leads` e `coluna_origem_leads`.
  */
 export default defineEventHandler(async (event): Promise<WorkspaceConfiguracoes> => {
   assertMethod(event, 'PATCH')
@@ -188,7 +190,8 @@ export default defineEventHandler(async (event): Promise<WorkspaceConfiguracoes>
   const numeroNotificacao = parseNotificacaoOpcional(body.numero_notificacao)
   const tempoResposta = parseInteiroNaoNegativo(body.tempo_resposta, 'tempo_resposta', 10)
   const tempoPausa = parseInteiroNaoNegativo(body.tempo_pausa, 'tempo_pausa', 28800)
-  const colunaOrigemLeads = parseColunaOrigemLeads(body.coluna_origem_leads)
+  const funilOrigemLeads = parseIdOrigemOpcional(body.funil_origem_leads, 'funil_origem_leads')
+  const colunaOrigemLeads = parseIdOrigemOpcional(body.coluna_origem_leads, 'coluna_origem_leads')
 
   await checkWorkspace(event, workspaceId, userId)
 
@@ -201,28 +204,30 @@ export default defineEventHandler(async (event): Promise<WorkspaceConfiguracoes>
     }
   }
 
+  if ((funilOrigemLeads == null) !== (colunaOrigemLeads == null)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Informe funil_origem_leads e coluna_origem_leads juntos, ou limpe ambos.',
+    })
+  }
+
   const admin = serverSupabaseServiceRole<any>(event)
 
-  if (colunaOrigemLeads != null) {
+  if (funilOrigemLeads != null && colunaOrigemLeads != null) {
     const { data: funil, error: funilErr } = await admin
       .from('funil_workspace')
       .select('id')
+      .eq('id', funilOrigemLeads)
       .eq('workspace_id', workspaceId)
       .maybeSingle()
 
     if (funilErr) {
       throw createError({ statusCode: 500, statusMessage: funilErr.message })
     }
-    const funilId =
-      funil?.id != null
-        ? typeof funil.id === 'number'
-          ? funil.id
-          : Number(funil.id)
-        : NaN
-    if (!Number.isFinite(funilId) || funilId < 1) {
+    if (!funil) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Funil não encontrado para este workspace.',
+        statusMessage: 'Funil origem dos leads inválido ou não pertence a este workspace.',
       })
     }
 
@@ -230,7 +235,7 @@ export default defineEventHandler(async (event): Promise<WorkspaceConfiguracoes>
       .from('funil_workspace_colunas')
       .select('id')
       .eq('id', colunaOrigemLeads)
-      .eq('funil_id', funilId)
+      .eq('funil_id', funilOrigemLeads)
       .is('deleted_at', null)
       .maybeSingle()
 
@@ -240,7 +245,7 @@ export default defineEventHandler(async (event): Promise<WorkspaceConfiguracoes>
     if (!coluna) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Coluna origem dos leads inválida ou não pertence ao funil deste workspace.',
+        statusMessage: 'Coluna origem dos leads inválida ou não pertence ao funil informado.',
       })
     }
   }
@@ -255,12 +260,15 @@ export default defineEventHandler(async (event): Promise<WorkspaceConfiguracoes>
       numero_notificacao: numeroNotificacao,
       tempo_resposta: tempoResposta,
       tempo_pausa: tempoPausa,
+      funil_origem_leads: funilOrigemLeads,
       coluna_origem_leads: colunaOrigemLeads,
     })
     .eq('id', workspaceId)
     .is('deleted_at', null)
     .is('deleted_by', null)
-    .select('nome, descricao, fase_teste, numero_testes, numero_notificacao, tempo_resposta, tempo_pausa, coluna_origem_leads')
+    .select(
+      'nome, descricao, fase_teste, numero_testes, numero_notificacao, tempo_resposta, tempo_pausa, funil_origem_leads, coluna_origem_leads',
+    )
     .maybeSingle()
 
   if (error) {
