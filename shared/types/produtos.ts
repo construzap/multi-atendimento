@@ -164,6 +164,8 @@ export type ProdutoOportunidadeVendaItem = {
 /** `GET /api/produtos/oportunidades-de-vendas/total`. */
 export type ProdutosOportunidadesVendasTotalResponse = {
   total: number
+  /** Linha com `ultima_busca` mais recente (para o banner). */
+  mais_recente: ProdutoOportunidadeVendaItem | null
 }
 
 /** `GET /api/produtos/oportunidades-de-vendas` (lista paginada). */

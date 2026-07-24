@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import ProdutosBarraAcoes from '~/components/produtos/ProdutosBarraAcoes.vue'
 import ProdutosBuscaInput from '~/components/produtos/ProdutosBuscaInput.vue'
-import ProdutosOportunidadeVendas from '~/components/produtos/ProdutosOportunidadeVendas.vue'
+import AlertaOportunidadesDeVendas from '~/components/produtos/oportunidades-de-vendas/AlertaOportunidadesDeVendas.vue'
 import FerramentaImportarProduto from '~/components/produtos/FerramentaImportarProduto.vue'
 import ProdutosModalCriarProdutosEmMassa from '~/components/produtos/ProdutosModalCriarProdutosEmMassa.vue'
 import ProdutosTabela from '~/components/produtos/ProdutosTabela.vue'
@@ -44,23 +44,6 @@ const limiteProdutos = computed(() => {
   const lim = ws?.limite_produtos
   if (lim == null || !Number.isFinite(lim) || lim < 0) return null
   return Math.trunc(lim)
-})
-
-/** Quantos produtos ainda cabem até o limite. */
-const produtosRestantes = computed(() => {
-  const lim = limiteProdutos.value
-  if (lim == null) return null
-  return Math.max(0, lim - (total.value ?? 0))
-})
-
-const textoLimiteProdutos = computed(() => {
-  const lim = limiteProdutos.value
-  const rest = produtosRestantes.value
-  if (lim == null || rest == null) return null
-  if (rest === 0) {
-    return `Limite atingido: ${lim} produto${lim === 1 ? '' : 's'}.`
-  }
-  return `Você pode adicionar ${rest} de ${lim} produto${lim === 1 ? '' : 's'}.`
 })
 
 const modalCriarEmMassaAberto = ref(false)
@@ -168,23 +151,9 @@ function aposImportacao() {
   >
     <header class="space-y-1">
       <h1 class="font-headline text-2xl font-bold text-on-surface dark:text-dark-on-surface">Produtos</h1>
-      <p class="font-body text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
-        Busca, ações e listagem de produtos
-      </p>
-      <p
-        v-if="textoLimiteProdutos"
-        class="font-body text-sm font-medium"
-        :class="
-          produtosRestantes === 0
-            ? 'text-red-600 dark:text-red-400'
-            : 'text-primary-700 dark:text-primary-300'
-        "
-      >
-        {{ textoLimiteProdutos }}
-      </p>
     </header>
 
-    <ProdutosOportunidadeVendas
+    <AlertaOportunidadesDeVendas
       :workspace-id="workspaceId"
       @sincronizar="void aposOportunidadesSincronizar()"
     />
@@ -209,6 +178,7 @@ function aposImportacao() {
       :workspace-id="workspaceId ?? undefined"
       :page-size="produtosStore.pageSize"
       :total="total"
+      :limite-produtos="limiteProdutos"
       :pending="listPending"
       :error="listError"
       @atualizado="produtosStore.aplicarLinhaAtualizada($event)"

@@ -161,6 +161,8 @@ export const useProdutosStore = defineStore('produtos', {
     /** Oportunidades de vendas (`view_produtos_nao_encontrados`). */
     oportunidadesVendas: [] as ProdutoOportunidadeVendaItem[],
     oportunidadesVendasTotal: 0,
+    /** Destaque do banner: oportunidade com `ultima_busca` mais recente. */
+    oportunidadesVendasMaisRecente: null as ProdutoOportunidadeVendaItem | null,
     oportunidadesVendasPage: 0,
     oportunidadesVendasPageSize: 10,
     oportunidadesVendasTotalPages: 1,
@@ -346,6 +348,7 @@ export const useProdutosStore = defineStore('produtos', {
     resetOportunidadesVendas() {
       this.oportunidadesVendas = []
       this.oportunidadesVendasTotal = 0
+      this.oportunidadesVendasMaisRecente = null
       this.oportunidadesVendasPage = 0
       this.oportunidadesVendasTotalPages = 1
       this.oportunidadesVendasWorkspaceId = null
@@ -354,11 +357,12 @@ export const useProdutosStore = defineStore('produtos', {
       this.oportunidadesVendasError = null
     },
 
-    /** Contagem para o banner (sem carregar a lista). */
+    /** Contagem para o banner (sem carregar a lista) + destaque mais recente. */
     async fetchOportunidadesVendasTotal(workspaceId: number) {
       if (!Number.isFinite(workspaceId) || workspaceId < 1) return
       if (this.oportunidadesVendasWorkspaceId != null && this.oportunidadesVendasWorkspaceId !== workspaceId) {
         this.oportunidadesVendas = []
+        this.oportunidadesVendasMaisRecente = null
         this.oportunidadesVendasPage = 0
         this.oportunidadesVendasTotalPages = 1
       }
@@ -374,8 +378,10 @@ export const useProdutosStore = defineStore('produtos', {
           },
         )
         this.oportunidadesVendasTotal = res.total ?? 0
+        this.oportunidadesVendasMaisRecente = res.mais_recente ?? null
       } catch (err) {
         this.oportunidadesVendasTotal = 0
+        this.oportunidadesVendasMaisRecente = null
         this.oportunidadesVendasError = mensagemErroFetch(
           err,
           'Não foi possível carregar o total de oportunidades.',
@@ -439,6 +445,13 @@ export const useProdutosStore = defineStore('produtos', {
       if (this.oportunidadesVendas.length < before) {
         this.oportunidadesVendasTotal = Math.max(0, this.oportunidadesVendasTotal - 1)
       }
+      const recente = this.oportunidadesVendasMaisRecente
+      if (
+        recente &&
+        `${recente.workspace_id}:${recente.canal_id ?? 'x'}:${recente.produto_chave}` === chave
+      ) {
+        this.oportunidadesVendasMaisRecente = null
+      }
     },
 
     /**
@@ -487,11 +500,13 @@ export const useProdutosStore = defineStore('produtos', {
     async cadastrarProdutoDeOportunidade(opts: {
       workspaceId: number
       item: ProdutoOportunidadeVendaItem
+      /** Nome final do produto (editável no modal). Fallback: `item.produto_sugerido`. */
+      nome?: string | null
       preco: number
       /** Id de `produto_termo_de_pesquisa` → coluna `termo_pesquisa`. */
       termoPesquisaId?: number | null
     }): Promise<void> {
-      const nome = String(opts.item.produto_sugerido ?? '').trim()
+      const nome = String(opts.nome ?? opts.item.produto_sugerido ?? '').trim()
       if (!nome) throw new Error('Nome do produto inválido.')
       const preco = Number.isFinite(opts.preco) && opts.preco >= 0 ? opts.preco : 0
       const termoId =

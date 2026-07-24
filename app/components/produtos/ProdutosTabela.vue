@@ -222,6 +222,8 @@ const props = withDefaults(
     error?: string | null
     /** Total de produtos (toolbar estilo Notion). */
     total?: number
+    /** Limite de produtos do workspace (`null` = sem limite). */
+    limiteProdutos?: number | null
   }>(),
   {
     workspaceId: null,
@@ -236,6 +238,7 @@ const props = withDefaults(
     pending: false,
     error: null,
     items: () => [],
+    limiteProdutos: null,
   },
 )
 
@@ -250,6 +253,32 @@ const emit = defineEmits<{
   /** Quando o user muda o tamanho da página (10/50/100/1000). */
   'page-size-changed': [pageSize: number]
 }>()
+
+/** Texto do canto superior esquerdo: total + quanto ainda pode adicionar. */
+const textoResumoTabela = computed(() => {
+  const total = props.total
+  const x = total != null && total >= 0 ? total.toLocaleString('pt-BR') : null
+  const base =
+    x == null
+      ? 'Tabela de produtos'
+      : `Tabela com ${x} produto${total === 1 ? '' : 's'}!`
+
+  const lim = props.limiteProdutos
+  if (lim == null || !Number.isFinite(lim) || lim < 0) return base
+  const z = Math.trunc(lim)
+  const t = Math.max(0, z - (total ?? 0))
+  if (t === 0) {
+    return `${base} Limite atingido (${z}).`
+  }
+  return `${base} Você ainda pode adicionar ${t} de ${z}.`
+})
+
+const resumoTabelaEsgotado = computed(() => {
+  const lim = props.limiteProdutos
+  if (lim == null || !Number.isFinite(lim) || lim < 0) return false
+  const z = Math.trunc(lim)
+  return Math.max(0, z - (props.total ?? 0)) === 0
+})
 
 const excluindo = ref(false)
 const progressoExclusaoAberto = ref(false)
@@ -1078,11 +1107,15 @@ onUnmounted(() => {
       v-if="mostrarLimiteLinhas"
       class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950"
     >
-      <p class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-        Produtos
-        <span v-if="total != null && total >= 0" class="font-normal text-zinc-500 dark:text-zinc-400">
-          ({{ total.toLocaleString('pt-BR') }})
-        </span>
+      <p
+        class="text-sm font-semibold"
+        :class="
+          resumoTabelaEsgotado
+            ? 'text-red-600 dark:text-red-400'
+            : 'text-zinc-900 dark:text-zinc-100'
+        "
+      >
+        {{ textoResumoTabela }}
       </p>
       <div class="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
         <span class="hidden sm:inline">Quer exibir quantos produtos na tabela?</span>

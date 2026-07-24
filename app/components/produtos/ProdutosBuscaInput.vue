@@ -42,7 +42,7 @@ function dispararPesquisa() {
         type="search"
         autocomplete="off"
         :placeholder="placeholder"
-        class="w-full rounded-xl border-none bg-surface-container-lowest py-3 pl-12 pr-4 font-body text-base text-on-surface shadow-sm placeholder:text-outline/60 focus:outline-none focus:ring-2 focus:ring-primary-container dark:bg-dark-surface-container-lowest dark:text-dark-on-surface dark:placeholder:text-dark-outline/60 dark:focus:ring-dark-primary-container"
+        class="w-full rounded-xl border border-outline/40 bg-surface-container-lowest py-3 pl-12 pr-4 font-body text-base text-on-surface shadow-sm placeholder:text-outline/60 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-container dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface dark:placeholder:text-dark-outline/60 dark:focus:border-dark-primary-500 dark:focus:ring-dark-primary-container"
         @keydown.enter.prevent="dispararPesquisa"
       />
     </div>
