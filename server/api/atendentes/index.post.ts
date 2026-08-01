@@ -182,7 +182,9 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: insErr.message })
   }
 
-  await criarPageRolePadraoPorProfileId(event, workspaceId, perfilAtendente.profile_id)
+  await criarPageRolePadraoPorProfileId(event, workspaceId, perfilAtendente.profile_id, {
+    forcarPagesPadrao: true,
+  })
 
   return { ok: true as const }
 })

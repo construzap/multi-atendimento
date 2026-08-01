@@ -1,10 +1,10 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
-import type { Canal, CanalHorarios } from '#shared/types/canal'
+import type { Canal } from '#shared/types/canal'
 import {
-  parseCanalHorarios,
+  parseCanalHorariosOpcional,
   parseEndereco,
-  parseLatitude,
-  parseLongitude,
+  parseLatitudeOpcional,
+  parseLongitudeOpcional,
   parseTempoAvisoMinutos,
 } from '#shared/utils/validarCanalConfigLoja'
 import { createError, readBody } from 'h3'
@@ -71,12 +71,12 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  const latitudeParsed = parseLatitude(body.latitude)
+  const latitudeParsed = parseLatitudeOpcional(body.latitude)
   if (typeof latitudeParsed === 'string') {
     throw createError({ statusCode: 400, statusMessage: latitudeParsed })
   }
 
-  const longitudeParsed = parseLongitude(body.longitude)
+  const longitudeParsed = parseLongitudeOpcional(body.longitude)
   if (typeof longitudeParsed === 'string') {
     throw createError({ statusCode: 400, statusMessage: longitudeParsed })
   }
@@ -86,17 +86,12 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: tempoAvisoParsed })
   }
 
-  const horariosParsed = parseCanalHorarios(body.horarios)
+  const horariosParsed = parseCanalHorariosOpcional(body.horarios)
   if (typeof horariosParsed === 'string') {
     throw createError({ statusCode: 400, statusMessage: horariosParsed })
   }
 
-  const horarios: CanalHorarios = horariosParsed
-
   const endereco = parseEndereco(body.endereco)
-  if (!endereco) {
-    throw createError({ statusCode: 400, statusMessage: 'Informe o endereço da loja.' })
-  }
 
   const rawWs = body.workspace_id
   if (rawWs === undefined || rawWs === null || rawWs === '') {
@@ -154,7 +149,7 @@ export default defineEventHandler(async (event) => {
       latitude: latitudeParsed,
       longitude: longitudeParsed,
       tempo_aviso_minutos: tempoAvisoParsed,
-      horarios,
+      ...(horariosParsed ? { horarios: horariosParsed } : {}),
     })
     .eq('id', canalId)
     .eq('user_id', userId)

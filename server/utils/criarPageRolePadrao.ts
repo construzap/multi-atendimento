@@ -80,12 +80,14 @@ export async function criarPageRolePadrao(
 
 /**
  * Cria linha padrão em `page_roles` quando já se tem `profiles.id`.
- * Se a linha já existir (unique), não sobrescreve — retorna a existente.
+ * Se a linha já existir (unique), por padrão não sobrescreve — retorna a existente.
+ * Com `forcarPagesPadrao: true` (ex.: novo atendente), aplica `PAGE_ROLES_PADRAO` mesmo se já houver linha.
  */
 export async function criarPageRolePadraoPorProfileId(
   event: H3Event,
   workspaceId: number,
   profileId: number,
+  options?: { forcarPagesPadrao?: boolean },
 ): Promise<PageRoleRow> {
   if (!Number.isFinite(workspaceId) || !Number.isInteger(workspaceId) || workspaceId < 1) {
     throw createError({ statusCode: 400, statusMessage: 'workspace_id inválido para page_roles.' })
@@ -109,7 +111,28 @@ export async function criarPageRolePadraoPorProfileId(
   }
 
   if (existing) {
-    return mapPageRoleRow(existing as Record<string, unknown>)
+    if (!options?.forcarPagesPadrao) {
+      return mapPageRoleRow(existing as Record<string, unknown>)
+    }
+
+    const existingId = (existing as { id?: unknown }).id
+    const rowId = typeof existingId === 'number' ? existingId : Number(existingId)
+    if (!Number.isFinite(rowId) || rowId < 1) {
+      throw createError({ statusCode: 500, statusMessage: 'page_roles.id inválido.' })
+    }
+
+    const { data: updated, error: updErr } = await admin
+      .from('page_roles')
+      .update({ pages })
+      .eq('id', rowId)
+      .select('id, workspace_id, profile_id, pages, created_at, updated_at')
+      .single()
+
+    if (updErr) {
+      throw createError({ statusCode: 500, statusMessage: updErr.message })
+    }
+
+    return mapPageRoleRow(updated as Record<string, unknown>)
   }
 
   const { data, error } = await admin
@@ -123,8 +146,14 @@ export async function criarPageRolePadraoPorProfileId(
     .single()
 
   if (error) {
-    // Corrida com unique: outro insert ganhou — lê de novo
+    // Corrida com unique: outro insert ganhou
     if (error.code === '23505') {
+      if (options?.forcarPagesPadrao) {
+        return criarPageRolePadraoPorProfileId(event, workspaceId, profileId, {
+          forcarPagesPadrao: true,
+        })
+      }
+
       const { data: again, error: againErr } = await admin
         .from('page_roles')
         .select('id, workspace_id, profile_id, pages, created_at, updated_at')

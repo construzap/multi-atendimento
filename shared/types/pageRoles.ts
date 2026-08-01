@@ -33,6 +33,7 @@ export const PAGE_ROLES_PADRAO: readonly PageRoleSlug[] = [
   'vector-store',
   'contato',
   'produtos',
+  'chat',
 ] as const
 
 /** Linha de `public.page_roles`. */

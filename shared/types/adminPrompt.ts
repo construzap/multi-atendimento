@@ -17,6 +17,7 @@ export const PROMPT_WORKSPACE_TIPO_DEFAULT = 'ESTOQUE'
 export const PROMPT_WORKSPACE_TIPOS_OPCOES = [
   { value: 'ESTOQUE', label: 'Estoque' },
   { value: 'AGENDAMENTO', label: 'Agendamento' },
+  { value: 'ESTOQUE+VENDA', label: 'Estoque + Venda' },
 ] as const
 
 export type PromptWorkspaceTipo = (typeof PROMPT_WORKSPACE_TIPOS_OPCOES)[number]['value']

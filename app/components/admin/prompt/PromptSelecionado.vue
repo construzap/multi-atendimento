@@ -160,7 +160,7 @@ function abrirModalConteudo() {
           </option>
         </select>
         <p class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
-          Escolha entre Estoque ou Agendamento para este workspace.
+          Escolha entre Estoque, Agendamento ou Estoque + Venda para este workspace.
         </p>
       </div>
 

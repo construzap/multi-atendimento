@@ -34,11 +34,11 @@ export type CanalCreateInput = {
   nome: string
   descricao?: string | null
   workspace_id: number
-  endereco: string
-  latitude: number
-  longitude: number
-  tempo_aviso_minutos: number
-  horarios: CanalHorarios
+  endereco?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  tempo_aviso_minutos?: number
+  horarios?: CanalHorarios
 }
 
 /** Payload de atualização de canal (POST /api/canais/editarcanal). */
@@ -47,9 +47,9 @@ export type CanalUpdateInput = {
   workspace_id: number
   nome: string
   descricao?: string | null
-  endereco: string
-  latitude: number
-  longitude: number
-  tempo_aviso_minutos: number
-  horarios: CanalHorarios
+  endereco?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  tempo_aviso_minutos?: number
+  horarios?: CanalHorarios
 }

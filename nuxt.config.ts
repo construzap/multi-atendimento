@@ -11,7 +11,6 @@ export default defineNuxtConfig({
   devServer: {
     host: '0.0.0.0',
     port: 3000,
-    strictPort: true,
   },
   runtimeConfig: {
     /** URL do webhook N8N para I.A nas instâncias (override: NUXT_URL_IA_N8N ou URL_IA_N8N no .env). */
@@ -60,10 +59,27 @@ export default defineNuxtConfig({
         process.env.WHATSAPP_COMERCIAL_NUMERO ||
         process.env.NUXT_PUBLIC_WHATSAPP_COMERCIAL_NUMERO ||
         '',
+
+      // --- Planos I.A (override: NUXT_PUBLIC_PLANO_*) ---
+      /** Base mensal do Plano Iniciante (R$). */
+      planoInicianteBase: 100,
+      /** Valor por produto adicional no Plano Iniciante (R$). */
+      planoIniciantePorProduto: 1,
+      /** Valor por canal no Plano Iniciante (R$). */
+      planoIniciantePorCanal: 50,
+      /** Valor mensal fixo do Plano Intermediário (R$). */
+      planoIntermediario: 399,
+      /** Valor por canal no Plano Intermediário (R$). */
+      planoIntermediarioPorCanal: 50,
+      /** Valor mensal fixo do Plano Avançado (R$). */
+      planoAvancado: 600,
+      /** Valor por canal no Plano Avançado (R$). */
+      planoAvancadoPorCanal: 50,
     },
   },
   vite: {
     server: {
+      strictPort: true,
       allowedHosts: [
         'fondness-auction-peroxide.ngrok-free.dev',
         'whats.construzap.com',

@@ -59,6 +59,24 @@ export function parseEndereco(raw: unknown): string | null {
   return t || null
 }
 
+function valorVazio(raw: unknown): boolean {
+  if (raw === null || raw === undefined) return true
+  if (typeof raw === 'string' && !raw.trim()) return true
+  return false
+}
+
+/** Latitude opcional: vazio → `null`; preenchido inválido → mensagem de erro. */
+export function parseLatitudeOpcional(raw: unknown): number | null | string {
+  if (valorVazio(raw)) return null
+  return parseLatitude(raw)
+}
+
+/** Longitude opcional: vazio → `null`; preenchido inválido → mensagem de erro. */
+export function parseLongitudeOpcional(raw: unknown): number | null | string {
+  if (valorVazio(raw)) return null
+  return parseLongitude(raw)
+}
+
 export function parseLatitude(raw: unknown): number | string {
   return parseCoordenadaNumerica(raw, -90, 90, 'Latitude')
 }
@@ -98,7 +116,15 @@ function parseCoordenadaNumerica(
 }
 
 export function parseTempoAvisoMinutos(raw: unknown): number | string {
+  if (valorVazio(raw)) return 30
   const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? '').trim(), 10)
   if (!Number.isFinite(n) || n < 0) return 'Tempo de aviso inválido (informe minutos >= 0).'
   return n
+}
+
+/** Horários opcionais: vazio → `null` (usa default do banco); preenchido inválido → erro. */
+export function parseCanalHorariosOpcional(raw: unknown): CanalHorarios | null | string {
+  if (raw === null || raw === undefined) return null
+  if (typeof raw === 'object' && Object.keys(raw as object).length === 0) return null
+  return parseCanalHorarios(raw)
 }

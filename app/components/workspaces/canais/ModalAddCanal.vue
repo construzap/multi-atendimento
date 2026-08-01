@@ -166,34 +166,25 @@ function parseCoordenadaFormulario(valor: string, min: number, max: number): num
 
 function buildConfigPayload():
   | {
-      endereco: string
-      latitude: number
-      longitude: number
+      endereco: string | null
+      latitude: number | null
+      longitude: number | null
       tempo_aviso_minutos: number
       horarios: CanalHorarios
     }
   | string {
-  const end = endereco.value.trim()
-  if (!end) return 'Informe o endereço da loja.'
+  const erroExtras = validarCamposExtras()
+  if (erroExtras) return erroExtras
 
-  const lat = parseCoordenadaFormulario(latitude.value, -90, 90)
-  if (lat == null) return 'Latitude inválida (entre -90 e 90).'
-
-  const lng = parseCoordenadaFormulario(longitude.value, -180, 180)
-  if (lng == null) return 'Longitude inválida (entre -180 e 180).'
-
-  const aviso = Number.parseInt(tempoAvisoMinutos.value.trim(), 10)
-  if (!tempoAvisoMinutos.value.trim() || !Number.isFinite(aviso) || aviso < 0) {
-    return 'Informe o tempo de aviso em minutos (número válido).'
-  }
-
-  const erroHorarios = validarCamposExtras()
-  if (erroHorarios) return erroHorarios
+  const latRaw = latitude.value.trim()
+  const lngRaw = longitude.value.trim()
+  const avisoRaw = tempoAvisoMinutos.value.trim()
+  const aviso = avisoRaw ? Number.parseInt(avisoRaw, 10) : 30
 
   return {
-    endereco: end,
-    latitude: lat,
-    longitude: lng,
+    endereco: endereco.value.trim() || null,
+    latitude: latRaw ? parseCoordenadaFormulario(latitude.value, -90, 90) : null,
+    longitude: lngRaw ? parseCoordenadaFormulario(longitude.value, -180, 180) : null,
     tempo_aviso_minutos: aviso,
     horarios: {
       semana: { ...horarios.value.semana },
@@ -264,24 +255,30 @@ function coordenadaValida(valor: string, min: number, max: number): boolean {
   return parseCoordenadaFormulario(valor, min, max) != null
 }
 
+/** Valida só o que estiver preenchido (campos de loja são opcionais). */
 function validarCamposExtras(): string | null {
-  if (!endereco.value.trim()) return 'Informe o endereço da loja.'
+  if (latitude.value.trim() && !coordenadaValida(latitude.value, -90, 90)) {
+    return 'Latitude inválida (entre -90 e 90).'
+  }
+  if (longitude.value.trim() && !coordenadaValida(longitude.value, -180, 180)) {
+    return 'Longitude inválida (entre -180 e 180).'
+  }
 
-  if (!latitude.value.trim()) return 'Informe a latitude.'
-  if (!coordenadaValida(latitude.value, -90, 90)) return 'Latitude inválida (entre -90 e 90).'
-
-  if (!longitude.value.trim()) return 'Informe a longitude.'
-  if (!coordenadaValida(longitude.value, -180, 180)) return 'Longitude inválida (entre -180 e 180).'
-
-  const aviso = Number.parseInt(tempoAvisoMinutos.value, 10)
-  if (!tempoAvisoMinutos.value.trim() || !Number.isFinite(aviso) || aviso < 0) {
-    return 'Informe o tempo de aviso em minutos (número válido).'
+  if (tempoAvisoMinutos.value.trim()) {
+    const aviso = Number.parseInt(tempoAvisoMinutos.value, 10)
+    if (!Number.isFinite(aviso) || aviso < 0) {
+      return 'Tempo de aviso inválido (informe minutos >= 0).'
+    }
   }
 
   for (const { key, label } of DIAS_HORARIO) {
     const dia = horarios.value[key]
-    if (!horarioValido(dia.inicio)) return `Informe o horário de abertura (${label}).`
-    if (!horarioValido(dia.fim)) return `Informe o horário de fechamento (${label}).`
+    if (dia.inicio.trim() && !horarioValido(dia.inicio)) {
+      return `Horário de abertura inválido (${label}).`
+    }
+    if (dia.fim.trim() && !horarioValido(dia.fim)) {
+      return `Horário de fechamento inválido (${label}).`
+    }
 
     const temInicioAlmoco = Boolean(dia.inicioAlmoco.trim())
     const temFimAlmoco = Boolean(dia.fimAlmoco.trim())
@@ -299,10 +296,7 @@ function validarCamposExtras(): string | null {
   return null
 }
 
-const formularioValido = computed(() => {
-  if (!nome.value.trim()) return false
-  return validarCamposExtras() === null
-})
+const formularioValido = computed(() => Boolean(nome.value.trim()))
 
 /** Mensagem do Nitro/ofetch em erros HTTP (403 assinatura, workspace, etc.). */
 function mensagemErroApi(err: unknown): string {
@@ -454,7 +448,7 @@ async function onCreate() {
 
           <div>
             <label class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface" :for="`canal-endereco-${fieldIdSuffix}`">
-              Endereço da loja <span class="text-error">*</span>
+              Endereço da loja
             </label>
             <BaseInput
               :id="`canal-endereco-${fieldIdSuffix}`"
@@ -469,7 +463,7 @@ async function onCreate() {
           <div class="grid gap-4 sm:grid-cols-2">
             <div>
               <label class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface" :for="`canal-latitude-${fieldIdSuffix}`">
-                Latitude <span class="text-error">*</span>
+                Latitude
               </label>
               <BaseInput
                 :id="`canal-latitude-${fieldIdSuffix}`"
@@ -484,7 +478,7 @@ async function onCreate() {
 
             <div>
               <label class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface" :for="`canal-longitude-${fieldIdSuffix}`">
-                Longitude <span class="text-error">*</span>
+                Longitude
               </label>
               <BaseInput
                 :id="`canal-longitude-${fieldIdSuffix}`"
@@ -507,7 +501,7 @@ async function onCreate() {
               class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface"
               :for="`canal-tempo-aviso-${fieldIdSuffix}`"
             >
-              Tempo de aviso antes de fechar (minutos) <span class="text-error">*</span>
+              Tempo de aviso antes de fechar (minutos)
             </label>
             <BaseInput
               :id="`canal-tempo-aviso-${fieldIdSuffix}`"
@@ -555,7 +549,7 @@ async function onCreate() {
                   class="mb-1.5 block text-xs font-semibold text-on-surface dark:text-dark-on-surface"
                   :for="`canal-${key}-inicio-${fieldIdSuffix}`"
                 >
-                  Abertura <span class="text-error">*</span>
+                  Abertura
                 </label>
                 <BaseInput
                   :id="`canal-${key}-inicio-${fieldIdSuffix}`"
@@ -600,7 +594,7 @@ async function onCreate() {
                   class="mb-1.5 block text-xs font-semibold text-on-surface dark:text-dark-on-surface"
                   :for="`canal-${key}-fim-${fieldIdSuffix}`"
                 >
-                  Fechamento <span class="text-error">*</span>
+                  Fechamento
                 </label>
                 <BaseInput
                   :id="`canal-${key}-fim-${fieldIdSuffix}`"
