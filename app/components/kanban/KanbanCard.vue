@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import BaseAvatar from '~/components/BaseAvatar.vue'
 import type { KanbanCard as KanbanCardModel } from '#shared/types/kanban'
 import ModalCriarPedido from '~/components/kanban/notificacoes_ia/ModalCriarPedido.vue'
 import ModalNotificacoesIa from '~/components/kanban/notificacoes_ia/ModalNotificacoesIa.vue'
 import { isPedidoPronto } from '~/components/kanban/notificacoes_ia/parseProdutosNotificacao'
+import { useKanbanStore } from '~/stores/kanban'
 
 const props = defineProps<{
   card: KanbanCardModel
@@ -23,8 +24,18 @@ const emit = defineEmits<{
 
 let lastDragEndAt = 0
 
+const kanbanStore = useKanbanStore()
 const modalNotificacoesIaAberto = ref(false)
 const modalCriarPedidoAberto = ref(false)
+
+watch(
+  () => kanbanStore.openNotificacoesConversaKey,
+  (key) => {
+    if (!key || key !== props.card.conversa_key) return
+    modalNotificacoesIaAberto.value = true
+    kanbanStore.clearOpenNotificacoesIaRequest()
+  },
+)
 
 const qtdNotificacoesIaPendentes = computed(() => {
   const list = props.card.notificacoes_ia

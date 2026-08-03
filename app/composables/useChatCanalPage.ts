@@ -1,7 +1,7 @@
 import AreaChat from '~/components/chat/area-chat.vue'
 import AreaConversa from '~/components/chat/area-conversa.vue'
 import AreaInfoConversa from '~/components/chat/area-info-conversa.vue'
-import { parsePositiveIntParam } from '~/utils/chatRouteParams'
+import { parseConversaKeyParam, parsePositiveIntParam } from '~/utils/chatRouteParams'
 
 function isWorkspaceChatPath(path: string, wid: number | null): boolean {
   if (wid == null) return false
@@ -9,17 +9,13 @@ function isWorkspaceChatPath(path: string, wid: number | null): boolean {
   return path === base || path.startsWith(`${base}/`)
 }
 
-type Options = {
-  /** Ao entrar no canal, limpa a conversa selecionada no Pinia. */
-  clearConversaOnEnter?: boolean
-}
-
 /**
- * Layout do chat por canal. Seleção de conversa = Pinia (`conversas.conversaAtual`).
+ * Layout do chat por canal.
+ * - Ao abrir/trocar canal: GET `/api/conversas` → Pinia `byCanal[id].items`
+ * - Se a URL tem `conversaKey`: garante a conversa na lista e define `conversaAtual`
+ * - Sem `conversaKey` na URL: `conversaAtual = null`
  */
-export function useChatCanalPage(options: Options = {}) {
-  const { clearConversaOnEnter = false } = options
-
+export function useChatCanalPage() {
   const route = useRoute()
   const canaisStore = useCanaisStore()
   const conversasStore = useConversasStore()
@@ -27,6 +23,7 @@ export function useChatCanalPage(options: Options = {}) {
 
   const canalId = computed(() => parsePositiveIntParam(route.params.canalId))
   const workspaceId = computed(() => parsePositiveIntParam(route.params.id))
+  const conversaKeyFromRoute = computed(() => parseConversaKeyParam(route.params.conversaKey))
 
   const cookieName = computed(() => {
     const wid = workspaceId.value
@@ -35,6 +32,10 @@ export function useChatCanalPage(options: Options = {}) {
   const lastCanalCookie = useCookie<string | null>(cookieName.value)
 
   const mobilePane = useState<'list' | 'chat' | 'info'>('chat_mobile_pane', () => 'list')
+
+  /** Evita refetch da lista quando só a conversa da URL muda. */
+  let lastListaCanalId: number | null = null
+  let loadSeq = 0
 
   watch(
     () => conversasStore.conversaAtual,
@@ -57,42 +58,55 @@ export function useChatCanalPage(options: Options = {}) {
   )
 
   watch(
-    canalId,
-    (id) => {
+    [canalId, conversaKeyFromRoute],
+    async ([id, key]) => {
       if (id == null) {
         throw createError({ statusCode: 404, statusMessage: 'Canal inválido.' })
       }
+
+      const seq = ++loadSeq
+
       canaisStore.setCurrentCanalId(id)
       conversasStore.setActiveCanalId(id)
 
       if (canaisStore.items.length > 0 && canaisStore.currentCanalId == null) {
         const wid = workspaceId.value
         if (wid != null) {
-          navigateTo(`/workspaces/${wid}/canais`, { replace: true })
+          await navigateTo(`/workspaces/${wid}/canais`, { replace: true })
         } else {
-          navigateTo('/', { replace: true })
+          await navigateTo('/', { replace: true })
         }
+        return
+      }
+
+      // Lista paginada do canal (GET /api/conversas) — refetch ao trocar de canal.
+      if (lastListaCanalId !== id) {
+        try {
+          await conversasStore.fetchPage(1, id, conversasStore.resolveFetchOptions())
+        } catch {
+          /* erro em conversas.error */
+        }
+        if (seq !== loadSeq) return
+        lastListaCanalId = id
+      }
+
+      if (key) {
+        await conversasStore.ensureConversaNaLista(id, key)
+        if (seq !== loadSeq) return
+        conversasStore.setConversaAtual(key, id)
+        void mensagensStore.ensureLoaded(id, key, 1).catch(() => {})
+      } else {
+        conversasStore.setConversaAtual(null, id)
+        mensagensStore.setActiveKey(null)
       }
     },
     { immediate: true },
   )
 
-  if (clearConversaOnEnter) {
-    watch(
-      canalId,
-      (id, prev) => {
-        // Só limpa ao trocar de canal — não ao montar (ex.: veio do kanban com seleção).
-        if (id == null || prev == null) return
-        if (id === prev) return
-        conversasStore.setConversaAtual(null, id)
-        mensagensStore.setActiveKey(null)
-      },
-    )
-  }
-
   function limparConversaAoSairDoChat() {
     conversasStore.clearAllConversaAtual()
     mensagensStore.setActiveKey(null)
+    lastListaCanalId = null
   }
 
   onBeforeRouteLeave((to) => {

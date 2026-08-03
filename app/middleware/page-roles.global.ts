@@ -1,5 +1,4 @@
 import { MSG_SEM_PERMISSAO_PAGINA } from '#shared/types/pageRoles'
-import type { PageRolesCheckResponse } from '#shared/types/pageRoles'
 import type { UserProfile } from '#shared/types/profile'
 import { parseWorkspacePageRoute } from '#shared/utils/resolvePageRoleSlug'
 import { usePageRolesStore } from '~/stores/pageRoles'
@@ -32,9 +31,9 @@ function statusDoErro(err: unknown): number {
 }
 
 /**
- * Em toda rota `/workspaces/:id/...`, revalida `page_roles` (sempre force)
- * e bloqueia com 403 se o slug não estiver liberado.
- * Páginas futuras usam o 1º segmento do path automaticamente.
+ * Em rotas `/workspaces/:id/...`: usa cache Pinia de `page_roles`.
+ * Só chama a API se ainda não houver dados para o par workspace+profile
+ * (1ª abertura / F5 / troca de workspace). Depois valida o slug localmente.
  */
 export default defineNuxtRouteMiddleware(async (to) => {
   const parsed = parseWorkspacePageRoute(to.path)
@@ -72,45 +71,34 @@ export default defineNuxtRouteMiddleware(async (to) => {
     )
   }
 
-  try {
-    const res = await ufetch<PageRolesCheckResponse>('/api/page-roles', {
-      method: 'GET',
-      query: {
-        workspace_id: workspaceId,
-        profile_id: profileId,
-        page: pageSlug,
-      },
-    })
+  if (!pageRoles.isLoadedFor(workspaceId, Number(profileId))) {
+    try {
+      await pageRoles.checkPageRoles({
+        workspaceId,
+        profileId: Number(profileId),
+        fetcher: ufetch as typeof $fetch,
+      })
+    } catch (err: unknown) {
+      const statusCode = statusDoErro(err)
+      const message = mensagemDoErro(err, MSG_SEM_PERMISSAO_PAGINA)
 
-    pageRoles.pages = res.pages ?? []
-    pageRoles.row = res.row ?? null
-    pageRoles.error = null
-    pageRoles.loadedKey = `${workspaceId}:${profileId}`
-  } catch (err: unknown) {
-    const statusCode = statusDoErro(err)
-    const message = mensagemDoErro(err, MSG_SEM_PERMISSAO_PAGINA)
-
-    pageRoles.pages = []
-    pageRoles.row = null
-    pageRoles.loadedKey = null
-    pageRoles.error = message
-
-    if (statusCode === 403) {
       return abortNavigation(
         createError({
-          statusCode: 403,
-          message,
-          statusMessage: 'Acesso negado',
+          statusCode: Number.isFinite(statusCode) && statusCode >= 400 ? statusCode : 500,
+          message: message || 'Não foi possível verificar permissões desta página.',
+          statusMessage: 'Erro ao verificar permissão',
           fatal: true,
         }),
       )
     }
+  }
 
+  if (!pageRoles.hasPage(pageSlug)) {
     return abortNavigation(
       createError({
-        statusCode: Number.isFinite(statusCode) && statusCode >= 400 ? statusCode : 500,
-        message: message || 'Não foi possível verificar permissões desta página.',
-        statusMessage: 'Erro ao verificar permissão',
+        statusCode: 403,
+        message: MSG_SEM_PERMISSAO_PAGINA,
+        statusMessage: 'Acesso negado',
         fatal: true,
       }),
     )

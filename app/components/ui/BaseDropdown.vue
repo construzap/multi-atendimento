@@ -14,12 +14,15 @@ const props = withDefaults(
      * reposiciona em scroll/redimensionamento — evita corte por `overflow` de antepassados (ex.: modais com scroll).
      */
     teleport?: boolean
+    /** Trigger ocupa 100% da largura do pai (ex.: select full-width). */
+    block?: boolean
   }>(),
   {
     align: 'right',
     side: 'bottom',
     panelClass: 'w-64 min-w-[14rem]',
     teleport: false,
+    block: false,
   },
 )
 
@@ -174,11 +177,12 @@ const panelBodyClass =
 </script>
 
 <template>
-  <div ref="root" class="relative inline-flex min-w-0" :class="{ 'w-full': teleport }">
+  <div ref="root" class="relative inline-flex min-w-0 shrink-0" :class="{ 'w-full': block }">
     <button
       ref="triggerRef"
       type="button"
-      class="inline-flex w-full min-w-0 items-center rounded-full ring-2 ring-transparent outline-none transition-all hover:ring-primary-200 focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:ring-primary-900/40"
+      class="inline-flex min-w-0 items-center rounded-full ring-2 ring-transparent outline-none transition-all hover:ring-primary-200 focus-visible:ring-2 focus-visible:ring-primary-500 dark:hover:ring-primary-900/40"
+      :class="block ? 'w-full' : undefined"
       :aria-expanded="open"
       aria-haspopup="true"
       @click.stop="toggle"

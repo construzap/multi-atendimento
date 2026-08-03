@@ -37,9 +37,15 @@ export const usePageRolesStore = defineStore('pageRoles', {
   actions: {
     /**
      * Busca `page_roles` com `workspace_id` (Pinia workspaces) e `profile_id` (Pinia profile).
-     * Retorna a lista de slugs de página liberados.
+     * Sem `page` na query: retorna a lista completa e cacheia por `loadedKey`.
+     * `fetcher` opcional (ex.: useRequestFetch) para SSR no middleware.
      */
-    async checkPageRoles(options?: { force?: boolean; workspaceId?: number; profileId?: number }) {
+    async checkPageRoles(options?: {
+      force?: boolean
+      workspaceId?: number
+      profileId?: number
+      fetcher?: typeof $fetch
+    }) {
       const workspaces = useWorkspacesStore()
       const profile = useProfileStore()
 
@@ -72,8 +78,10 @@ export const usePageRolesStore = defineStore('pageRoles', {
       this.pending = true
       this.error = null
 
+      const fetchFn = options?.fetcher ?? $fetch
+
       try {
-        const res = await $fetch<PageRolesCheckResponse>('/api/page-roles', {
+        const res = await fetchFn<PageRolesCheckResponse>('/api/page-roles', {
           method: 'GET',
           query: {
             workspace_id: workspaceId,
@@ -94,6 +102,11 @@ export const usePageRolesStore = defineStore('pageRoles', {
       } finally {
         this.pending = false
       }
+    },
+
+    /** True se já há cache válido para o par workspace+profile. */
+    isLoadedFor(workspaceId: number, profileId: number): boolean {
+      return this.loadedKey === `${workspaceId}:${profileId}` && !this.error
     },
 
     hasPage(slug: string): boolean {

@@ -12,7 +12,7 @@ export type KanbanCampoPersonalizadoResumo = {
   valor: string | null
 }
 
-/** Item de `notificacoes_ia` na view `view_kanban_conversas`. */
+/** Notificação I.A. agregada na view (`notificacoes_ia`). */
 export type KanbanNotificacaoIa = {
   id: number
   produtos: string[]
@@ -26,6 +26,24 @@ export type KanbanNotificacaoIa = {
   updated_at: string
   entrega_ou_retirada: string | null
   concluido: boolean
+}
+
+/**
+ * Evento Pusher `kanban-atualizacao` (N8N / integrações).
+ * Canal = `String(id_canal)` — mesmo padrão de `nova-mensagem`.
+ */
+export type PusherKanbanAtualizacaoPayload = {
+  workspace_id: number
+  conversa_key: string
+  id_canal: number
+  /** Coluna atual (após update, se houver). */
+  coluna_id: number | null
+  funil_id?: number | null
+  nome_contato?: string | null
+  /** Pedido novo (criado ou já existente no banco). */
+  notificacao?: KanbanNotificacaoIa | null
+  /** Motivo para o toast. */
+  motivo: 'coluna' | 'pedido' | 'ambos'
 }
 
 export type KanbanCard = {

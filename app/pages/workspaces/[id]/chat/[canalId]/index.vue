@@ -1,11 +1,15 @@
 <script setup lang="ts">
+/**
+ * Chat do canal sem conversa na URL:
+ * `/workspaces/:id/chat/:canalId`
+ *
+ * Carrega a lista via GET /api/conversas e deixa `conversaAtual = null`.
+ */
 definePageMeta({
   layout: 'workspace',
 })
 
-const { AreaChat, AreaConversa, AreaInfoConversa, mobilePane } = useChatCanalPage({
-  clearConversaOnEnter: true,
-})
+const { AreaChat, AreaConversa, AreaInfoConversa, mobilePane } = useChatCanalPage()
 </script>
 
 <template>

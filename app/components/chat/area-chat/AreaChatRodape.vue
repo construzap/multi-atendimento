@@ -3,11 +3,14 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import AreaChatRespostaPreview from '~/components/chat/area-chat/AreaChatRespostaPreview.vue'
+import CriarAgendamentoModal from '~/components/agendamento-de-mensagem/CriarAgendamentoModal.vue'
+import type { ContatoDestinoUi } from '~/components/agendamento-de-mensagem/types'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 import type { Mensagem, PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import type { MessageType } from '#shared/types/messageType'
 import { mensagemErroFetch } from '~/stores/canais'
+import { useAgendamentosMensagensStore } from '~/stores/agendamentosMensagens'
 
 export type AreaChatRodapeContexto = {
   conversaKey: string
@@ -49,9 +52,12 @@ const conversasStore = useConversasStore()
 const canaisStore = useCanaisStore()
 const mensagensStore = useMensagensStore()
 const workspacesStore = useWorkspacesStore()
+const agendamentosStore = useAgendamentosMensagensStore()
 const { items } = storeToRefs(conversasStore)
 const { conversaKeyAtiva } = useConversaKeyAtiva()
 const { mensagemEmResposta } = storeToRefs(mensagensStore)
+
+const modalAgendamentoAberto = ref(false)
 
 const conversaKeyResolvida = computed(
   () => props.contextoExterno?.conversaKey ?? conversaKeyAtiva.value ?? null,
@@ -126,6 +132,51 @@ const conversaSelecionada = computed((): ConversaCtx | null => {
     photo: found.photo ?? null,
   }
 })
+
+/** Contato da conversa atual (Pinia) para pré-preencher o agendamento. */
+const prefillContatoAgendamento = computed((): ContatoDestinoUi | null => {
+  const key = conversaKeyResolvida.value?.trim()
+  if (!key) return null
+  const found = conversasStore.findConversaByKey(key)
+  const sel = conversaSelecionada.value
+  const c = found ?? (sel ? {
+    key: sel.key,
+    name: sel.name,
+    phone: sel.phone,
+    photo: sel.photo,
+  } : null)
+  if (!c?.key) return null
+  return {
+    key: c.key,
+    nomecliente: c.name ?? null,
+    telefone: c.phone ?? null,
+    photo: c.photo ?? null,
+  }
+})
+
+const prefillCanalAgendamento = computed(() => {
+  const ext = props.contextoExterno
+  return ext?.idCanal ?? canaisStore.currentCanalId ?? null
+})
+
+function abrirProgramarMensagem() {
+  const key = conversaKeyResolvida.value?.trim() || conversasStore.conversaAtual?.trim()
+  if (!key) {
+    toast.error('Selecione uma conversa para programar a mensagem.')
+    return
+  }
+  if (!prefillContatoAgendamento.value) {
+    toast.error('Não foi possível identificar o contato desta conversa.')
+    return
+  }
+  agendamentosStore.limparAgendamentoSelecionado()
+  modalAgendamentoAberto.value = true
+}
+
+function aoCriadoAgendamentoDoChat() {
+  toast.success('Mensagem programada.')
+  modalAgendamentoAberto.value = false
+}
 
 const workspaceIdEnvio = computed(() => {
   const ext = props.contextoExterno?.workspaceId
@@ -537,6 +588,15 @@ function confirmOptimisticAfterSend(
               <span class="material-symbols-outlined text-[20px]" aria-hidden="true">description</span>
               Enviar documento
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+              @click="() => { close(); abrirProgramarMensagem() }"
+            >
+              <span class="material-symbols-outlined text-[20px]" aria-hidden="true">schedule_send</span>
+              Programar mensagem
+            </button>
           </div>
         </template>
       </BaseDropdown>
@@ -641,5 +701,14 @@ function confirmOptimisticAfterSend(
       <span :class="isPaused ? '' : 'animate-pulse'">●</span>
       {{ isPaused ? 'Pausado' : 'Gravando' }}… {{ formatRecordTime(recordSeconds) }}
     </p>
+
+    <CriarAgendamentoModal
+      v-model:open="modalAgendamentoAberto"
+      titulo-modal="Programar mensagem"
+      :prefill-contato="prefillContatoAgendamento"
+      :prefill-canal-id="prefillCanalAgendamento"
+      @criado="aoCriadoAgendamentoDoChat"
+      @cancelar="agendamentosStore.limparAgendamentoSelecionado()"
+    />
   </footer>
 </template>

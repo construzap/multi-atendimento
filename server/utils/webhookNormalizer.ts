@@ -12,6 +12,10 @@ const MESSAGE_TYPE_TO_MEDIA_TYPE: Record<string, UazapiMediaType> = {
   imageMessage: 'image',
   VideoMessage: 'video',
   videoMessage: 'video',
+  AudioMessage: 'ptt',
+  audioMessage: 'ptt',
+  PttMessage: 'ptt',
+  pttMessage: 'ptt',
   DocumentMessage: 'document',
   documentMessage: 'document',
   documentWithCaptionMessage: 'document',
@@ -21,7 +25,7 @@ const MESSAGE_TYPE_TO_MEDIA_TYPE: Record<string, UazapiMediaType> = {
 
 /**
  * Resolve o tipo de mídia uazapi (`image`, `video`, …).
- * Usa `mediaType` quando preenchido; senão infere de `messageType`.
+ * Usa `mediaType` quando preenchido; senão infere de `messageType` / `content`.
  */
 export function resolveUazapiMediaType(msg: UazapiMessage): UazapiMediaType | null {
   if (msg.type !== 'media') return null
@@ -32,13 +36,24 @@ export function resolveUazapiMediaType(msg: UazapiMessage): UazapiMediaType | nu
   }
 
   const messageType = String(msg.messageType ?? '').trim()
-  if (!messageType) return null
+  if (messageType) {
+    const fromMessageType =
+      MESSAGE_TYPE_TO_MEDIA_TYPE[messageType]
+      ?? MESSAGE_TYPE_TO_MEDIA_TYPE[messageType.charAt(0).toLowerCase() + messageType.slice(1)]
+      ?? null
+    if (fromMessageType) return fromMessageType
+  }
 
-  return (
-    MESSAGE_TYPE_TO_MEDIA_TYPE[messageType]
-    ?? MESSAGE_TYPE_TO_MEDIA_TYPE[messageType.charAt(0).toLowerCase() + messageType.slice(1)]
-    ?? null
-  )
+  // Fallback: payload com mediaType vazio mas content de áudio (ex.: PTT / ogg).
+  const content = msg.content
+  if (content && typeof content === 'object') {
+    const c = content as Record<string, unknown>
+    if (c.PTT === true || c.ptt === true) return 'ptt'
+    const mime = String(c.mimetype ?? c.mimeType ?? '').trim().toLowerCase()
+    if (mime.startsWith('audio/')) return 'audio'
+  }
+
+  return null
 }
 
 /** Mensagem de mídia suportada para download + B2 (uazapi `type === 'media'`). */

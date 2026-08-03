@@ -49,6 +49,11 @@ export default defineNuxtConfig({
     vectorDocumentsTable: 'documentsconstruzapmulti',
     /** Chave para POST /api/public/buscar-produtos (integrações externas). */
     vectorSearchApiKey: '',
+    /**
+     * Chave para POST /api/public/kanban-atualizacao (N8N → mover coluna / pedido / Pusher).
+     * Override: NUXT_N8N_KANBAN_API_KEY
+     */
+    n8nKanbanApiKey: '',
 
     public: {
       // --- Pusher — browser + SSR (override: NUXT_PUBLIC_PUSHER_*) ---

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { toast } from 'vue-sonner'
-import type { KanbanBoardResponse, KanbanCard, KanbanColumn, KanbanColumnPageResponse, KanbanConversaAtualizarResponse, KanbanConversaPatch, KanbanCriarFunilResponse, KanbanFunilColunaResumo, KanbanFunilItem, KanbanListarFunisResponse } from '#shared/types/kanban'
+import type { KanbanBoardResponse, KanbanCard, KanbanColumn, KanbanColumnPageResponse, KanbanConversaAtualizarResponse, KanbanConversaPatch, KanbanCriarFunilResponse, KanbanFunilColunaResumo, KanbanFunilItem, KanbanListarFunisResponse, PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
 import type { Conversa } from '#shared/types/conversa'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { mensagemErroFetch } from '~/stores/canais'
@@ -161,6 +161,11 @@ export const useKanbanStore = defineStore('kanban', {
     ocultarGrupos: true,
     /** Filtro por canal (`id_canal`); `null` = todos os canais. */
     filtroCanalId: null as number | null,
+    /**
+     * Quando o toast de pedido novo pede "Abrir", o `KanbanCard` com essa key
+     * abre o modal de notificações I.A. e zera o valor.
+     */
+    openNotificacoesConversaKey: null as string | null,
   }),
   getters: {
     infoContatoCard(state) {
@@ -1049,6 +1054,77 @@ export const useKanbanStore = defineStore('kanban', {
         col.cards.unshift(normalized)
         changed = true
         break
+      }
+
+      if (changed) this.columns = next
+    },
+
+    /** Abre o modal de notificações I.A. do card (toast / Pusher). */
+    requestOpenNotificacoesIa(conversaKey: string) {
+      const key = conversaKey?.trim()
+      if (!key) return
+      this.openNotificacoesConversaKey = key
+    },
+
+    clearOpenNotificacoesIaRequest() {
+      this.openNotificacoesConversaKey = null
+    },
+
+    /**
+     * Evento Pusher `kanban-atualizacao` (N8N): move card de coluna e/ou injeta pedido.
+     */
+    mergeFromPusherKanbanAtualizacao(payload: PusherKanbanAtualizacaoPayload) {
+      const conversaKey = payload.conversa_key?.trim()
+      if (!conversaKey) return
+
+      const toColunaId =
+        payload.coluna_id != null && Number.isFinite(Number(payload.coluna_id))
+          ? Number(payload.coluna_id)
+          : null
+
+      let changed = false
+      const next = cloneColumns(this.columns)
+
+      let fromColIdx = -1
+      let cardIdx = -1
+      for (let ci = 0; ci < next.length; ci++) {
+        const idx = next[ci]!.cards.findIndex((c) => c.conversa_key === conversaKey)
+        if (idx !== -1) {
+          fromColIdx = ci
+          cardIdx = idx
+          break
+        }
+      }
+
+      if (fromColIdx >= 0 && cardIdx >= 0) {
+        const fromCol = next[fromColIdx]!
+        let card = { ...fromCol.cards[cardIdx]! }
+
+        if (payload.notificacao && Number.isFinite(payload.notificacao.id)) {
+          const list = [...(card.notificacoes_ia ?? [])]
+          const nIdx = list.findIndex((n) => n.id === payload.notificacao!.id)
+          if (nIdx >= 0) list[nIdx] = { ...payload.notificacao }
+          else list.unshift({ ...payload.notificacao })
+          card = { ...card, notificacoes_ia: list }
+        }
+
+        if (toColunaId != null && toColunaId !== fromCol.id) {
+          const toCol = next.find((c) => c.id === toColunaId)
+          if (toCol) {
+            fromCol.cards.splice(cardIdx, 1)
+            card.coluna_id = toColunaId
+            toCol.cards.unshift(normalizeKanbanCard(card))
+            fromCol.total_cards = Math.max(0, (fromCol.total_cards ?? fromCol.cards.length + 1) - 1)
+            toCol.total_cards = (toCol.total_cards ?? toCol.cards.length - 1) + 1
+            changed = true
+          } else {
+            fromCol.cards[cardIdx] = normalizeKanbanCard({ ...card, coluna_id: toColunaId })
+            changed = true
+          }
+        } else {
+          fromCol.cards[cardIdx] = normalizeKanbanCard(card)
+          changed = true
+        }
       }
 
       if (changed) this.columns = next

@@ -1,10 +1,14 @@
 import { watch } from 'vue'
 import Pusher from 'pusher-js'
+import { toast } from 'vue-sonner'
+import type { PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
+import { abrirConversaNoChat } from '~/composables/useConversasRouteSync'
 import { useCanaisStore } from '~/stores/canais'
 import { useConversasStore } from '~/stores/conversas'
 import { useKanbanStore } from '~/stores/kanban'
 import { useMensagensStore } from '~/stores/mensagens'
+import { useWorkspacesStore } from '~/stores/workspaces'
 
 /** Inscreve em `String(id_canal)` conforme `canais.items` + canais dos cards do kanban. */
 export default defineNuxtPlugin(() => {
@@ -26,6 +30,7 @@ export default defineNuxtPlugin(() => {
 
   const canais = useCanaisStore()
   const kanban = useKanbanStore()
+  const workspaces = useWorkspacesStore()
 
   function canalIdsParaInscrever(): number[] {
     const ids = new Set<number>()
@@ -40,6 +45,84 @@ export default defineNuxtPlugin(() => {
     const infoCanal = kanban.infoContatoIdCanal
     if (infoCanal != null && infoCanal >= 1) ids.add(infoCanal)
     return [...ids].sort((a, b) => a - b)
+  }
+
+  function nomeCanal(canalId: number): string {
+    const found = canais.items.find((c) => c.id === canalId)
+    const nome = found?.nome?.trim()
+    return nome || `Canal ${canalId}`
+  }
+
+  function notificarMensagemOutroCanal(canalId: number, data: PusherNovaMensagemPayload) {
+    if (data.mensagem.from_me === true) return
+    if (canais.currentCanalId === canalId) return
+
+    const conversaKey = data.conversa_key?.trim()
+    if (!conversaKey) return
+
+    const preview = (data.mensagem.message ?? data.mensagem.caption ?? '').trim()
+    const contato =
+      data.conversa_name?.trim() ||
+      data.name_group?.trim() ||
+      data.mensagem.name?.trim() ||
+      data.mensagem.phone?.trim() ||
+      'Contato'
+
+    const trecho = preview
+      ? preview.length > 80
+        ? `${preview.slice(0, 80)}…`
+        : preview
+      : 'Nova mensagem'
+
+    const toastId = toast.info(`${nomeCanal(canalId)} · ${contato}`, {
+      description: trecho,
+      duration: 8000,
+      action: {
+        label: 'Abrir',
+        onClick: () => {
+          const wsId = workspaces.currentWorkspaceId
+          if (!wsId) return
+          void abrirConversaNoChat(wsId, canalId, conversaKey, { replace: false })
+          toast.dismiss(toastId)
+        },
+      },
+    })
+  }
+
+  function notificarKanbanAtualizacao(data: PusherKanbanAtualizacaoPayload) {
+    const wsAtual = workspaces.currentWorkspaceId
+    if (!wsAtual || String(wsAtual) !== String(data.workspace_id)) return
+
+    const conversaKey = data.conversa_key?.trim()
+    if (!conversaKey) return
+
+    kanban.mergeFromPusherKanbanAtualizacao(data)
+
+    if (data.motivo === 'coluna' && !data.notificacao) {
+      const contato = data.nome_contato?.trim() || 'Contato'
+      toast.info('Kanban atualizado', {
+        description: `${contato} mudou de coluna.`,
+        duration: 6000,
+      })
+      return
+    }
+
+    const contato = data.nome_contato?.trim() || 'Contato'
+    const toastId = toast.success('Pedido novo', {
+      description: `${contato} — toque em Abrir para ver o pedido.`,
+      duration: 12000,
+      action: {
+        label: 'Abrir',
+        onClick: () => {
+          const wsId = workspaces.currentWorkspaceId
+          if (wsId) {
+            void navigateTo(`/workspaces/${wsId}/kanban`)
+          }
+          kanban.requestOpenNotificacoesIa(conversaKey)
+          toast.dismiss(toastId)
+        },
+      },
+    })
   }
 
   watch(
@@ -62,6 +145,10 @@ export default defineNuxtPlugin(() => {
           useConversasStore().mergeFromPusherNovaMensagem(id, data)
           useMensagensStore().mergeFromPusherNovaMensagem(id, data)
           useKanbanStore().mergeFromPusherNovaMensagem(id, data)
+          notificarMensagemOutroCanal(id, data)
+        })
+        channel.bind('kanban-atualizacao', (data: PusherKanbanAtualizacaoPayload) => {
+          notificarKanbanAtualizacao(data)
         })
         subscribedIds.add(id)
       }

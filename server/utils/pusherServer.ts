@@ -1,5 +1,6 @@
 import Pusher from 'pusher'
 import type { H3Event } from 'h3'
+import type { PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 
 let pusherClient: Pusher | null = null
@@ -66,5 +67,34 @@ export async function triggerNovaMensagem(
     await pusher.trigger(channel, 'nova-mensagem', payload)
   } catch (err) {
     console.warn('[pusher] Falha ao disparar nova-mensagem:', err)
+  }
+}
+
+/**
+ * Evento: `kanban-atualizacao` — card mudou de coluna e/ou chegou pedido (N8N).
+ * Canal = `String(id_canal)`.
+ */
+export async function triggerKanbanAtualizacao(
+  event: H3Event,
+  idCanal: number,
+  payload: PusherKanbanAtualizacaoPayload,
+): Promise<void> {
+  if (!Number.isFinite(idCanal)) {
+    console.warn('[pusher] triggerKanbanAtualizacao: id_canal inválido.')
+    return
+  }
+
+  const channel = String(Math.trunc(idCanal))
+
+  try {
+    const pusher = getPusher(event)
+    if (!pusher) {
+      console.warn('[pusher] Broadcast ignorado: NUXT_PUBLIC_PUSHER_* / NUXT_PUSHER_SECRET ausentes.')
+      return
+    }
+
+    await pusher.trigger(channel, 'kanban-atualizacao', payload)
+  } catch (err) {
+    console.warn('[pusher] Falha ao disparar kanban-atualizacao:', err)
   }
 }

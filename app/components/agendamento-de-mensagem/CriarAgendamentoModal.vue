@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type {
@@ -10,6 +10,7 @@ import type {
 } from '#shared/types/agendamentoMensagens'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseModal from '~/components/BaseModal.vue'
+import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 import type {
   AgendamentoDiaItem,
   AgendamentoRecorrenciaUi,
@@ -34,10 +35,16 @@ const props = withDefaults(
     tituloModal?: string
     /** Pré-preenche data (yyyy-mm-dd) ao abrir */
     prefillDate?: string | null
+    /** Pré-seleciona destinatário como contato (ex.: chat aberto). */
+    prefillContato?: ContatoDestinoUi | null
+    /** Pré-seleciona o canal de envio (`canais.id`). */
+    prefillCanalId?: number | null
   }>(),
   {
     tituloModal: 'Criar agendamento',
     prefillDate: null,
+    prefillContato: null,
+    prefillCanalId: null,
   },
 )
 
@@ -62,6 +69,134 @@ const mensagem = ref('')
 const dataCampo = ref('')
 const horaCampo = ref('')
 const ianaTimezone = ref<string>(defaultFusoDoNavegador())
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+function partesDeDateLocal(d: Date): { data: string; hora: string } {
+  return {
+    data: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`,
+    hora: `${pad2(d.getHours())}:${pad2(d.getMinutes())}`,
+  }
+}
+
+/** Atalhos rápidos de data/hora (relógio local do navegador → campos do formulário). */
+function aplicarAtalhoAgendamento(kind: '1h' | 'hoje_18' | 'amanha_9' | 'semana') {
+  const now = new Date()
+  let alvo = new Date(now)
+
+  if (kind === '1h') {
+    alvo = new Date(now.getTime() + 60 * 60 * 1000)
+  } else if (kind === 'hoje_18') {
+    alvo.setHours(18, 0, 0, 0)
+    if (alvo.getTime() <= now.getTime()) {
+      alvo.setDate(alvo.getDate() + 1)
+    }
+  } else if (kind === 'amanha_9') {
+    alvo.setDate(alvo.getDate() + 1)
+    alvo.setHours(9, 0, 0, 0)
+  } else {
+    alvo.setDate(alvo.getDate() + 7)
+    alvo.setHours(9, 0, 0, 0)
+  }
+
+  const partes = partesDeDateLocal(alvo)
+  dataCampo.value = partes.data
+  horaCampo.value = partes.hora
+}
+
+function sugerirDataHoraPadrao() {
+  if (dataCampo.value && horaCampo.value) return
+  aplicarAtalhoAgendamento('1h')
+}
+
+/** Ex.: "Segunda-feira, 3 de agosto" (estilo do seletor nativo). */
+const labelDiaAmigavel = computed(() => {
+  const data = dataCampo.value.trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return ''
+  const [y, m, d] = data.split('-').map((x) => Number.parseInt(x, 10))
+  if (![y, m, d].every((n) => Number.isFinite(n))) return ''
+  const dt = new Date(y!, (m ?? 1) - 1, d!)
+  if (Number.isNaN(dt.getTime())) return ''
+  const raw = new Intl.DateTimeFormat('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  }).format(dt)
+  return raw.charAt(0).toUpperCase() + raw.slice(1)
+})
+
+const opcoesHora15min = (() => {
+  const out: string[] = []
+  for (let h = 0; h < 24; h++) {
+    for (const m of [0, 15, 30, 45]) {
+      out.push(`${pad2(h)}:${pad2(m)}`)
+    }
+  }
+  return out
+})()
+
+const dateInputRef = ref<HTMLInputElement | null>(null)
+const horaDropdownAberto = ref(false)
+const horaInputRef = ref<HTMLInputElement | null>(null)
+
+function abrirSeletorDia() {
+  const el = dateInputRef.value
+  if (!el) return
+  try {
+    if (typeof el.showPicker === 'function') {
+      el.showPicker()
+      return
+    }
+  } catch {
+    /* fallback: focus */
+  }
+  el.focus()
+  el.click()
+}
+
+function normalizarHoraDigitada(raw: string): string {
+  const s = raw.trim().replace(/[hH.]/g, ':')
+  const m = /^(\d{1,2}):?(\d{0,2})$/.exec(s)
+  if (!m) return raw.trim()
+  let hh = Number.parseInt(m[1] ?? '', 10)
+  let mm = m[2] ? Number.parseInt(m[2], 10) : 0
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return raw.trim()
+  hh = Math.min(23, Math.max(0, hh))
+  mm = Math.min(59, Math.max(0, mm))
+  return `${pad2(hh)}:${pad2(mm)}`
+}
+
+function onHoraBlur() {
+  horaCampo.value = normalizarHoraDigitada(horaCampo.value)
+  // Fecha após um tick para permitir clique na opção.
+  globalThis.setTimeout(() => {
+    horaDropdownAberto.value = false
+  }, 150)
+}
+
+function selecionarHoraOpcao(h: string) {
+  horaCampo.value = h
+  horaDropdownAberto.value = false
+}
+
+watch(horaDropdownAberto, (aberto) => {
+  if (!aberto) return
+  globalThis.requestAnimationFrame(() => {
+    const lista = horaInputRef.value?.parentElement?.querySelector('[data-hora-lista]')
+    const ativo = lista?.querySelector<HTMLElement>('[data-hora-ativa="true"]')
+    ativo?.scrollIntoView({ block: 'nearest' })
+  })
+})
+
+const atalhosAgendamento = [
+  { id: '1h' as const, label: 'Daqui 1 hora', icon: 'schedule' },
+  { id: 'hoje_18' as const, label: 'Hoje 18h', icon: 'wb_twilight' },
+  { id: 'amanha_9' as const, label: 'Amanhã 9h', icon: 'wb_sunny' },
+  { id: 'semana' as const, label: 'Em 7 dias', icon: 'event' },
+] as const
+
 /** `canais.id` do workspace atual (Pinia `canais.items`). */
 const idCanalSelecionado = ref<number | null>(null)
 const destMode = ref<DestinatarioModo>('numeros')
@@ -87,17 +222,30 @@ const audioNome = ref<string | null>(null)
 const imagemArquivo = ref<File | null>(null)
 const audioArquivo = ref<File | null>(null)
 const imagemPreviewUrl = ref<string | null>(null)
+/** URL já salva no servidor (edição), até substituir por arquivo novo. */
+const midiaRemotaUrl = ref<string | null>(null)
 
-const gravandoUi = ref(false)
-const elapsedSegundos = ref(0)
-let intervalId: ReturnType<typeof setInterval> | null = null
-
-/** Gravação no navegador (microfone) — não reativo. */
-let mediaRecorderInst: MediaRecorder | null = null
-let gravacaoStreamRef: MediaStream | null = null
-const gravacaoChunks: Blob[] = []
+const {
+  isRecording,
+  isPaused,
+  recordSeconds,
+  formatRecordTime,
+  startRecording: startRecorder,
+  togglePauseRecording,
+  cancelRecording,
+  stopAndGetAudio,
+} = useAudioRecorder()
 
 const audioObjectUrl = ref<string | null>(null)
+
+const hasTextoMensagem = computed(() => Boolean(mensagem.value.trim()))
+
+const previewImagemSrc = computed(
+  () => imagemPreviewUrl.value || (tipo.value === 'imagem' ? midiaRemotaUrl.value : null),
+)
+const previewAudioSrc = computed(
+  () => audioObjectUrl.value || (tipo.value === 'audio' ? midiaRemotaUrl.value : null),
+)
 
 watch(audioArquivo, (file) => {
   if (audioObjectUrl.value) {
@@ -109,43 +257,23 @@ watch(audioArquivo, (file) => {
   }
 })
 
-function limparTimerGravacao() {
-  if (intervalId != null) {
-    clearInterval(intervalId)
-    intervalId = null
+function sincronizarTipoPelaMidia() {
+  if (imagemArquivo.value || (tipo.value === 'imagem' && midiaRemotaUrl.value)) {
+    tipo.value = 'imagem'
+    return
   }
-}
-
-function encerrarSomenteGravadorMicrofone() {
-  limparTimerGravacao()
-  gravandoUi.value = false
-  elapsedSegundos.value = 0
-  if (mediaRecorderInst) {
-    try {
-      mediaRecorderInst.ondataavailable = null
-      mediaRecorderInst.onstop = null
-      if (mediaRecorderInst.state === 'recording' || mediaRecorderInst.state === 'paused') {
-        mediaRecorderInst.stop()
-      }
-    } catch {
-      /* ignore */
-    }
-    mediaRecorderInst = null
+  if (audioArquivo.value || (tipo.value === 'audio' && midiaRemotaUrl.value)) {
+    tipo.value = 'audio'
+    return
   }
-  pararTracksGravacao()
-  gravacaoChunks.length = 0
-}
-
-function pararTracksGravacao() {
-  gravacaoStreamRef?.getTracks().forEach((t) => t.stop())
-  gravacaoStreamRef = null
+  tipo.value = 'texto'
 }
 
 /**
  * Fechar modal sem criar (ou backdrop): revoga URLs, apaga arquivos em memória e para o microfone.
  */
 function abortarMidiaTemporariaNavegador() {
-  encerrarSomenteGravadorMicrofone()
+  cancelRecording()
 
   if (imagemPreviewUrl.value) globalThis.URL.revokeObjectURL(imagemPreviewUrl.value)
   imagemPreviewUrl.value = null
@@ -156,88 +284,46 @@ function abortarMidiaTemporariaNavegador() {
   audioArquivo.value = null
   audioNome.value = null
   if (audioInputRef.value) audioInputRef.value.value = ''
+  midiaRemotaUrl.value = null
 }
 
-async function toggleGravacaoAudio() {
-  if (gravandoUi.value) {
-    if (mediaRecorderInst?.state === 'recording' || mediaRecorderInst?.state === 'paused') {
-      mediaRecorderInst.stop()
-    } else {
-      encerrarSomenteGravadorMicrofone()
-    }
-    return
-  }
-
-  if (!import.meta.client) return
-
-  gravacaoChunks.length = 0
-
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    gravacaoStreamRef = stream
-
-    const mimeCandidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']
-    let mimeEscolhido = ''
-    for (const c of mimeCandidates) {
-      if (MediaRecorder.isTypeSupported(c)) {
-        mimeEscolhido = c
-        break
-      }
-    }
-
-    const mr = new MediaRecorder(stream, mimeEscolhido ? { mimeType: mimeEscolhido } : undefined)
-
-    mr.ondataavailable = (ev: BlobEvent) => {
-      if (ev.data && ev.data.size > 0) gravacaoChunks.push(ev.data)
-    }
-
-    mr.onstop = () => {
-      pararTracksGravacao()
-      limparTimerGravacao()
-      gravandoUi.value = false
-      elapsedSegundos.value = 0
-      mediaRecorderInst = null
-
-      const blobType = (mr.mimeType || mimeEscolhido || 'audio/webm').split(';')[0]!.trim().toLowerCase()
-      const blob = new Blob(gravacaoChunks, { type: blobType || 'audio/webm' })
-      gravacaoChunks.length = 0
-
-      if (blob.size < 256) {
-        toast.error('Gravação muito curta. Tente de novo.')
-        return
-      }
-
-      const ext =
-        blobType.includes('mp4') || blobType.includes('m4a')
-          ? 'm4a'
-          : blobType.includes('webm')
-            ? 'webm'
-            : 'webm'
-      const nome = `gravacao-${Date.now()}.${ext}`
-      const file = new File([blob], nome, { type: blob.type || 'audio/webm' })
-      audioArquivo.value = file
-      audioNome.value = nome
-      if (audioInputRef.value) audioInputRef.value.value = ''
-    }
-
-    mediaRecorderInst = mr
-    mr.start(1000)
-
-    gravandoUi.value = true
-    elapsedSegundos.value = 0
-    limparTimerGravacao()
-    intervalId = setInterval(() => {
-      elapsedSegundos.value += 1
-    }, 1000)
-  } catch {
-    toast.error('Não foi possível acessar o microfone. Verifique permissões do navegador.')
-    encerrarSomenteGravadorMicrofone()
-  }
+function limparAnexoImagem() {
+  if (imagemPreviewUrl.value) globalThis.URL.revokeObjectURL(imagemPreviewUrl.value)
+  imagemPreviewUrl.value = null
+  imagemNome.value = null
+  imagemArquivo.value = null
+  if (imagemInputRef.value) imagemInputRef.value.value = ''
+  if (tipo.value === 'imagem') midiaRemotaUrl.value = null
+  sincronizarTipoPelaMidia()
 }
 
-watch(tipo, (t) => {
-  if (t !== 'audio') encerrarSomenteGravadorMicrofone()
-})
+function limparAnexoAudio() {
+  audioArquivo.value = null
+  audioNome.value = null
+  if (audioInputRef.value) audioInputRef.value.value = ''
+  if (tipo.value === 'audio') midiaRemotaUrl.value = null
+  sincronizarTipoPelaMidia()
+}
+
+async function iniciarGravacaoAudio() {
+  if (isRecording.value || hasTextoMensagem.value) return
+  limparAnexoImagem()
+  limparAnexoAudio()
+  await startRecorder()
+}
+
+async function confirmarGravacaoAudio() {
+  if (!isRecording.value) return
+  const audio = await stopAndGetAudio()
+  if (!audio) return
+  limparAnexoImagem()
+  midiaRemotaUrl.value = null
+  mensagem.value = ''
+  audioArquivo.value = audio.file
+  audioNome.value = audio.file.name
+  tipo.value = 'audio'
+  if (audioInputRef.value) audioInputRef.value.value = ''
+}
 
 onUnmounted(() => {
   limparDebounceBuscaContato()
@@ -289,12 +375,28 @@ watch(
 
     if (!item) {
       resetFormularioVazio()
-    }
-    if (props.prefillDate) {
-      dataCampo.value = props.prefillDate
+      const pref = props.prefillContato
+      if (pref?.key?.trim()) {
+        destMode.value = 'contatos'
+        contatoSelecionado.value = {
+          key: pref.key.trim(),
+          nomecliente: pref.nomecliente ?? null,
+          telefone: pref.telefone ?? null,
+          photo: pref.photo ?? null,
+        }
+      }
+      if (props.prefillDate) {
+        dataCampo.value = props.prefillDate
+        if (!horaCampo.value) {
+          const agora = new Date()
+          horaCampo.value = `${pad2(agora.getHours())}:${pad2(agora.getMinutes())}`
+        }
+      } else {
+        sugerirDataHoraPadrao()
+      }
     }
     if (item) {
-      encerrarSomenteGravadorMicrofone()
+      cancelRecording()
       const tzRaw = item.iana_timezone?.trim() ?? ''
       ianaTimezone.value = isIanaFusoBrasilPermitido(tzRaw) ? tzRaw : defaultFusoDoNavegador()
       const partes = dataHoraLocalEmFuso(item.data_agendada, ianaTimezone.value)
@@ -309,11 +411,13 @@ watch(
       const t = (item.mensagem_type ?? 'texto').trim()
       tipo.value = t === 'imagem' ? 'imagem' : t === 'audio' ? 'audio' : 'texto'
       const texto = item.mensagem_texto ?? ''
-      mensagem.value = texto
+      // Áudio é exclusivo — não carrega texto/legenda.
+      mensagem.value = tipo.value === 'audio' ? '' : texto
       imagemNome.value = null
       audioNome.value = null
       imagemArquivo.value = null
       audioArquivo.value = null
+      midiaRemotaUrl.value = String(item.midia_url ?? '').trim() || null
       if (item.usuario_empresa_id != null) {
         destMode.value = 'contatos'
         contatoSelecionado.value = {
@@ -329,9 +433,7 @@ watch(
         manualNome.value = item.nomecliente ?? ''
         manualTelefone.value = item.telefone ?? ''
       }
-      gravandoUi.value = false
-      elapsedSegundos.value = 0
-      limparTimerGravacao()
+      cancelRecording()
       const recUi = intervaloDbParaRecorrenciaUi(item.intervalo_recorrencia, item.recorrente)
       repetirAgendamento.value = recUi.repetir
       frequenciaRecorrencia.value = recUi.freq
@@ -350,6 +452,11 @@ watch(
         it.some((c) => c.id === item.id_canal)
       ) {
         idCanalSelecionado.value = item.id_canal
+      } else if (
+        props.prefillCanalId != null &&
+        it.some((c) => c.id === props.prefillCanalId)
+      ) {
+        idCanalSelecionado.value = props.prefillCanalId
       } else if (it.length > 0) {
         const pref = canaisStore.currentCanalId
         idCanalSelecionado.value =
@@ -430,31 +537,41 @@ function onImagemChange(e: Event) {
     input.value = ''
     return
   }
+  cancelRecording()
+  limparAnexoAudio()
   if (imagemPreviewUrl.value) URL.revokeObjectURL(imagemPreviewUrl.value)
   imagemPreviewUrl.value = URL.createObjectURL(f)
   imagemArquivo.value = f
   imagemNome.value = f.name
+  midiaRemotaUrl.value = null
+  tipo.value = 'imagem'
 }
 
 function onAudioChange(e: Event) {
-  if (gravandoUi.value) encerrarSomenteGravadorMicrofone()
+  cancelRecording()
   const input = e.target as HTMLInputElement
   const f = input.files?.[0]
   if (!f) return
   if (!f.type.startsWith('audio/')) {
     input.value = ''
+    toast.error('Selecione um arquivo de áudio.')
     return
   }
+  limparAnexoImagem()
+  mensagem.value = ''
   audioArquivo.value = f
   audioNome.value = f.name
+  midiaRemotaUrl.value = null
+  tipo.value = 'audio'
 }
 
 function removerImagemAnexada() {
-  if (imagemPreviewUrl.value) globalThis.URL.revokeObjectURL(imagemPreviewUrl.value)
-  imagemPreviewUrl.value = null
-  imagemNome.value = null
-  imagemArquivo.value = null
-  if (imagemInputRef.value) imagemInputRef.value.value = ''
+  limparAnexoImagem()
+}
+
+function abrirAnexoDispositivo(kind: 'imagem' | 'audio') {
+  if (kind === 'imagem') imagemInputRef.value?.click()
+  else audioInputRef.value?.click()
 }
 
 function onIdCanalSelectChange(e: Event) {
@@ -493,6 +610,8 @@ function montarPayload(): CriarAgendamentoPayloadUi {
 }
 
 function mensagemTextoParaApi(p: CriarAgendamentoPayloadUi): string | null {
+  // Áudio é exclusivo — sem legenda/texto junto.
+  if (p.tipo === 'audio') return null
   const cap = p.mensagem.trim()
   return cap.length ? cap : null
 }
@@ -552,15 +671,15 @@ function validarAntesDeEnviar(p: CriarAgendamentoPayloadUi): string | null {
   if (p.destMode === 'contatos' && p.contato && !telNorm) {
     return 'O contato selecionado não tem telefone válido para envio.'
   }
-  if (gravandoUi.value) return 'Finalize a gravação (pare o microfone) antes de criar o agendamento.'
+  if (isRecording.value) return 'Finalize a gravação antes de criar o agendamento.'
   if (p.tipo === 'texto' && !p.mensagem.trim()) return 'Preencha a mensagem.'
   if (p.tipo === 'imagem' && !imagemArquivo.value) {
-    const temMidiaExistente = Boolean(String(agendamentoSelecionado.value?.midia_url ?? '').trim())
+    const temMidiaExistente = Boolean(String(midiaRemotaUrl.value ?? '').trim())
     if (!temMidiaExistente) return 'Anexe uma imagem.'
   }
   if (p.tipo === 'audio' && !audioArquivo.value) {
-    const temMidiaExistente = Boolean(String(agendamentoSelecionado.value?.midia_url ?? '').trim())
-    if (!temMidiaExistente) return 'Grave um áudio no navegador ou importe um arquivo de áudio.'
+    const temMidiaExistente = Boolean(String(midiaRemotaUrl.value ?? '').trim())
+    if (!temMidiaExistente) return 'Grave um áudio ou importe um arquivo de áudio.'
   }
   if (!isIanaFusoBrasilPermitido(p.ianaTimezone)) {
     return 'Selecione um fuso horário válido (Brasil).'
@@ -606,7 +725,7 @@ async function salvar() {
         })
         midia_url = up.url
       } else if (payload.tipo === 'imagem') {
-        const m = String(agendamentoSelecionado.value?.midia_url ?? '').trim()
+        const m = String(midiaRemotaUrl.value ?? '').trim()
         midia_url = m.length > 0 ? m : null
       } else if (payload.tipo === 'audio' && audioArquivo.value) {
         const part = await arquivoParaBase64Payload(audioArquivo.value)
@@ -622,7 +741,7 @@ async function salvar() {
         })
         midia_url = up.url
       } else if (payload.tipo === 'audio') {
-        const m = String(agendamentoSelecionado.value?.midia_url ?? '').trim()
+        const m = String(midiaRemotaUrl.value ?? '').trim()
         midia_url = m.length > 0 ? m : null
       }
 
@@ -748,219 +867,133 @@ const modalTitulo = () => (agendamentoSelecionado.value?.id != null ? 'Editar ag
     </template>
 
     <div class="space-y-4 font-body text-on-surface dark:text-dark-on-surface">
-      <div class="space-y-2">
-        <p class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">Escolha um tipo</p>
+      <div
+        class="space-y-4 rounded-2xl border border-outline/30 bg-surface-container-low/80 p-4 dark:border-dark-outline/30 dark:bg-dark-surface-container/60"
+      >
+        <div class="flex items-start gap-3">
+          <span
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary dark:bg-primary/20"
+            aria-hidden="true"
+          >
+            <span class="material-symbols-outlined text-[22px]">event_available</span>
+          </span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+              Quando enviar?
+            </p>
+            <p class="mt-0.5 text-[11px] leading-relaxed text-on-surface-variant dark:text-dark-on-surface-variant">
+              Escolha um atalho ou defina data e hora manualmente.
+            </p>
+          </div>
+        </div>
+
         <div class="flex flex-wrap gap-2">
           <button
-            v-for="t in (
-              [
-                { id: 'texto', label: 'Criar texto' },
-                { id: 'imagem', label: 'Imagem' },
-                { id: 'audio', label: 'Áudio' },
-              ] as const
-            )"
-            :key="t.id"
+            v-for="atalho in atalhosAgendamento"
+            :key="atalho.id"
             type="button"
-            class="rounded-lg px-3 py-2 text-sm font-semibold transition-colors"
-            :class="
-              tipo === t.id
-                ? 'bg-primary-600 text-white shadow-sm dark:bg-primary-600'
-                : 'text-on-surface-variant hover:bg-surface-container-high dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high'
-            "
-            @click="tipo = t.id"
+            class="inline-flex items-center gap-1.5 rounded-full border border-outline/35 bg-surface-container-lowest px-3 py-1.5 text-xs font-semibold text-on-surface transition hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-dark-outline/35 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:hover:border-primary/40 dark:hover:bg-primary/10"
+            @click="aplicarAtalhoAgendamento(atalho.id)"
           >
-            {{ t.label }}
+            <span class="material-symbols-outlined text-[16px]" aria-hidden="true">{{ atalho.icon }}</span>
+            {{ atalho.label }}
           </button>
         </div>
-      </div>
 
-      <div
-        class="space-y-3 rounded-xl border border-outline/40 bg-surface-container-low p-4 dark:border-dark-outline/40 dark:bg-dark-surface-container"
-      >
-        <template v-if="tipo === 'texto'">
-          <div class="flex items-center justify-between">
-            <label class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">Mensagem</label>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <!-- Dia: label amigável + calendário nativo -->
+          <div class="relative space-y-1.5">
+            <span class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+              Dia
+            </span>
             <button
               type="button"
-              class="rounded-lg p-2 text-on-surface-variant transition-colors hover:bg-surface-container-high dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high"
-              aria-label="Emojis (visual)"
+              class="flex w-full items-center justify-between gap-2 rounded-xl border border-outline/40 bg-surface-container-lowest px-3 py-3 text-left text-sm font-medium text-on-surface shadow-sm outline-none transition hover:border-primary/40 focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+              @click="abrirSeletorDia"
             >
-              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" />
-              </svg>
+              <span class="min-w-0 truncate">
+                {{ labelDiaAmigavel || 'Escolher dia' }}
+              </span>
+              <span class="material-symbols-outlined shrink-0 text-[20px] text-on-surface-variant" aria-hidden="true">
+                calendar_month
+              </span>
             </button>
+            <input
+              ref="dateInputRef"
+              v-model="dataCampo"
+              type="date"
+              class="pointer-events-none absolute bottom-0 left-0 h-px w-px opacity-0"
+              tabindex="-1"
+              aria-hidden="true"
+            />
           </div>
-          <textarea
-            v-model="mensagem"
-            rows="5"
-            placeholder="Insira sua mensagem"
-            class="w-full resize-none rounded-lg border border-outline/40 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface placeholder:text-on-surface-variant/60 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant/50 dark:focus:border-dark-primary dark:focus:ring-dark-primary"
-          />
-        </template>
 
-        <template v-else-if="tipo === 'imagem'">
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-[120px_1fr]">
-            <div class="flex flex-col items-center justify-center gap-2 text-tertiary-accent dark:text-dark-tertiary sm:items-start">
-              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" />
-              </svg>
-              <span class="text-sm font-semibold">Importar</span>
-            </div>
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
-                Legenda (opcional)
-              </label>
-              <textarea
-                v-model="mensagem"
-                rows="4"
-                placeholder="Legenda da imagem (opcional)"
-                class="w-full resize-none rounded-lg border border-outline/40 bg-surface-container-lowest px-3 py-2 text-sm dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+          <!-- Hora: digitar + lista 15 em 15 -->
+          <div class="relative space-y-1.5">
+            <span class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+              Horário
+            </span>
+            <div class="relative">
+              <input
+                ref="horaInputRef"
+                v-model="horaCampo"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="13:30"
+                class="w-full rounded-xl border border-outline/40 bg-surface-container-lowest px-3 py-3 pr-10 text-sm font-medium tabular-nums text-on-surface shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+                @focus="horaDropdownAberto = true"
+                @click="horaDropdownAberto = true"
+                @blur="onHoraBlur"
+                @keydown.enter.prevent="horaCampo = normalizarHoraDigitada(horaCampo); horaDropdownAberto = false"
               />
-              <input ref="imagemInputRef" type="file" accept="image/*" class="hidden" @change="onImagemChange" />
-              <div class="flex flex-wrap items-center gap-2 pt-1">
-                <BaseButton variant="secondary" :block="false" @click="imagemInputRef?.click()">
-                  <span class="inline-flex items-center gap-2">
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                    </svg>
-                    Importar imagem
-                  </span>
-                </BaseButton>
-                <span class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant">Somente pré-visualização local</span>
-              </div>
-              <div
-                v-if="imagemPreviewUrl"
-                class="mt-2 flex items-start gap-3 rounded-lg border border-outline/40 bg-surface-container-lowest p-3 dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+              <button
+                type="button"
+                class="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-on-surface-variant hover:bg-surface-container-high dark:hover:bg-dark-surface-container-high"
+                tabindex="-1"
+                aria-label="Abrir horários"
+                @mousedown.prevent="horaDropdownAberto = !horaDropdownAberto"
               >
-                <div class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-outline/30 dark:border-dark-outline/30">
-                  <img :src="imagemPreviewUrl" alt="Prévia" class="h-full w-full object-cover" />
-                </div>
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-sm font-semibold">{{ imagemNome }}</p>
-                </div>
+                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">schedule</span>
+              </button>
+              <div
+                v-if="horaDropdownAberto"
+                data-hora-lista
+                class="absolute left-0 right-0 z-30 mt-1 max-h-48 overflow-y-auto rounded-xl border border-outline/40 bg-surface-container-lowest py-1 shadow-lg dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+              >
                 <button
+                  v-for="h in opcoesHora15min"
+                  :key="h"
                   type="button"
-                  class="text-xs font-medium text-on-surface-variant underline-offset-2 hover:underline dark:text-dark-on-surface-variant"
-                  @click="removerImagemAnexada"
+                  :data-hora-ativa="horaCampo === h ? 'true' : undefined"
+                  class="flex w-full px-3 py-2 text-left text-sm tabular-nums transition hover:bg-primary/10"
+                  :class="
+                    horaCampo === h
+                      ? 'bg-primary/15 font-semibold text-primary'
+                      : 'text-on-surface dark:text-dark-on-surface'
+                  "
+                  @mousedown.prevent="selecionarHoraOpcao(h)"
                 >
-                  Remover
+                  {{ h }}
                 </button>
               </div>
             </div>
           </div>
-        </template>
-
-        <template v-else>
-          <p class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">Áudio</p>
-          <input ref="audioInputRef" type="file" accept="audio/*" class="hidden" @change="onAudioChange" />
-          <div class="flex flex-col gap-2">
-            <BaseButton variant="info" :disabled="gravandoUi" @click="audioInputRef?.click()">
-              <span class="inline-flex items-center gap-2">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                </svg>
-                Importar áudio
-              </span>
-            </BaseButton>
-            <BaseButton variant="secondary" :disabled="gravandoUi" @click="audioInputRef?.click()"> Escolher arquivo de áudio </BaseButton>
-            <BaseButton variant="secondary" @click="toggleGravacaoAudio">
-              <span class="inline-flex items-center gap-2">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                </svg>
-                {{ gravandoUi ? 'Parar gravação' : 'Gravar áudio' }}
-              </span>
-            </BaseButton>
-          </div>
-          <div
-            v-if="gravandoUi"
-            class="rounded-lg border border-outline/40 bg-surface-container-lowest p-3 dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
-          >
-            <div class="flex items-center justify-between gap-2">
-              <span class="inline-flex items-center gap-2 text-sm font-semibold">
-                <span class="h-2 w-2 animate-pulse rounded-full bg-danger" />
-                Gravando…
-              </span>
-              <span class="font-mono text-sm tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-                {{ String(Math.floor(elapsedSegundos / 60)).padStart(2, '0') }}:{{ String(elapsedSegundos % 60).padStart(2, '0') }}
-              </span>
-            </div>
-            <p class="mt-2 text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
-              O áudio fica só no navegador até você clicar em Criar; ao fechar o modal sem criar, a gravação é descartada.
-            </p>
-          </div>
-          <div
-            v-if="audioObjectUrl && !gravandoUi"
-            class="mt-2 rounded-lg border border-outline/40 bg-surface-container-lowest p-3 dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
-          >
-            <p v-if="audioNome" class="mb-2 text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
-              {{ audioNome }}
-            </p>
-            <audio :src="audioObjectUrl" controls class="w-full max-w-full" />
-          </div>
-        </template>
-      </div>
-
-      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div class="space-y-2">
-          <label class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">Data</label>
-          <div class="relative">
-            <svg
-              class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant dark:text-dark-on-surface-variant"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <rect x="3" y="4" width="18" height="18" rx="2" />
-              <path d="M16 2v4M8 2v4M3 10h18" />
-            </svg>
-            <input
-              v-model="dataCampo"
-              type="date"
-              class="w-full rounded-lg border border-outline/40 bg-surface-container-low py-2 pl-10 pr-3 text-sm text-on-surface focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-outline/40 dark:bg-dark-surface-container dark:text-dark-on-surface dark:focus:border-dark-primary dark:focus:ring-dark-primary"
-            />
-          </div>
         </div>
-        <div class="space-y-2">
-          <label class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">Hora</label>
-          <div class="relative">
-            <svg
-              class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-on-surface-variant dark:text-dark-on-surface-variant"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 6v6l4 2" />
-            </svg>
-            <input
-              v-model="horaCampo"
-              type="time"
-              class="w-full rounded-lg border border-outline/40 bg-surface-container-low py-2 pl-10 pr-3 text-sm text-on-surface focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-outline/40 dark:bg-dark-surface-container dark:text-dark-on-surface dark:[color-scheme:dark] dark:focus:border-dark-primary dark:focus:ring-dark-primary"
-            />
-          </div>
-        </div>
-      </div>
 
-      <div class="space-y-2">
-        <label class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
-          Fuso horário do agendamento
+        <label class="block space-y-1.5">
+          <span class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+            Fuso horário
+          </span>
+          <select
+            v-model="ianaTimezone"
+            class="w-full rounded-xl border border-outline/40 bg-surface-container-lowest py-3 px-3 text-sm font-medium text-on-surface shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+          >
+            <option v-for="op in opcoesFusoBrasil" :key="op.value" :value="op.value">
+              {{ op.label }}
+            </option>
+          </select>
         </label>
-        <p class="text-[11px] leading-relaxed text-on-surface-variant dark:text-dark-on-surface-variant">
-          A data e a hora acima são interpretadas neste fuso (lista Brasil).
-        </p>
-        <select
-          v-model="ianaTimezone"
-          class="w-full rounded-lg border border-outline/40 bg-surface-container-low py-2.5 px-3 text-sm text-on-surface focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-outline/40 dark:bg-dark-surface-container dark:text-dark-on-surface dark:focus:border-dark-primary dark:focus:ring-dark-primary"
-        >
-          <option v-for="op in opcoesFusoBrasil" :key="op.value" :value="op.value">
-            {{ op.label }}
-          </option>
-        </select>
       </div>
 
       <div
@@ -1201,6 +1234,192 @@ const modalTitulo = () => (agendamentoSelecionado.value?.id != null ? 'Editar ag
           </template>
         </div>
       </div>
+
+      <div class="space-y-3">
+        <p class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+          Mensagem
+        </p>
+
+        <div
+          v-if="previewImagemSrc"
+          class="flex items-start gap-3 rounded-xl border border-outline/40 bg-surface-container-lowest p-3 dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+        >
+          <div class="h-14 w-14 shrink-0 overflow-hidden rounded-md border border-outline/30 dark:border-dark-outline/30">
+            <img :src="previewImagemSrc" alt="Prévia" class="h-full w-full object-cover" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-semibold">{{ imagemNome || 'Imagem anexada' }}</p>
+            <p class="mt-0.5 text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+              Você pode adicionar uma legenda no campo abaixo.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="text-xs font-medium text-on-surface-variant underline-offset-2 hover:underline dark:text-dark-on-surface-variant"
+            @click="removerImagemAnexada"
+          >
+            Remover
+          </button>
+        </div>
+
+        <input
+          ref="imagemInputRef"
+          class="hidden"
+          type="file"
+          accept="image/*"
+          @change="onImagemChange"
+        />
+        <input
+          ref="audioInputRef"
+          class="hidden"
+          type="file"
+          accept="audio/*"
+          @change="onAudioChange"
+        />
+
+        <!-- Áudio exclusivo: sem campo de texto; dá para trocar via + (imagem) ou Remover -->
+        <div
+          v-if="previewAudioSrc && !isRecording"
+          class="rounded-xl border border-outline/40 bg-surface-container-lowest p-3 dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+        >
+          <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p class="truncate text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+              {{ audioNome || 'Áudio anexado' }}
+            </p>
+            <div class="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                class="rounded-lg border border-outline/40 px-2 py-1 text-xs font-medium text-on-surface hover:bg-surface-container-high dark:border-dark-outline/40 dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                @click="abrirAnexoDispositivo('imagem')"
+              >
+                Trocar por imagem
+              </button>
+              <button
+                type="button"
+                class="text-xs font-medium text-on-surface-variant underline-offset-2 hover:underline dark:text-dark-on-surface-variant"
+                @click="limparAnexoAudio"
+              >
+                Remover
+              </button>
+            </div>
+          </div>
+          <audio :src="previewAudioSrc" controls class="w-full max-w-full" />
+          <p class="mt-2 text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+            Áudio não combina com texto. Remova o áudio para escrever uma mensagem, ou troque por uma imagem (com legenda opcional).
+          </p>
+        </div>
+
+        <div
+          v-else
+          class="flex w-full min-w-0 items-end gap-2 sm:gap-3"
+        >
+          <div class="shrink-0">
+            <BaseDropdown
+              title="Anexar mídia"
+              align="left"
+              side="top"
+              teleport
+              panel-class="w-60 min-w-[14rem]"
+            >
+              <template #trigger>
+                <span
+                  class="flex h-11 w-11 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary dark:text-slate-400 dark:hover:bg-slate-800"
+                  aria-label="Anexar mídia"
+                >
+                  <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
+                </span>
+              </template>
+              <template #default="{ close }">
+                <div class="flex flex-col gap-1">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                    @click="() => { close(); abrirAnexoDispositivo('imagem') }"
+                  >
+                    <span class="material-symbols-outlined text-[20px]" aria-hidden="true">image</span>
+                    Enviar imagem
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                    @click="() => { close(); abrirAnexoDispositivo('audio') }"
+                  >
+                    <span class="material-symbols-outlined text-[20px]" aria-hidden="true">audio_file</span>
+                    Enviar áudio do dispositivo
+                  </button>
+                </div>
+              </template>
+            </BaseDropdown>
+          </div>
+
+          <div class="min-w-0 flex-1">
+            <div
+              v-if="isRecording"
+              class="flex min-h-12 w-full items-center gap-3 rounded-2xl bg-surface-container-low px-4 py-3 dark:bg-slate-800"
+            >
+              <span class="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-rose-500" aria-hidden="true" />
+              <span class="truncate text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                {{ isPaused ? 'Pausado' : 'Gravando…' }}
+              </span>
+              <span class="ml-auto shrink-0 font-mono text-sm tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
+                {{ formatRecordTime(recordSeconds) }}
+              </span>
+            </div>
+            <textarea
+              v-else
+              v-model="mensagem"
+              name="mensagem-agendamento"
+              rows="2"
+              :placeholder="previewImagemSrc ? 'Legenda (opcional)…' : 'Escreva sua mensagem…'"
+              autocomplete="off"
+              class="box-border max-h-36 min-h-12 w-full resize-y rounded-2xl border-0 bg-surface-container-low px-4 py-3 text-sm leading-relaxed text-on-surface shadow-none outline-none placeholder:text-on-surface-variant/60 focus:ring-1 focus:ring-primary dark:bg-slate-800 dark:text-slate-200 dark:placeholder:text-slate-400"
+            />
+          </div>
+
+          <div class="flex shrink-0 items-center gap-2 self-end">
+            <template v-if="isRecording">
+              <button
+                type="button"
+                class="flex h-11 w-11 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 shadow-sm transition-all hover:bg-rose-50 active:scale-95 sm:h-12 sm:w-12 dark:border-rose-900/50 dark:bg-slate-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                aria-label="Cancelar gravação"
+                @click="cancelRecording"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+              </button>
+              <button
+                type="button"
+                class="flex h-11 w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-95 sm:h-12 sm:w-12 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                :aria-label="isPaused ? 'Continuar gravação' : 'Pausar gravação'"
+                @click="togglePauseRecording"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">
+                  {{ isPaused ? 'play_arrow' : 'pause' }}
+                </span>
+              </button>
+              <button
+                type="button"
+                class="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95 sm:h-12 sm:w-12"
+                aria-label="Confirmar áudio"
+                @click="confirmarGravacaoAudio"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">check</span>
+              </button>
+            </template>
+            <button
+              v-else-if="!hasTextoMensagem && !previewImagemSrc"
+              type="button"
+              class="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95 sm:h-12 sm:w-12"
+              aria-label="Gravar áudio"
+              @click="iniciarGravacaoAudio"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">mic</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <template #footer>

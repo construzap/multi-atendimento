@@ -228,6 +228,7 @@ function formatarTamanho(bytes: number): string {
           <div class="w-full min-w-0 sm:max-w-none">
             <BaseDropdown
               teleport
+              block
               title="Campo no sistema"
               align="right"
               panel-class="w-72 min-w-[12rem] max-w-[min(22rem,calc(100vw-3rem))]"

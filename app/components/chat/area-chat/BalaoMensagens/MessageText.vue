@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { Mensagem } from '#shared/types/mensagem'
 import MensagemCitada from '~/components/chat/area-chat/BalaoMensagens/MensagemCitada.vue'
+import TextoComLinks from '~/components/chat/area-chat/BalaoMensagens/TextoComLinks.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -46,9 +47,10 @@ const nomeRemetente = computed(() => {
         :mensagem="mensagemCitada"
         :eh-grupo="ehGrupo"
       />
-      <p class="whitespace-pre-wrap break-words font-body text-sm text-on-surface dark:text-slate-200">
-        {{ texto }}
-      </p>
+      <TextoComLinks
+        :texto="texto"
+        class="whitespace-pre-wrap break-words font-body text-sm text-on-surface dark:text-slate-200"
+      />
       <span class="mt-1 block text-right text-[10px] text-on-surface-variant dark:text-slate-400">
         {{ hora }}
       </span>
@@ -64,9 +66,10 @@ const nomeRemetente = computed(() => {
         :eh-grupo="ehGrupo"
         from-me
       />
-      <p class="whitespace-pre-wrap break-words font-body text-sm text-on-primary-container">
-        {{ texto }}
-      </p>
+      <TextoComLinks
+        :texto="texto"
+        class="whitespace-pre-wrap break-words font-body text-sm text-on-primary-container"
+      />
       <div class="mt-1 flex items-center justify-end gap-1">
         <span class="text-[10px] text-on-primary-container/80">
           {{ hora }}<span v-if="isSending"> · enviando…</span>

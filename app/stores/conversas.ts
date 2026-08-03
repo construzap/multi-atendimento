@@ -311,7 +311,7 @@ export const useConversasStore = defineStore('conversas', {
     addOrUpdateLocalConversa(conversa: Conversa, canalId?: number) {
       const idCanal = canalId ?? this.activeCanalId
       if (idCanal == null) return
-      this.setActiveCanalId(idCanal)
+      // Não troca `activeCanalId` — só atualiza o bucket do canal (Pusher não pode trocar a lista).
       const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
       if (bucket.loadedAt == null) bucket.loadedAt = Date.now()
 
@@ -342,6 +342,7 @@ export const useConversasStore = defineStore('conversas', {
      * Garante que a conversa exista em `byCanal[canalId].items` (ex.: aberta via URL/kanban).
      * Se não estiver no cache, busca GET `/api/conversas?key=`.
      * Com `force: true`, sempre re-busca e mescla (inclui `name` do banco).
+     * Não altera `activeCanalId` (evita trocar a lista ao receber Pusher de outro canal).
      */
     async ensureConversaNaLista(
       canalId: number,
@@ -352,7 +353,6 @@ export const useConversasStore = defineStore('conversas', {
       const key = conversaKey.trim()
       if (!Number.isFinite(idCanal) || idCanal < 1 || !key || key.startsWith('temp:')) return
 
-      this.setActiveCanalId(idCanal)
       const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
       if (!options.force && bucket.items.some((c) => c.key === key)) return
 
@@ -1027,7 +1027,8 @@ export const useConversasStore = defineStore('conversas', {
     },
 
     /**
-     * Evento Pusher `nova-mensagem`: atualiza preview na lista ou cria a conversa.
+     * Evento Pusher `nova-mensagem`: atualiza preview na lista ou cria a conversa
+     * no bucket `byCanal[canalId]` — sem alterar `activeCanalId` (lista da UI).
      * NUNCA altera `name` de conversa já em cache (nome é editável; vem só do PATCH / API).
      * Stub novo: usa só `payload.conversa_name` (banco) e força sync via GET.
      */

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { Mensagem } from '#shared/types/mensagem'
+import TextoComLinks from '~/components/chat/area-chat/BalaoMensagens/TextoComLinks.vue'
 
 const props = defineProps<{ mensagem: Mensagem }>()
 
@@ -108,9 +109,11 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
         </a>
       </div>
 
-      <p v-if="caption" class="mt-2 whitespace-pre-wrap break-words font-body text-sm text-on-surface dark:text-slate-200">
-        {{ caption }}
-      </p>
+      <TextoComLinks
+        v-if="caption"
+        :texto="caption"
+        class="mt-2 whitespace-pre-wrap break-words font-body text-sm text-on-surface dark:text-slate-200"
+      />
 
       <span class="mt-1 block text-right text-[10px] text-on-surface-variant dark:text-slate-400">
         {{ hora }}
@@ -170,9 +173,11 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
         </a>
       </div>
 
-      <p v-if="caption" class="mt-2 whitespace-pre-wrap break-words font-body text-sm text-on-primary-container">
-        {{ caption }}
-      </p>
+      <TextoComLinks
+        v-if="caption"
+        :texto="caption"
+        class="mt-2 whitespace-pre-wrap break-words font-body text-sm text-on-primary-container"
+      />
 
       <div class="mt-1 flex items-center justify-end gap-1">
         <span class="text-[10px] text-on-primary-container/80">
