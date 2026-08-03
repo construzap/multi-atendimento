@@ -273,8 +273,8 @@ export default defineEventHandler(async (event): Promise<CriarCobrancaResponse> 
       statusMessage: 'Combinação inválida de data_proxima_local, hora_proxima_local e iana_timezone.',
     })
   }
-  // Mantém colunas legado NOT NULL alinhadas à data local.
-  const dataInicio = dataProximaLocal
+  // Mantém colunas legado NOT NULL alinhadas à data local da notificação.
+  const dataInicio = parseDateYmd(body.data_inicio, 'data_inicio', true)!
   const diaVencimento = Number.parseInt(dataProximaLocal.slice(8, 10), 10)
   const dataFim = parseDateYmd(body.data_fim, 'data_fim', false)
   const templateMensagem = String(body.template_mensagem ?? '').trim()

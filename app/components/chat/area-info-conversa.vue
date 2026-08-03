@@ -6,13 +6,17 @@
 import InfoConversaCamposPersonalizados from '~/components/chat/area-info-conversa/InfoConversaCamposPersonalizados.vue'
 import InfoConversaDados from '~/components/chat/area-info-conversa/InfoConversaDados.vue'
 import InfoConversaHeader from '~/components/chat/area-info-conversa/InfoConversaHeader.vue'
-import InfoConversaNovaAnotacao from '~/components/chat/area-info-conversa/InfoConversaNovaAnotacao.vue'
+import InputAnotacao from '~/components/chat/area-info-conversa/InputAnotacao.vue'
 import ListaAnotacoes from '~/components/chat/area-info-conversa/ListaAnotacoes.vue'
 
 const conversasStore = useConversasStore()
 const aberto = useState('chat_info_panel_aberto', () => false)
+const mobilePane = useState<'list' | 'chat' | 'info'>('chat_mobile_pane', () => 'list')
 
 const temConversaSelecionada = computed(() => Boolean(conversasStore.conversaAtual?.trim()))
+
+/** Só carrega dados/campos/anotações quando o painel está visível (não ao só clicar na conversa). */
+const painelContextoAtivo = computed(() => aberto.value || mobilePane.value === 'info')
 
 function togglePainel() {
   aberto.value = !aberto.value
@@ -44,12 +48,13 @@ function togglePainel() {
         <InfoConversaHeader />
 
         <div class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <InfoConversaDados />
-          <InfoConversaCamposPersonalizados />
-          <ListaAnotacoes />
+          <template v-if="painelContextoAtivo">
+            <InfoConversaDados />
+            <InfoConversaCamposPersonalizados />
+            <InputAnotacao />
+            <ListaAnotacoes />
+          </template>
         </div>
-
-        <InfoConversaNovaAnotacao />
       </div>
     </div>
   </div>

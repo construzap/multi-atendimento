@@ -6,15 +6,14 @@ import { checkChannel } from '../../utils/checkChannel'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 const PER_PAGE = 30
-const VIEW_KANBAN_CONVERSAS = 'view_kanban_conversas'
 
-const SELECT_LEGADO =
+const SELECT_MENSAGENS =
   'message_id, created_at, from_me, message, phone, lid, connected_phone, messagetype, from_api, id_canal, media_url, caption, filename, key_conversa, name, replyid'
 
 type MensagemRow = Omit<Mensagem, 'photo' | 'mensagem_citada'> & { name?: string | null }
 
-type ViewKanbanConversaRow = {
-  conversa_key: string
+type ConversaMeta = {
+  key: string
   name: string | null
   photo: string | null
   is_group: boolean | null
@@ -22,63 +21,6 @@ type ViewKanbanConversaRow = {
   funil_id: number | null
   coluna_id: number | null
   atendente_id: string | null
-  mensagens: unknown
-}
-
-type HistoricoMensagemRow = {
-  message_id?: string | null
-  created_at?: string | null
-  from_me?: boolean | null
-  message?: string | null
-  phone?: string | null
-  lid?: string | null
-  connected_phone?: string | null
-  messagetype?: string | null
-  from_api?: boolean | null
-  id_canal?: number | null
-  media_url?: string | null
-  caption?: string | null
-  filename?: string | null
-  name?: string | null
-  replyid?: string | null
-}
-
-function parseHistoricoMensagens(raw: unknown): HistoricoMensagemRow[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter((item): item is HistoricoMensagemRow => Boolean(item) && typeof item === 'object')
-}
-
-function historicoParaMensagemRow(
-  item: HistoricoMensagemRow,
-  conversaKey: string,
-  canalId: number,
-): MensagemRow | null {
-  const messageId = typeof item.message_id === 'string' ? item.message_id.trim() : ''
-  if (!messageId) return null
-
-  const createdAt =
-    typeof item.created_at === 'string' && item.created_at.trim()
-      ? item.created_at.trim()
-      : new Date(0).toISOString()
-
-  return {
-    message_id: messageId,
-    created_at: createdAt,
-    from_me: item.from_me ?? null,
-    message: item.message ?? null,
-    phone: item.phone ?? null,
-    lid: item.lid ?? null,
-    connected_phone: item.connected_phone ?? null,
-    messagetype: (item.messagetype ?? null) as MessageType | null,
-    from_api: item.from_api ?? null,
-    id_canal: item.id_canal ?? canalId,
-    media_url: item.media_url ?? null,
-    caption: item.caption ?? null,
-    filename: item.filename ?? null,
-    key_conversa: conversaKey,
-    name: item.name ?? null,
-    replyid: item.replyid ?? null,
-  }
 }
 
 function enrichMensagemRow(
@@ -91,6 +33,7 @@ function enrichMensagemRow(
   const rowName = typeof row.name === 'string' && row.name.trim() ? row.name.trim() : null
   return {
     ...row,
+    messagetype: (row.messagetype ?? null) as MessageType | null,
     name: conversaIsGroup ? rowName : contactName,
     photo: conversaIsGroup ? null : contactPhoto,
     ...(mensagemCitada ? { mensagem_citada: mensagemCitada } : {}),
@@ -103,25 +46,6 @@ function pickQueryStr(...vals: unknown[]): string {
     if (v != null && String(v).trim()) return String(v).trim()
   }
   return ''
-}
-
-function sortCreatedAtDesc(a: MensagemRow, b: MensagemRow): number {
-  const ta = new Date(a.created_at).getTime()
-  const tb = new Date(b.created_at).getTime()
-  return tb - ta
-}
-
-function buildCitadasMap(
-  rows: MensagemRow[],
-  conversaIsGroup: boolean,
-  contactName: string | null,
-  contactPhoto: string | null,
-): Map<string, Mensagem> {
-  const map = new Map<string, Mensagem>()
-  for (const row of rows) {
-    map.set(row.message_id, enrichMensagemRow(row, conversaIsGroup, contactName, contactPhoto))
-  }
-  return map
 }
 
 function enrichRowsComCitadas(
@@ -138,92 +62,148 @@ function enrichRowsComCitadas(
   })
 }
 
-async function fetchMensagensViaView(
+async function carregarCitadas(
+  admin: ReturnType<typeof serverSupabaseServiceRole<any>>,
+  replyIds: string[],
+  conversaIsGroup: boolean,
+  contactName: string | null,
+  contactPhoto: string | null,
+): Promise<Map<string, Mensagem>> {
+  const citadasPorId = new Map<string, Mensagem>()
+  if (!replyIds.length) return citadasPorId
+
+  const { data: citadas, error: citadasErr } = await admin
+    .from('mensagens')
+    .select(SELECT_MENSAGENS)
+    .in('message_id', replyIds)
+
+  if (citadasErr) {
+    throw createError({ statusCode: 500, statusMessage: citadasErr.message })
+  }
+
+  for (const citada of (citadas ?? []) as MensagemRow[]) {
+    citadasPorId.set(
+      citada.message_id,
+      enrichMensagemRow(citada, conversaIsGroup, contactName, contactPhoto),
+    )
+  }
+
+  return citadasPorId
+}
+
+/**
+ * Busca mensagens em `public.mensagens` por `key_conversa` (+ `id_canal`).
+ * Metadados da conversa vêm de `public.conversas`.
+ */
+async function fetchMensagensPorKey(
   admin: ReturnType<typeof serverSupabaseServiceRole<any>>,
   canalId: number,
   conversaKey: string,
   page: number,
 ): Promise<MensagensListResponse> {
-  const { data: viewRow, error: viewErr } = await admin
-    .from(VIEW_KANBAN_CONVERSAS)
-    .select('conversa_key, name, photo, is_group, id_canal, funil_id, coluna_id, atendente_id, mensagens')
+  const { data: convRaw, error: convErr } = await admin
+    .from('conversas')
+    .select('key, name, photo, is_group, id_canal, funil_id, coluna_id, atendente_id')
     .eq('id_canal', canalId)
-    .eq('conversa_key', conversaKey)
+    .eq('key', conversaKey)
+    .is('deleted_at', null)
     .maybeSingle()
 
-  if (viewErr) {
-    throw createError({ statusCode: 500, statusMessage: viewErr.message })
+  if (convErr) {
+    throw createError({ statusCode: 500, statusMessage: convErr.message })
   }
-
-  if (!viewRow) {
+  if (!convRaw) {
     throw createError({
       statusCode: 404,
       statusMessage: 'Conversa não encontrada neste canal.',
     })
   }
 
-  const row = viewRow as ViewKanbanConversaRow
-  const contactName = row.name ?? null
-  const contactPhoto = row.photo ?? null
-  const conversaIsGroup = row.is_group === true
+  const conv = convRaw as ConversaMeta
+  const contactName = conv.name ?? null
+  const contactPhoto = conv.photo ?? null
+  const conversaIsGroup = conv.is_group === true
 
-  const todasRows = parseHistoricoMensagens(row.mensagens)
-    .map((item) => historicoParaMensagemRow(item, conversaKey, canalId))
-    .filter((item): item is MensagemRow => item != null)
-    .sort(sortCreatedAtDesc)
-
-  const total = todasRows.length
   const from = (page - 1) * PER_PAGE
-  const pageRows = todasRows.slice(from, from + PER_PAGE)
+  const to = from + PER_PAGE - 1
 
-  const citadasPorId = buildCitadasMap(todasRows, conversaIsGroup, contactName, contactPhoto)
-  const enriched = enrichRowsComCitadas(
-    pageRows,
+  const { data, error, count } = await admin
+    .from('mensagens')
+    .select(SELECT_MENSAGENS, { count: 'exact' })
+    .eq('id_canal', canalId)
+    .eq('key_conversa', conversaKey)
+    .order('created_at', { ascending: false })
+    .range(from, to)
+
+  if (error) {
+    throw createError({ statusCode: 500, statusMessage: error.message })
+  }
+
+  const rows = (data ?? []) as MensagemRow[]
+  const replyIds = [
+    ...new Set(
+      rows
+        .map((r) => (typeof r.replyid === 'string' ? r.replyid.trim() : ''))
+        .filter(Boolean),
+    ),
+  ]
+
+  const citadasPorId = await carregarCitadas(
+    admin,
+    replyIds,
     conversaIsGroup,
     contactName,
     contactPhoto,
-    citadasPorId,
   )
 
+  const atendenteRaw = conv.atendente_id
+  const atendente_id =
+    atendenteRaw === null || atendenteRaw === undefined
+      ? null
+      : String(atendenteRaw).trim() || null
+
   return {
-    data: enriched,
+    data: enrichRowsComCitadas(rows, conversaIsGroup, contactName, contactPhoto, citadasPorId),
     page,
     perPage: PER_PAGE,
-    total,
-    id_canal: row.id_canal ?? canalId,
-    funil_id: row.funil_id ?? null,
-    coluna_id: row.coluna_id ?? null,
-    atendente_id: row.atendente_id ?? null,
+    total: count ?? 0,
+    id_canal: conv.id_canal ?? canalId,
+    funil_id: conv.funil_id ?? null,
+    coluna_id: conv.coluna_id ?? null,
+    atendente_id,
   }
 }
 
+/** Legado: sem `key`, filtra `mensagens` por `lid`. */
 async function fetchMensagensLegado(
   admin: ReturnType<typeof serverSupabaseServiceRole<any>>,
   canalId: number,
-  conversaKey: string | null,
   lidLegacy: string,
   page: number,
 ): Promise<MensagensListResponse> {
-  let contactName: string | null = null
-  let contactPhoto: string | null = null
-  let conversaIsGroup = false
-
   const { data: convByLid } = await admin
     .from('conversas')
     .select('key, name, photo, is_group')
     .eq('id_canal', canalId)
     .eq('lid', lidLegacy)
+    .is('deleted_at', null)
     .maybeSingle()
 
-  const c = convByLid as { name: string | null; photo: string | null; is_group?: boolean | null } | null
-  contactName = c?.name ?? null
-  contactPhoto = c?.photo ?? null
-  conversaIsGroup = c?.is_group === true
+  const c = convByLid as {
+    key?: string | null
+    name: string | null
+    photo: string | null
+    is_group?: boolean | null
+  } | null
+  const contactName = c?.name ?? null
+  const contactPhoto = c?.photo ?? null
+  const conversaIsGroup = c?.is_group === true
+  const conversaKey = typeof c?.key === 'string' ? c.key.trim() : ''
 
   const from = (page - 1) * PER_PAGE
   const to = from + PER_PAGE - 1
 
-  let query = admin.from('mensagens').select(SELECT_LEGADO, { count: 'exact' }).eq('id_canal', canalId)
+  let query = admin.from('mensagens').select(SELECT_MENSAGENS, { count: 'exact' }).eq('id_canal', canalId)
 
   if (conversaKey) {
     query = query.eq('key_conversa', conversaKey)
@@ -240,7 +220,6 @@ async function fetchMensagensLegado(
   }
 
   const rows = (data ?? []) as MensagemRow[]
-
   const replyIds = [
     ...new Set(
       rows
@@ -249,25 +228,13 @@ async function fetchMensagensLegado(
     ),
   ]
 
-  const citadasPorId = new Map<string, Mensagem>()
-
-  if (replyIds.length > 0) {
-    const { data: citadas, error: citadasErr } = await admin
-      .from('mensagens')
-      .select(SELECT_LEGADO)
-      .in('message_id', replyIds)
-
-    if (citadasErr) {
-      throw createError({ statusCode: 500, statusMessage: citadasErr.message })
-    }
-
-    for (const citada of (citadas ?? []) as MensagemRow[]) {
-      citadasPorId.set(
-        citada.message_id,
-        enrichMensagemRow(citada, conversaIsGroup, contactName, contactPhoto),
-      )
-    }
-  }
+  const citadasPorId = await carregarCitadas(
+    admin,
+    replyIds,
+    conversaIsGroup,
+    contactName,
+    contactPhoto,
+  )
 
   return {
     data: enrichRowsComCitadas(rows, conversaIsGroup, contactName, contactPhoto, citadasPorId),
@@ -280,10 +247,10 @@ async function fetchMensagensLegado(
 /**
  * GET /api/mensagens?id_canal=&key=&page=
  *
- * **Principal:** `key` — `view_kanban_conversas.conversa_key` (histórico em `mensagens` JSON).
- * Aliases: `key_conversa`.
+ * **Principal:** `key` / `key_conversa` — tabela `public.mensagens` filtrada por `key_conversa`.
+ * Metadados da conversa em `public.conversas`.
  *
- * **Legado:** `lid` — consulta direta em `public.mensagens` quando não há `key`.
+ * **Legado:** `lid` — quando não há `key`.
  */
 export default defineEventHandler(async (event): Promise<MensagensListResponse> => {
   const client = await serverSupabaseClient(event)
@@ -340,8 +307,8 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
   const admin = serverSupabaseServiceRole<any>(event)
 
   if (conversaKey) {
-    return fetchMensagensViaView(admin, canalId, conversaKey, page)
+    return fetchMensagensPorKey(admin, canalId, conversaKey, page)
   }
 
-  return fetchMensagensLegado(admin, canalId, null, lidLegacy, page)
+  return fetchMensagensLegado(admin, canalId, lidLegacy, page)
 })

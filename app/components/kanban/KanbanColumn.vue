@@ -15,6 +15,7 @@ import BaseModal from '~/components/BaseModal.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
+import { useProfileStore } from '~/stores/profile'
 import KanbanCard from './KanbanCard.vue'
 
 const props = defineProps<{
@@ -47,15 +48,10 @@ const emit = defineEmits<{
 
 const kanban = useKanbanStore()
 const canaisStore = useCanaisStore()
+const profile = useProfileStore()
+const isAdmin = computed(() => profile.isAdminConfirmado)
 const { columns } = storeToRefs(kanban)
 const { items: canaisItems, listPending: canaisPending, currentCanalId } = storeToRefs(canaisStore)
-
-/** Coluna atual no Pinia (fonte de verdade do board). */
-const colunaNoStore = computed(() =>
-  columns.value.find((c) => c.id === props.column.id) ?? null,
-)
-
-const colunaIdExibicao = computed(() => colunaNoStore.value?.id ?? props.column.id)
 
 const modalNovoContatoAberto = ref(false)
 const nomeContato = ref('')
@@ -64,6 +60,8 @@ const colunaSelecionadaId = ref<number | null>(null)
 const canalSelecionadoId = ref<number | null>(null)
 const criandoContato = ref(false)
 const carregandoCanaisModal = ref(false)
+/** Submenu "Mover coluna" dentro do dropdown da engrenagem. */
+const menuMoverAberto = ref(false)
 
 function nomeCanalOpcao(canal: { id: number; nome: string | null }) {
   const n = canal.nome?.trim()
@@ -181,17 +179,35 @@ async function criarContato() {
 
 function onEditar(close: () => void) {
   close()
+  menuMoverAberto.value = false
   emit('columnEdit', props.column)
 }
 
 function onExcluir(close: () => void) {
   close()
+  menuMoverAberto.value = false
   emit('columnDelete', props.column)
 }
 
-function emitReorder(direcao: 'esquerda' | 'direita') {
+function abrirMenuMover() {
+  menuMoverAberto.value = true
+}
+
+function voltarMenuPrincipal() {
+  menuMoverAberto.value = false
+}
+
+function emitReorder(direcao: 'esquerda' | 'direita', close: () => void) {
   if (props.reordenando) return
+  if (direcao === 'esquerda' && !props.podeMoverEsquerda) return
+  if (direcao === 'direita' && !props.podeMoverDireita) return
+  close()
+  menuMoverAberto.value = false
   emit('columnReorder', { columnId: props.column.id, direcao })
+}
+
+function onDropdownOpenChange(aberto: boolean) {
+  if (!aberto) menuMoverAberto.value = false
 }
 
 const dotStyle = computed(() => {
@@ -362,42 +378,11 @@ function onDrop(e: DragEvent) {
             >
               {{ column.nome }}
             </h2>
-            <p class="mt-0.5 text-[11px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
-              ID {{ colunaIdExibicao }}
-            </p>
           </div>
         </div>
       </div>
 
       <div class="flex shrink-0 items-start gap-1 pt-0.5">
-        <div
-          v-if="podeMoverEsquerda || podeMoverDireita"
-          class="flex shrink-0 items-center gap-0.5"
-          @click.stop
-          @mousedown.stop
-        >
-          <button
-            v-if="podeMoverEsquerda"
-            type="button"
-            class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-white/70 disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800/80"
-            :disabled="reordenando"
-            aria-label="Mover etapa para a esquerda"
-            @click="emitReorder('esquerda')"
-          >
-            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">chevron_left</span>
-          </button>
-          <button
-            v-if="podeMoverDireita"
-            type="button"
-            class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-white/70 disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800/80"
-            :disabled="reordenando"
-            aria-label="Mover etapa para a direita"
-            @click="emitReorder('direita')"
-          >
-            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">chevron_right</span>
-          </button>
-        </div>
-
         <span
           class="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-sm dark:bg-slate-800/70 dark:text-slate-200"
         >
@@ -418,7 +403,8 @@ function onDrop(e: DragEvent) {
             title="Etapa"
             align="right"
             side="bottom"
-            panel-class="w-52 min-w-[12rem] max-w-[calc(100vw-2rem)]"
+            panel-class="w-56 min-w-[13rem] max-w-[calc(100vw-2rem)]"
+            @open-change="onDropdownOpenChange"
           >
             <template #trigger>
               <span
@@ -435,31 +421,110 @@ function onDrop(e: DragEvent) {
             </template>
 
             <template #default="{ close }">
-              <button
-                type="button"
-                role="menuitem"
-                class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
-                @click="onEditar(close)"
-              >
-                <span
-                  class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
-                  aria-hidden="true"
+              <template v-if="!menuMoverAberto">
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                  @click="onEditar(close)"
                 >
-                  edit
-                </span>
-                Editar
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
-                @click="onExcluir(close)"
-              >
-                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
-                  delete
-                </span>
-                Excluir
-              </button>
+                  <span
+                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    edit
+                  </span>
+                  Editar
+                </button>
+
+                <button
+                  v-if="isAdmin && (podeMoverEsquerda || podeMoverDireita)"
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                  :disabled="reordenando"
+                  @click="abrirMenuMover"
+                >
+                  <span
+                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    swap_horiz
+                  </span>
+                  <span class="min-w-0 flex-1">Mover coluna</span>
+                  <span
+                    class="material-symbols-outlined text-[18px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    chevron_right
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                  @click="onExcluir(close)"
+                >
+                  <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
+                    delete
+                  </span>
+                  Excluir
+                </button>
+              </template>
+
+              <template v-else>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                  @click="voltarMenuPrincipal"
+                >
+                  <span
+                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    arrow_back
+                  </span>
+                  Mover coluna
+                </button>
+
+                <div class="mx-1 my-1 border-t border-outline/30 dark:border-dark-outline/30" />
+
+                <button
+                  v-if="podeMoverEsquerda"
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-40 dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                  :disabled="reordenando"
+                  @click="emitReorder('esquerda', close)"
+                >
+                  <span
+                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    chevron_left
+                  </span>
+                  Para a esquerda
+                </button>
+
+                <button
+                  v-if="podeMoverDireita"
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-40 dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                  :disabled="reordenando"
+                  @click="emitReorder('direita', close)"
+                >
+                  <span
+                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    chevron_right
+                  </span>
+                  Para a direita
+                </button>
+              </template>
             </template>
           </BaseDropdown>
         </div>

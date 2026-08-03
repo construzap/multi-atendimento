@@ -31,6 +31,8 @@ export default defineNuxtConfig({
     b2AgendamentoBucketName: '',
     /** Bucket B2 para mídia de disparo em massa (default no código: multiatendimentoconstruzap). */
     b2DisparoEmMassaBucketName: '',
+    /** Bucket B2 para mídia de anotações de conversas (default no código: multiatendimentoconstruzap). */
+    b2AnotacoesBucketName: '',
     /** Bucket B2 para fotos de produtos (default no código: produtosconstruzap). */
     b2ProdutosBucketName: '',
 

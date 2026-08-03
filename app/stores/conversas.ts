@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import type { Anotacao, AnotacoesListResponse } from '#shared/types/anotacao'
 import type { CampoPersonalizado, ValorCampoPersonalizado } from '#shared/types/camposPersonalizados'
 import type { Conversa, ConversaAtualizarResponse, ConversaCampoPersonalizado, ConversaPatch, ConversasListResponse } from '#shared/types/conversa'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
@@ -328,6 +329,8 @@ export const useConversasStore = defineStore('conversas', {
             key,
             campos_personalizados:
               conversa.campos_personalizados ?? prev.campos_personalizados,
+            anotacoes: conversa.anotacoes ?? prev.anotacoes,
+            anotacoes_meta: conversa.anotacoes_meta ?? prev.anotacoes_meta,
           }
         : conversa
 
@@ -727,6 +730,122 @@ export const useConversasStore = defineStore('conversas', {
         if (idx === -1) continue
         bucket.items[idx] = { ...bucket.items[idx]!, campos_personalizados: campos }
       }
+    },
+
+    _aplicarAnotacoesNaConversa(
+      conversaKey: string,
+      anotacoes: Anotacao[],
+      meta?: { perPage: number; total: number },
+    ) {
+      const key = conversaKey.trim()
+      if (!key) return
+
+      for (const bucket of Object.values(this.byCanal)) {
+        const idx = bucket.items.findIndex((c) => c.key === key)
+        if (idx === -1) continue
+        const prev = bucket.items[idx]!
+        bucket.items[idx] = {
+          ...prev,
+          anotacoes: [...anotacoes],
+          anotacoes_meta: meta ?? prev.anotacoes_meta,
+        }
+      }
+    },
+
+    prependAnotacaoNaConversa(anotacao: Anotacao) {
+      const key = anotacao.conversa_key.trim()
+      if (!key) return
+      const conv = this.findConversaByKey(key)
+      const atuais = conv?.anotacoes ?? []
+      const jaTinha = atuais.some((a) => a.id === anotacao.id)
+      const lista = [anotacao, ...atuais.filter((a) => a.id !== anotacao.id)]
+      const prevMeta = conv?.anotacoes_meta
+      const totalBase = prevMeta?.total ?? atuais.length
+      this._aplicarAnotacoesNaConversa(key, lista, {
+        perPage: prevMeta?.perPage ?? 5,
+        total: jaTinha ? totalBase : totalBase + 1,
+      })
+    },
+
+    removeAnotacaoDaConversa(conversaKey: string, anotacaoId: number) {
+      const key = conversaKey.trim()
+      if (!key || anotacaoId < 1) return
+      const conv = this.findConversaByKey(key)
+      if (conv?.anotacoes === undefined) return
+      const tinha = conv.anotacoes.some((a) => a.id === anotacaoId)
+      const lista = conv.anotacoes.filter((a) => a.id !== anotacaoId)
+      const prevMeta = conv.anotacoes_meta
+      this._aplicarAnotacoesNaConversa(key, lista, {
+        perPage: prevMeta?.perPage ?? 5,
+        total: Math.max(0, (prevMeta?.total ?? lista.length) - (tinha ? 1 : 0)),
+      })
+    },
+
+    /**
+     * Cache-first: se `items[].anotacoes` já existe (mesmo vazio), não chama GET.
+     * Primeira página: offset 0, 5 itens (mais recente → mais antiga).
+     */
+    async ensureAnotacoesNaConversa(workspaceId: number, conversaKey: string) {
+      const key = conversaKey.trim()
+      if (!workspaceId || !key || key.startsWith('temp:')) return []
+
+      const existente = this.findConversaByKey(key)
+      if (existente?.anotacoes !== undefined) {
+        return existente.anotacoes
+      }
+
+      const res = await $fetch<AnotacoesListResponse>('/api/anotacoes_conversas', {
+        query: {
+          workspace_id: workspaceId,
+          conversa_key: key,
+          offset: 0,
+          per_page: 5,
+        },
+      })
+      const lista = res.data ?? []
+      this._aplicarAnotacoesNaConversa(key, lista, {
+        perPage: res.perPage,
+        total: res.total,
+      })
+      return lista
+    },
+
+    /**
+     * Próxima página (mais antigas). Offset = quantidade já carregada no Pinia.
+     */
+    async carregarMaisAnotacoesNaConversa(workspaceId: number, conversaKey: string) {
+      const key = conversaKey.trim()
+      if (!workspaceId || !key || key.startsWith('temp:')) return []
+
+      const existente = this.findConversaByKey(key)
+      const atuais = existente?.anotacoes
+      if (atuais === undefined) {
+        return this.ensureAnotacoesNaConversa(workspaceId, key)
+      }
+
+      const total = existente?.anotacoes_meta?.total ?? atuais.length
+      if (atuais.length >= total) return atuais
+
+      const offset = atuais.length
+      const perPage = existente?.anotacoes_meta?.perPage ?? 5
+
+      const res = await $fetch<AnotacoesListResponse>('/api/anotacoes_conversas', {
+        query: {
+          workspace_id: workspaceId,
+          conversa_key: key,
+          offset,
+          per_page: perPage,
+        },
+      })
+
+      const ids = new Set(atuais.map((a) => a.id))
+      const novos = (res.data ?? []).filter((a) => !ids.has(a.id))
+      const lista = [...atuais, ...novos]
+      this._aplicarAnotacoesNaConversa(key, lista, {
+        perPage: res.perPage,
+        total: res.total,
+      })
+      return lista
     },
 
     /**

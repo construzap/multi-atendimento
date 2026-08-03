@@ -1,6 +1,6 @@
 import type { TipoCampoPersonalizado } from './camposPersonalizados'
 
-/** Campo personalizado embutido na view `view_kanban_conversas`. */
+/** Campo personalizado (tabelas `campos_personalizados` + `valores_campos_personalizados`). */
 export type ContatoCampoPersonalizadoResumo = {
   id: number
   nome: string

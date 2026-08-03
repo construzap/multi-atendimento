@@ -308,40 +308,12 @@ FOR EACH ROW
 EXECUTE FUNCTION public.fn_inserir_contato_no_kanban();
 
 -- ---------------------------------------------------------------------------
--- 5) View: listagem chat + webhook lookup
+-- 5) View: listagem chat / kanban / contatos (sem agregação de mensagens/campos)
 -- ---------------------------------------------------------------------------
 DROP VIEW IF EXISTS public.view_kanban_conversas;
 
-CREATE VIEW public.view_kanban_conversas AS
-WITH m_agrupadas AS (
-  SELECT
-    mensagens.key_conversa,
-    jsonb_agg(
-      jsonb_build_object(
-        'message_id', mensagens.message_id,
-        'created_at', mensagens.created_at,
-        'from_me', mensagens.from_me,
-        'message', mensagens.message,
-        'phone', mensagens.phone,
-        'lid', mensagens.lid,
-        'connected_phone', mensagens.connected_phone,
-        'messagetype', mensagens.messagetype,
-        'from_api', mensagens.from_api,
-        'id_canal', mensagens.id_canal,
-        'media_url', mensagens.media_url,
-        'caption', mensagens.caption,
-        'filename', mensagens.filename,
-        'latitude', mensagens.latitude,
-        'longitude', mensagens.longitude,
-        'name', mensagens.name,
-        'replyid', mensagens.replyid
-      )
-      ORDER BY mensagens.created_at
-    ) AS historico_mensagens
-  FROM public.mensagens
-  WHERE mensagens.key_conversa IS NOT NULL
-  GROUP BY mensagens.key_conversa
-)
+CREATE VIEW public.view_kanban_conversas
+WITH (security_invoker = on) AS
 SELECT
   c.key AS conversa_key,
   c.name,
@@ -367,9 +339,8 @@ SELECT
   c.funil_id,
   c.coluna_id,
   c.atendente_id,
-  fcs.posicao,
-  fcs.prioridade,
-  COALESCE(m.historico_mensagens, '[]'::jsonb) AS mensagens
+  NULL::integer AS posicao,
+  NULL::smallint AS prioridade
 FROM public.conversas c
 LEFT JOIN public.funil_workspace fw
   ON fw.id = c.funil_id
@@ -377,13 +348,9 @@ LEFT JOIN public.funil_workspace_colunas fwc
   ON fwc.id = c.coluna_id
   AND fwc.funil_id = fw.id
   AND fwc.deleted_at IS NULL
-LEFT JOIN public.funil_conversa_status fcs
-  ON fcs.conversa_key = c.key
 LEFT JOIN public.canais ca
   ON ca.id = c.id_canal
   AND ca.deleted_at IS NULL
-LEFT JOIN m_agrupadas m
-  ON m.key_conversa = c.key
 WHERE c.deleted_at IS NULL;
 
 GRANT SELECT ON public.view_kanban_conversas TO authenticated;

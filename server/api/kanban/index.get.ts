@@ -5,17 +5,18 @@ import type {
   KanbanCard,
   KanbanColumn,
   KanbanColumnPageResponse,
+  KanbanNotificacaoIa,
 } from '#shared/types/kanban'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 import { checkWorkspace } from '../../utils/checkWorkspace'
-import { parseCamposPersonalizadosView } from '../../utils/viewConversasDetalhes'
+import { fetchCamposPersonalizadosPorConversas } from '../../utils/camposPersonalizadosPorConversas'
 
 const CARDS_PER_PAGE = 10
 
 const VIEW_RESOURCE = 'view_kanban_conversas'
 
 const VIEW_SELECT =
-  'conversa_key, name, phone, photo, lid, preview, updated_at, id_canal, canal_nome, is_group, name_group, conversa_aberta, ia_ligada, nao_lidas, workspace_id, funil_id, coluna_id, atendente_id, prioridade, campos_personalizados'
+  'conversa_key, name, phone, photo, lid, preview, updated_at, id_canal, canal_nome, is_group, name_group, conversa_aberta, ia_ligada, nao_lidas, workspace_id, funil_id, coluna_id, atendente_id, prioridade, notificacoes_ia'
 
 type SupabaseAdmin = ReturnType<typeof serverSupabaseServiceRole<any>>
 
@@ -83,6 +84,61 @@ function intOrNull(raw: unknown): number | null {
   return Number.isFinite(n) && n >= 1 ? n : null
 }
 
+function numberOrNull(raw: unknown): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
+function parseNotificacoesIa(raw: unknown): KanbanNotificacaoIa[] {
+  let list: unknown[] = []
+  if (Array.isArray(raw)) {
+    list = raw
+  } else if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      if (Array.isArray(parsed)) list = parsed
+    } catch {
+      return []
+    }
+  } else {
+    return []
+  }
+
+  const out: KanbanNotificacaoIa[] = []
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const id = intOrNull(o.id)
+    if (id == null) continue
+
+    const produtosRaw = o.produtos
+    const produtos = Array.isArray(produtosRaw)
+      ? produtosRaw.map((p) => String(p ?? '')).filter((p) => p.length > 0)
+      : []
+
+    const totalRaw = o.total_orcamento
+    const total_orcamento =
+      totalRaw != null && Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : 0
+
+    out.push({
+      id,
+      produtos,
+      total_orcamento,
+      observacoes: o.observacoes != null ? String(o.observacoes) : null,
+      forma_pagamento: o.forma_pagamento != null ? String(o.forma_pagamento) : null,
+      latitude: numberOrNull(o.latitude),
+      longitude: numberOrNull(o.longitude),
+      tipo_solicitacao: o.tipo_solicitacao != null ? String(o.tipo_solicitacao) : null,
+      created_at: o.created_at != null ? String(o.created_at) : '',
+      updated_at: o.updated_at != null ? String(o.updated_at) : '',
+      entrega_ou_retirada: o.entrega_ou_retirada != null ? String(o.entrega_ou_retirada) : null,
+      concluido: o.concluido === true,
+    })
+  }
+  return out
+}
+
 function viewRowToCard(row: Record<string, unknown>): KanbanCard | null {
   const key = String(row.conversa_key ?? '').trim()
   if (!key) return null
@@ -125,7 +181,8 @@ function viewRowToCard(row: Record<string, unknown>): KanbanCard | null {
     conversa_aberta: parseBoolOrNull(row.conversa_aberta),
     ia_ligada: parseBoolOrNull(row.ia_ligada),
     nao_lidas: naoLidas,
-    campos_personalizados: parseCamposPersonalizadosView(row.campos_personalizados),
+    campos_personalizados: [],
+    notificacoes_ia: parseNotificacoesIa(row.notificacoes_ia),
   }
 }
 
@@ -302,6 +359,17 @@ async function buildCardsPage(
   const cards = rows
     .map((row) => viewRowToCard(row))
     .filter((card): card is KanbanCard => card != null)
+
+  const keys = cards.map((c) => c.conversa_key)
+  try {
+    const camposMap = await fetchCamposPersonalizadosPorConversas(admin, workspaceId, keys)
+    for (const card of cards) {
+      card.campos_personalizados = camposMap.get(card.conversa_key) ?? []
+    }
+  } catch (err: unknown) {
+    const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message: unknown }).message) : 'Falha ao carregar campos personalizados.'
+    throw createError({ statusCode: 500, statusMessage: msg })
+  }
 
   return {
     cards,

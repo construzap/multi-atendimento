@@ -3,6 +3,7 @@ import { computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import KanbanBoard from '~/components/kanban/KanbanBoard.vue'
 import { useKanbanStore } from '~/stores/kanban'
+import { useProfileStore } from '~/stores/profile'
 
 definePageMeta({
   layout: 'workspace',
@@ -10,6 +11,7 @@ definePageMeta({
 
 const route = useRoute()
 const kanban = useKanbanStore()
+const profile = useProfileStore()
 const { pending, error } = storeToRefs(kanban)
 
 const workspaceId = computed(() => {
@@ -23,6 +25,15 @@ const funilId = computed(() => {
   const n = typeof raw === 'string' ? Number.parseInt(raw, 10) : Number(raw)
   return Number.isFinite(n) && n > 0 ? n : 0
 })
+
+/** Garante `profile.isAdmin` no Pinia antes de montar o board. */
+if (import.meta.client) {
+  try {
+    await profile.ensureAdminVerificado()
+  } catch {
+    /* erro em profile.adminError */
+  }
+}
 
 /**
  * Não chamar GET /api/kanban no SSR: o $fetch do Nitro não envia cookies da sessão

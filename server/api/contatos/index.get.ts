@@ -7,14 +7,15 @@ import {
   deduplicarContatosPorKey,
   mapViewRowToContato,
 } from '../../utils/viewConversasDetalhes'
+import { fetchCamposPersonalizadosPorConversas } from '../../utils/camposPersonalizadosPorConversas'
 
 const PER_PAGE = 20
 
 const VIEW = 'view_kanban_conversas'
 
-/** Sem `mensagens` (histórico pesado); view já exclui `deleted_at`. */
+/** Sem `mensagens` / `campos_personalizados` (removidos da view). */
 const SELECT =
-  'conversa_key, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, workspace_id, conversa_aberta, is_group, name_group, ia_ligada, nao_lidas, funil_id, coluna_id, atendente_id, posicao, prioridade, campos_personalizados'
+  'conversa_key, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, workspace_id, conversa_aberta, is_group, name_group, ia_ligada, nao_lidas, funil_id, coluna_id, atendente_id, posicao, prioridade'
 
 /** Escapa `%` e `_` para uso em padrões `ilike` do PostgREST. */
 function escapeIlike(value: string): string {
@@ -119,6 +120,23 @@ export default defineEventHandler(async (event): Promise<ContatosListResponse> =
   const mapped = deduplicarContatosPorKey(
     (data ?? []).map((row) => mapViewRowToContato(row as Record<string, unknown>)),
   )
+
+  try {
+    const camposMap = await fetchCamposPersonalizadosPorConversas(
+      admin,
+      workspaceId,
+      mapped.map((c) => c.key),
+    )
+    for (const contato of mapped) {
+      contato.campos_personalizados = camposMap.get(contato.key) ?? []
+    }
+  } catch (err: unknown) {
+    const msg =
+      err && typeof err === 'object' && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : 'Falha ao carregar campos personalizados.'
+    throw createError({ statusCode: 500, statusMessage: msg })
+  }
 
   return {
     data: mapped as Contato[],

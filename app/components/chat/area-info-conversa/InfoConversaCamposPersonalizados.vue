@@ -62,25 +62,9 @@ const conversa = computed<Conversa | null>(() => {
   return conversasStore.findConversaByKey(key) ?? conversasStore.items.find((c) => c.key === key) ?? null
 })
 
-const valoresPending = computed(() => {
-  const wsId = workspaceId.value
-  const key = conversa.value?.key
-  if (!wsId || !key) return false
-  return Boolean(camposStore.valoresPending[`${wsId}:${key}`])
-})
-
-const carregando = computed(
-  () =>
-    carregandoValores.value ||
-    (camposPending.value && !camposStore.temCamposCarregados(workspaceId.value ?? 0)) ||
-    valoresPending.value,
-)
-
 const campos = computed<ConversaCampoPersonalizado[]>(() => conversa.value?.campos_personalizados ?? [])
 
 const camposExibicao = computed(() => campos.value.filter((c) => TIPOS_FORMULARIO.has(c.tipo)))
-
-const camposCarregados = computed(() => conversa.value?.campos_personalizados !== undefined)
 
 const podeGerenciarCampos = computed(() => workspaceId.value != null)
 
@@ -325,22 +309,8 @@ watch(modalExcluirCampo, (aberto) => {
       </button>
     </div>
 
-    <div
-      v-if="carregando && !camposCarregados"
-      class="rounded-2xl border border-outline/30 bg-surface-container-low p-4 text-sm italic text-on-surface-variant dark:border-dark-outline/30 dark:bg-dark-surface-container-high/40 dark:text-dark-on-surface-variant"
-    >
-      Carregando campos…
-    </div>
-
-    <p
-      v-else-if="camposCarregados && !camposExibicao.length"
-      class="rounded-2xl border border-dashed border-outline/30 bg-surface-container-low p-4 text-sm text-on-surface-variant dark:border-dark-outline/30 dark:bg-dark-surface-container-high/40 dark:text-dark-on-surface-variant"
-    >
-      Nenhum campo personalizado neste workspace.
-    </p>
-
     <dl
-      v-else-if="camposExibicao.length"
+      v-if="camposExibicao.length"
       class="space-y-3 rounded-2xl border border-outline/30 bg-surface-container-low p-4 dark:border-dark-outline/30 dark:bg-dark-surface-container-high/40"
     >
       <div

@@ -13,6 +13,8 @@ export interface UserProfile {
   full_name: string | null
   /** `profiles.whatsapp` (telefone) */
   whatsapp: string | null
+  /** `profiles.role` (`public.user_role`) */
+  role: UserRole
 }
 
 /** Enum `public.user_role` no Postgres. */

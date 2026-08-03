@@ -9,10 +9,12 @@ import ModalNovaColuna from './ModalNovaColuna.vue'
 import InfoContatoKanban from './InfoContatoKanban/InfoContatoKanban.vue'
 import FerramentaImportarContato from './importar-contatos/FerramentaImportarContato.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
+import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
 import SelecaoMultiplaBar from '~/components/kanban/SelecaoMultiplaBar.vue'
 import SeletorFunilKanban from '~/components/kanban/SeletorFunilKanban.vue'
 import { useCanaisStore } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
+import { useProfileStore } from '~/stores/profile'
 
 type DragState = {
   cardId: string
@@ -27,6 +29,8 @@ const props = defineProps<{
 const router = useRouter()
 const kanban = useKanbanStore()
 const canaisStore = useCanaisStore()
+const profile = useProfileStore()
+const isAdmin = computed(() => profile.isAdminConfirmado)
 const {
   columns,
   reorderingColumnId,
@@ -45,6 +49,14 @@ let buscaTimer: ReturnType<typeof setTimeout> | null = null
 const selectedKeys = ref<string[]>([])
 const selectedCount = computed(() => selectedKeys.value.length)
 const selectionActive = computed(() => selectedCount.value > 0)
+
+/** Modal de progresso enquanto `reorderColumnAdjacent` está em execução. */
+const modalReordenandoColunasOpen = computed({
+  get: () => reorderingColumnId.value != null,
+  set: () => {
+    /* fecha só quando a action do Pinia limpa `reorderingColumnId` */
+  },
+})
 
 function isSelected(key: string): boolean {
   const k = key.trim()
@@ -510,6 +522,7 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
           Disparo em massa
         </button>
         <button
+          v-if="isAdmin"
           type="button"
           class="inline-flex items-center gap-2 rounded-xl border border-outline/40 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:hover:bg-dark-surface-container"
           @click="abrirNovaColuna"
@@ -656,5 +669,19 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
         </div>
       </div>
     </Transition>
+
+    <ModalEnvioProdutos
+      v-model:open="modalReordenandoColunasOpen"
+      title="Trocando a ordem das colunas…"
+      :total="1"
+      :enviados="0"
+      :pode-cancelar="false"
+    >
+      <template #extra>
+        <p class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+          Aguarde enquanto a ordem das colunas é atualizada…
+        </p>
+      </template>
+    </ModalEnvioProdutos>
   </div>
 </template>

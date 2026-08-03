@@ -118,10 +118,11 @@ export default defineEventHandler(async (event): Promise<Workspace> => {
     if (funilId != null) {
       const nowIso = new Date().toISOString()
       const cols = [
-        { funil_id: funilId, nome: 'Em atendimento com I.A', cor: '#38BDF8', ordem: 1 },
-        { funil_id: funilId, nome: 'Precisa de Atendimento', cor: '#F59E0B', ordem: 2 },
-        { funil_id: funilId, nome: 'Prioridade', cor: '#F43F5E', ordem: 3 },
-        { funil_id: funilId, nome: 'Venda', cor: '#10B981', ordem: 4 },
+        { funil_id: funilId, workspace_id: workspaceId, nome: 'Em Atendimento com I.A', cor: '#38BDF8', ordem: 1 },
+        { funil_id: funilId, workspace_id: workspaceId, nome: 'Precisa de Atendimento', cor: '#F59E0B', ordem: 2 },
+        { funil_id: funilId, workspace_id: workspaceId, nome: 'Pedido Realizado', cor: '#A855F7', ordem: 3 },
+        { funil_id: funilId, workspace_id: workspaceId, nome: 'Em Separação', cor: '#F43F5E', ordem: 4 },
+        { funil_id: funilId, workspace_id: workspaceId, nome: 'Entregas em Andamento', cor: '#10B981', ordem: 5 },
       ].map((c) => ({ ...c, updated_at: nowIso }))
 
       const { error: colsErr } = await admin.from('funil_workspace_colunas').insert(cols)

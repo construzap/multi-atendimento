@@ -10,6 +10,8 @@ import type {
   ProdutoWorkspacePatch,
   ProdutosExcluirResponse,
 } from '#shared/types/produtos'
+import ItemTabela from '~/components/produtos/ItemTabela.vue'
+import ProdutosModalEditarProduto from '~/components/produtos/ProdutosModalEditarProduto.vue'
 import ProdutosModalImagens from '~/components/produtos/ProdutosModalImagens.vue'
 import ProdutosModalNovaVariacao from '~/components/produtos/ProdutosModalNovaVariacao.vue'
 import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
@@ -436,6 +438,8 @@ function camposDoPatch(patch: ProdutoWorkspacePatch): string[] {
 const modalVariacaoAberto = ref(false)
 const paiVariacaoAlvo = ref<ProdutoWorkspaceItem | null>(null)
 const salvandoVariacao = ref(false)
+const modalEdicaoAberto = ref(false)
+const produtoEmEdicao = ref<ProdutoWorkspaceCampos | null>(null)
 /** Ids selecionados (podem abranger várias páginas). */
 const selecionadosIds = ref<number[]>([])
 
@@ -589,12 +593,10 @@ function podeGravar(): boolean {
 
 const opcoesPageSize = [10, 50, 100, 1000] as const
 
-/** Altura fixa da área rolável ≈ cabeçalho + 10 linhas (independente do page_size). */
-const ALTURA_CABECALHO_TABELA_PX = 36
-const ALTURA_LINHA_ESTIMADA_PX = 44
+/** Altura fixa da área rolável ≈ 10 linhas de card (independente do page_size). */
+const ALTURA_LINHA_CARD_PX = 96
 const LINHAS_VIEWPORT_SCROLL = 10
-const alturaMaxScrollTabelaPx =
-  ALTURA_CABECALHO_TABELA_PX + LINHAS_VIEWPORT_SCROLL * ALTURA_LINHA_ESTIMADA_PX
+const alturaMaxScrollCardsPx = LINHAS_VIEWPORT_SCROLL * ALTURA_LINHA_CARD_PX
 
 function onMudarPageSize(ev: Event) {
   const raw = (ev.target as HTMLSelectElement).value
@@ -1088,6 +1090,18 @@ function alternarStatus(row: ProdutoWorkspaceCampos) {
   void gravarPatch(row, { status: !row.status })
 }
 
+function abrirEdicaoCompleta(row: ProdutoWorkspaceCampos) {
+  if (rowDesabilitada(row) && props.modo === 'api') return
+  produtoEmEdicao.value = row
+  modalEdicaoAberto.value = true
+}
+
+function aoSalvarEdicaoCompleta(patch: ProdutoWorkspacePatch) {
+  const row = produtoEmEdicao.value
+  if (!row) return
+  void gravarPatch(row, patch)
+}
+
 function rowDesabilitada(row: ProdutoWorkspaceCampos): boolean {
   if (props.modo === 'rascunho') return false
   return !podeGravar() || excluindo.value
@@ -1151,15 +1165,76 @@ onUnmounted(() => {
       </p>
 
       <div
-        v-if="mostrarSelecao && mostrarExclusao && modo === 'api' && selecionadosIds.length > 0 && podeGravar()"
+        v-if="mostrarSelecao && modo === 'api' && podeGravar()"
         class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/80"
       >
-        <p class="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-          <strong>{{ selecionadosIds.length }}</strong>
-          <template v-if="selecionadosIds.length === 1"> produto selecionado</template>
-          <template v-else> produtos selecionados</template>
-        </p>
+        <div class="flex min-w-0 items-center gap-3">
+          <label
+            class="group/check flex cursor-pointer items-center gap-2"
+            :class="
+              pending || !itemsExibicao.length || excluindo
+                ? 'cursor-not-allowed opacity-40'
+                : ''
+            "
+          >
+            <span
+              :class="[
+                checkboxVisualBaseClass,
+                todosDaPaginaSelecionados || indeterminadoCabecalhoPagina
+                  ? checkboxVisualMarcadoClass
+                  : 'border-zinc-300/90 bg-white opacity-100 dark:border-zinc-600 dark:bg-zinc-950',
+              ]"
+              aria-hidden="true"
+            >
+              <svg
+                v-if="indeterminadoCabecalhoPagina && !todosDaPaginaSelecionados"
+                class="h-3 w-3 text-white"
+                viewBox="0 0 12 12"
+                fill="none"
+              >
+                <path
+                  d="M2.5 6h7"
+                  stroke="currentColor"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <svg
+                v-else-if="todosDaPaginaSelecionados"
+                class="h-3 w-3 text-white"
+                viewBox="0 0 12 12"
+                fill="none"
+              >
+                <path
+                  d="M2.25 6.25L4.75 8.75L9.75 3.25"
+                  stroke="currentColor"
+                  stroke-width="1.75"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </span>
+            <input
+              type="checkbox"
+              class="sr-only"
+              :checked="todosDaPaginaSelecionados"
+              :indeterminate="indeterminadoCabecalhoPagina"
+              :disabled="pending || !itemsExibicao.length || excluindo"
+              aria-label="Selecionar todos os produtos desta página"
+              @change="alternarSelecionarTodosNaPagina(($event.target as HTMLInputElement).checked)"
+            />
+            <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              <template v-if="selecionadosIds.length > 0">
+                <strong>{{ selecionadosIds.length }}</strong>
+                <template v-if="selecionadosIds.length === 1"> produto selecionado</template>
+                <template v-else> produtos selecionados</template>
+              </template>
+              <template v-else>Selecionar todos nesta página</template>
+            </span>
+          </label>
+        </div>
         <button
+          v-if="mostrarExclusao && selecionadosIds.length > 0"
           type="button"
           class="inline-flex items-center gap-2 rounded-xl border border-red-400/80 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-900 shadow-sm transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55 dark:border-red-700/70 dark:bg-red-950/45 dark:text-red-100 dark:hover:bg-red-950/65"
           :disabled="excluindo"
@@ -1170,10 +1245,54 @@ onUnmounted(() => {
         </button>
       </div>
 
+      <!-- Modo API: lista em cards -->
       <div
+        v-if="modo === 'api'"
         ref="tabelaScrollRef"
         class="w-full min-w-0 max-w-full overflow-auto"
-        :style="modo === 'api' ? { maxHeight: `${alturaMaxScrollTabelaPx}px` } : undefined"
+        :style="{ maxHeight: `${alturaMaxScrollCardsPx}px` }"
+        :class="{ 'pointer-events-none opacity-50': excluindo }"
+      >
+        <div
+          v-if="pending"
+          class="py-12 text-center text-sm text-zinc-500 dark:text-zinc-400"
+        >
+          Carregando…
+        </div>
+        <template v-else>
+          <ItemTabela
+            v-for="{ row, tipo, pai } in linhasExibicao"
+            :key="tipo + '-' + row.id"
+            :row="row"
+            :tipo="tipo"
+            :pai="pai"
+            :workspace-id="workspaceId"
+            :selecionado="selecionadosIds.includes(row.id)"
+            :mostrar-selecao="mostrarSelecao"
+            :desabilitado="rowDesabilitada(row)"
+            :mostrar-imagens="mostrarImagens"
+            :tem-variacoes-visiveis="!!(pai && paiTemVariacoesVisiveis(pai))"
+            :expandido="estaExpandido(row.id)"
+            :salvando-variacao="salvandoVariacao"
+            :url-imagem="urlImagemLinha(row)"
+            :contagem-imagens="contagemImagensLinha(row)"
+            :resumo-variacao="tipo === 'variacao' ? resumoVariacao(row) : ''"
+            @toggle-selecionado="alternarSelecionado(row.id, $event)"
+            @toggle-status="alternarStatus(row)"
+            @toggle-expandir="toggleExpandir(row.id)"
+            @abrir-imagens="abrirGaleriaImagens(row, tipo, pai)"
+            @nova-variacao="abrirModalNovaVariacao(pai ?? (row as ProdutoWorkspaceItem))"
+            @editar="abrirEdicaoCompleta(row)"
+            @commit-termo="commitCatalogo(row, $event)"
+          />
+        </template>
+      </div>
+
+      <!-- Modo rascunho: planilha (criar em massa) -->
+      <div
+        v-else
+        ref="tabelaScrollRef"
+        class="w-full min-w-0 max-w-full overflow-auto"
       >
       <table
         class="table-fixed border-collapse text-left"
@@ -1441,17 +1560,6 @@ onUnmounted(() => {
                     >
                       {{ pai.variacoes.length }}
                     </span>
-                    <button
-                      v-if="tipo === 'pai' && modo === 'api'"
-                      type="button"
-                      class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-400 opacity-0 transition-all hover:bg-emerald-100/90 hover:text-emerald-700 focus-visible:opacity-100 group-hover/produto:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-500 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-400"
-                      :disabled="rowDesabilitada(row) || salvandoVariacao"
-                      title="Adicionar variação"
-                      aria-label="Adicionar variação de produto"
-                      @click.stop="abrirModalNovaVariacao(pai ?? (row as ProdutoWorkspaceItem))"
-                    >
-                      <span class="material-symbols-outlined text-[18px]" aria-hidden="true">add</span>
-                    </button>
                   </div>
                 </div>
               </td>
@@ -1749,6 +1857,12 @@ onUnmounted(() => {
       :pai-nome="paiVariacaoAlvo?.nome ?? ''"
       :salvando="salvandoVariacao"
       @salvar="confirmarNovaVariacao"
+    />
+    <ProdutosModalEditarProduto
+      v-model:open="modalEdicaoAberto"
+      :workspace-id="workspaceId"
+      :row="produtoEmEdicao"
+      @salvar="aoSalvarEdicaoCompleta"
     />
 
     <ModalEnvioProdutos

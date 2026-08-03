@@ -7,6 +7,7 @@ import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
 import { mapViewRowToContato } from '../../utils/viewConversasDetalhes'
+import { fetchCamposPersonalizadosDaConversa } from '../../utils/camposPersonalizadosPorConversas'
 
 const SELECT =
   'key, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, workspace_id, latitude, longitude, conversa_aberta, is_group, name_group, ia_ligada, nao_lidas'
@@ -14,7 +15,7 @@ const SELECT =
 const VIEW = 'view_kanban_conversas'
 
 const VIEW_SELECT =
-  'conversa_key, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, workspace_id, conversa_aberta, is_group, name_group, ia_ligada, nao_lidas, funil_id, coluna_id, atendente_id, posicao, prioridade, campos_personalizados'
+  'conversa_key, name, created_at, updated_at, id_canal, phone, lid, connect_phone, photo, workspace_id, conversa_aberta, is_group, name_group, ia_ligada, nao_lidas, funil_id, coluna_id, atendente_id, posicao, prioridade'
 
 type Body = {
   workspace_id?: unknown
@@ -265,9 +266,32 @@ export default defineEventHandler(async (event): Promise<ContatoAtualizarRespons
   }
 
   if (viewRow && typeof viewRow === 'object') {
-    return { data: mapViewRowToContato(viewRow as Record<string, unknown>) }
+    const contato = mapViewRowToContato(viewRow as Record<string, unknown>)
+    try {
+      contato.campos_personalizados = await fetchCamposPersonalizadosDaConversa(
+        admin,
+        workspaceId,
+        key,
+      )
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'message' in err
+          ? String((err as { message: unknown }).message)
+          : 'Falha ao carregar campos personalizados.'
+      throw createError({ statusCode: 500, statusMessage: msg })
+    }
+    return { data: contato }
   }
 
   const base = mapViewRowToContato(updated as Record<string, unknown>)
+  try {
+    base.campos_personalizados = await fetchCamposPersonalizadosDaConversa(admin, workspaceId, key)
+  } catch (err: unknown) {
+    const msg =
+      err && typeof err === 'object' && 'message' in err
+        ? String((err as { message: unknown }).message)
+        : 'Falha ao carregar campos personalizados.'
+    throw createError({ statusCode: 500, statusMessage: msg })
+  }
   return { data: base }
 })

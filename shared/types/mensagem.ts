@@ -35,7 +35,7 @@ export interface Mensagem {
 
 /**
  * Resposta paginada de `GET /api/mensagens`.
- * Metadados da conversa vêm de `view_kanban_conversas` (nível conversa, não por mensagem).
+ * Metadados da conversa vêm de `public.conversas` (nível conversa, não por mensagem).
  */
 export interface MensagensListResponse {
   data: Mensagem[]

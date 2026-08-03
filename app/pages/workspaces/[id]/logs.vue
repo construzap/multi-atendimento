@@ -7,29 +7,25 @@ import LogsWebhookDetalheModal from '~/components/logs/LogsWebhookDetalheModal.v
 import LogsWebhookFiltros from '~/components/logs/LogsWebhookFiltros.vue'
 import LogsWebhookHeader from '~/components/logs/LogsWebhookHeader.vue'
 import LogsWebhookLista from '~/components/logs/LogsWebhookLista.vue'
-import type { AdminVerificarResponse } from '#shared/types/profile'
 import type { WebhookExecucaoStatus } from '#shared/types/webhookExecucao'
+import { useProfileStore } from '~/stores/profile'
 import { useWebhookLogsStore } from '~/stores/webhookLogs'
 
 definePageMeta({
   layout: 'workspace',
 })
 
-const {
-  data: verificarAdmin,
-  pending: verificarPending,
-  error: verificarError,
-} = await useFetch<AdminVerificarResponse>('/api/admin/verificar', {
-  server: false,
-})
+const profile = useProfileStore()
 
-const isAdmin = computed(() => verificarAdmin.value?.isAdmin === true)
+try {
+  await profile.ensureAdminVerificado()
+} catch {
+  /* erro em profile.adminError */
+}
 
-const verificarErroTexto = computed(() => {
-  const e = verificarError.value as Error & { data?: { statusMessage?: string; message?: string } } | null
-  if (!e) return null
-  return e.data?.statusMessage ?? e.data?.message ?? e.message ?? 'Não foi possível verificar o acesso.'
-})
+const isAdmin = computed(() => profile.isAdminConfirmado)
+const verificarPending = computed(() => profile.adminPending)
+const verificarErroTexto = computed(() => profile.adminError)
 const route = useRoute()
 const webhookLogs = useWebhookLogsStore()
 const { execucoes, pending, error, total, filtroStatus, filtroDe, filtroAte } = storeToRefs(webhookLogs)

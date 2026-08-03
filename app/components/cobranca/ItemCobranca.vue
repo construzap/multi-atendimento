@@ -12,6 +12,7 @@ import { useCobrancaStore } from '~/stores/cobranca'
 
 const props = defineProps<{
   cobranca: Cobranca
+  selecionado?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -126,11 +127,15 @@ const dataProximaLabel = computed(() =>
   formatIsoLocal(props.cobranca.data_proxima_notificacao),
 )
 
-const dataVencimentoLabel = computed(() => {
-  const iso =
-    cobrancaStore.getById(props.cobranca.id)?.data_vencimento ??
-    props.cobranca.data_vencimento
-  return formatIsoLocal(iso)
+const dataInicioLabel = computed(() => {
+  const raw =
+    cobrancaStore.getById(props.cobranca.id)?.data_inicio ??
+    props.cobranca.data_inicio
+  if (!raw) return '—'
+  const ymd = String(raw).slice(0, 10)
+  const [y, m, d] = ymd.split('-')
+  if (!y || !m || !d) return ymd
+  return `${d}/${m}/${y}`
 })
 
 const frequenciaLabel = computed(() => {
@@ -167,7 +172,10 @@ onMounted(() => {
   <article
     role="button"
     tabindex="0"
-    class="flex cursor-pointer flex-col gap-3 rounded-2xl border border-outline/30 bg-surface-container-lowest p-4 transition hover:border-outline/50 hover:bg-surface-container-low/40 dark:border-dark-outline/30 dark:bg-dark-surface-container-low dark:hover:border-dark-outline/50 dark:hover:bg-dark-surface-container/40 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-5"
+    class="flex cursor-pointer flex-col gap-3 rounded-2xl border bg-surface-container-lowest p-4 transition sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:p-5"
+    :class="selecionado
+      ? 'border-primary/50 ring-2 ring-primary/20 dark:border-dark-primary/50 dark:ring-dark-primary/25'
+      : 'border-outline/30 hover:border-outline/50 hover:bg-surface-container-low/40 dark:border-dark-outline/30 dark:hover:border-dark-outline/50 dark:hover:bg-dark-surface-container/40'"
     @click="emit('edit', cobranca)"
     @keydown.enter.prevent="emit('edit', cobranca)"
     @keydown.space.prevent="emit('edit', cobranca)"
@@ -186,7 +194,7 @@ onMounted(() => {
       </div>
       <p class="font-body text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
         <span v-if="cobranca.name && cobranca.phone">{{ cobranca.phone }} · </span>
-        data de inicio: {{ dataVencimentoLabel }}
+        data de inicio: {{ dataInicioLabel }}
         <span> · {{ frequenciaLabel }}</span>
       </p>
 

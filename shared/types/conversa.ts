@@ -1,6 +1,7 @@
 /**
  * Tabela `public.conversas` (Supabase) — campos expostos na API (sem `deleted_at` / `deleted_by`).
  */
+import type { Anotacao, AnotacoesMeta } from '#shared/types/anotacao'
 import type { TipoCampoPersonalizado } from '#shared/types/camposPersonalizados'
 import type { MessageType } from '#shared/types/messageType'
 
@@ -42,6 +43,13 @@ export interface Conversa {
    * `undefined` = ainda não carregados; array (mesmo vazio) = já buscados na API.
    */
   campos_personalizados?: ConversaCampoPersonalizado[]
+  /**
+   * Anotações internas da conversa (mais recente → mais antiga).
+   * `undefined` = ainda não carregadas; array (mesmo vazio) = já buscadas na API.
+   */
+  anotacoes?: Anotacao[]
+  /** Paginação das anotações (preenchido junto com `anotacoes`). */
+  anotacoes_meta?: AnotacoesMeta
 }
 
 /** Campos editáveis em `PATCH /api/conversas/atualizar`. */

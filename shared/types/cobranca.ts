@@ -32,6 +32,8 @@ export type CriarCobrancaBody = {
   hora_proxima_local: string
   /** Fuso IANA Brasil (ex.: America/Sao_Paulo). */
   iana_timezone: string
+  /** Data de início do contrato (AAAA-MM-DD). */
+  data_inicio: string
   data_fim?: string | null
   porcentagem_multa?: number | null
   porcentagem_juros_mes?: number | null
@@ -67,9 +69,9 @@ export type Cobranca = {
   data_proxima_notificacao: string | null
   /** Fuso IANA usado ao definir a data/hora local. */
   iana_timezone: string | null
-  /** Legado — preenchido a partir da data local. */
+  /** Dia do mês derivado da próxima notificação (legado NOT NULL). */
   dia_vencimento: number
-  /** Legado — preenchido a partir da data local. */
+  /** Data de início do contrato (AAAA-MM-DD). */
   data_inicio: string
   data_fim: string | null
   porcentagem_multa: number | null

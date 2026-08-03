@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useColorMode } from '~/composables/useColorMode'
-import type { AdminVerificarResponse } from '#shared/types/profile'
 import type { PageRoleSlug } from '#shared/types/pageRoles'
 import { usePageRolesStore } from '~/stores/pageRoles'
 import { useProfileStore } from '~/stores/profile'
@@ -39,10 +38,12 @@ const workspaces = useWorkspacesStore()
 const profile = useProfileStore()
 const pageRoles = usePageRolesStore()
 
-const { data: verificarAdmin } = await useFetch<AdminVerificarResponse>('/api/admin/verificar', {
-  server: false,
-})
-const isAdmin = computed(() => verificarAdmin.value?.isAdmin === true)
+try {
+  await profile.ensureAdminVerificado()
+} catch {
+  /* erro em profile.adminError */
+}
+const isAdmin = computed(() => profile.isAdminConfirmado)
 
 const workspaceId = computed(() => workspaces.currentWorkspaceId ?? String(route.params.id ?? ''))
 const base = computed(() => `/workspaces/${workspaceId.value}`)

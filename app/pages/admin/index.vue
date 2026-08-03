@@ -1,24 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
 import AdminAcessoNegado from '~/components/admin/AdminAcessoNegado.vue'
 import SeletorPagina from '~/components/admin/SeletorPagina.vue'
-import type { AdminVerificarResponse } from '#shared/types/profile'
 
 definePageMeta({
-  layout: 'default'
+  layout: 'default',
 })
 
-const { data, pending, error } = await useFetch<AdminVerificarResponse>('/api/admin/verificar', {
-  server: false
-})
-
-const isAdmin = computed(() => data.value?.isAdmin === true)
-
-const erroTexto = computed(() => {
-  const e = error.value as Error & { data?: { statusMessage?: string; message?: string } } | null
-  if (!e) return null
-  return e.data?.statusMessage ?? e.data?.message ?? e.message ?? 'Não foi possível verificar o acesso.'
-})
+const { pending, isAdmin, erroTexto } = useAdminGate()
 </script>
 
 <template>
@@ -26,21 +14,21 @@ const erroTexto = computed(() => {
 
   <div
     v-else-if="pending"
-    class="mx-auto max-w-7xl px-4 py-16 text-center text-sm text-on-surface-variant dark:text-dark-on-surface-variant md:px-6"
+    class="mx-auto w-full max-w-7xl px-4 py-16 text-center text-sm text-on-surface-variant dark:text-dark-on-surface-variant md:px-6"
   >
     Verificando permissões...
   </div>
 
   <div
     v-else-if="erroTexto"
-    class="mx-auto max-w-lg px-4 py-16 text-center md:px-6"
+    class="mx-auto w-full max-w-lg px-4 py-16 text-center md:px-6"
   >
     <p class="text-sm text-danger dark:text-dark-danger">
       {{ erroTexto }}
     </p>
   </div>
 
-  <div v-else class="mx-auto max-w-7xl px-4 py-8 md:px-6">
+  <div v-else class="mx-auto w-full max-w-7xl px-4 py-8 md:px-6">
     <header class="mb-8">
       <p
         class="mb-2 inline-flex items-center gap-2 rounded-full border border-outline/40 bg-surface-container-high px-3 py-1 text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:border-dark-outline/40 dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant"

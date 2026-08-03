@@ -121,6 +121,7 @@ export default defineEventHandler(async (event) => {
     .from('funil_workspace_colunas')
     .insert({
       funil_id: funilId,
+      workspace_id: workspaceId,
       nome,
       cor,
       ordem: nextOrdem,

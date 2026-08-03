@@ -34,13 +34,16 @@ const props = withDefaults(
 )
 
 const mensagem = ref('')
-const isRecording = ref(false)
-const isPaused = ref(false)
-const recordSeconds = ref(0)
-let recordTimer: ReturnType<typeof setInterval> | null = null
-let recorder: MediaRecorder | null = null
-let recordChunks: BlobPart[] = []
-let recordMime: string | null = null
+const {
+  isRecording,
+  isPaused,
+  recordSeconds,
+  formatRecordTime,
+  startRecording: startRecorder,
+  togglePauseRecording,
+  cancelRecording,
+  stopAndGetAudio,
+} = useAudioRecorder()
 
 const conversasStore = useConversasStore()
 const canaisStore = useCanaisStore()
@@ -323,100 +326,25 @@ async function onFileSelected(kind: 'image' | 'video' | 'document', e: Event) {
   await enviarMidia(kind, file)
 }
 
-function clearRecordTimer() {
-  if (recordTimer) clearInterval(recordTimer)
-  recordTimer = null
-}
-
 async function startRecording() {
   if (isRecording.value) return
   const ctx = ensureCanSend()
   if (!ctx) return
-
-  let stream: MediaStream
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-  } catch {
-    toast.error('Permita o microfone para gravar áudio.')
-    return
-  }
-
-  recordChunks = []
-  recordSeconds.value = 0
-  isPaused.value = false
-
-  try {
-    recorder = new MediaRecorder(stream)
-  } catch {
-    stream.getTracks().forEach((t) => t.stop())
-    toast.error('Seu navegador não suporta gravação de áudio.')
-    return
-  }
-
-  recordMime = recorder.mimeType || null
-  recorder.ondataavailable = (ev) => {
-    if (ev.data && ev.data.size > 0) recordChunks.push(ev.data)
-  }
-  recorder.onstop = () => {
-    stream.getTracks().forEach((t) => t.stop())
-  }
-
-  recorder.start()
-  isRecording.value = true
-  clearRecordTimer()
-  recordTimer = setInterval(() => {
-    recordSeconds.value += 1
-  }, 1000)
-}
-
-function togglePauseRecording() {
-  if (!recorder || !isRecording.value) return
-  if (recorder.state === 'recording') {
-    recorder.pause()
-    isPaused.value = true
-    clearRecordTimer()
-    return
-  }
-  if (recorder.state === 'paused') {
-    recorder.resume()
-    isPaused.value = false
-    clearRecordTimer()
-    recordTimer = setInterval(() => {
-      recordSeconds.value += 1
-    }, 1000)
-  }
+  await startRecorder()
 }
 
 async function sendRecordedAudio() {
-  if (!recorder || !isRecording.value) return
+  if (!isRecording.value) return
   const ctx = ensureCanSend()
   if (!ctx) return
   const { idCanal, conversaKey, telefone, lid } = ctx
 
-  const r = recorder
-  const mime = recordMime || 'audio/webm'
+  const audio = await stopAndGetAudio()
+  if (!audio) return
 
-  // encerra gravação e espera o evento de stop fechar o stream
-  clearRecordTimer()
-  isRecording.value = false
-  isPaused.value = false
-  recorder = null
-
-  // força flush final
-  try { r.requestData?.() } catch {}
-  try { r.stop() } catch {}
-
-  // pequena espera pro browser emitir dataavailable final
-  await new Promise((resolve) => setTimeout(resolve, 50))
-
-  const blob = new Blob(recordChunks, { type: mime })
-  recordChunks = []
-  if (blob.size === 0) {
-    toast.error('Áudio vazio.')
-    return
-  }
-
+  const { blob, mime } = audio
   const localUrl = URL.createObjectURL(blob)
+  const filename = `audio_${Date.now()}.webm`
   const tempId = mensagensStore.addOptimisticMediaMessage({
     id_canal: idCanal,
     conversa_key: conversaKey,
@@ -426,7 +354,7 @@ async function sendRecordedAudio() {
     messagetype: 'audioMessage',
     media_url: localUrl,
     caption: null,
-    filename: `audio_${Date.now()}.webm`,
+    filename,
     name: conversaSelecionada.value?.name ?? null,
     photo: conversaSelecionada.value?.photo ?? null,
   })
@@ -443,7 +371,7 @@ async function sendRecordedAudio() {
       body: {
         id_canal: idCanal,
         mime,
-        filename: `audio_${Date.now()}.webm`,
+        filename,
         data_base64: base64,
       },
     }).then((x) => x.url)
@@ -465,7 +393,7 @@ async function sendRecordedAudio() {
     confirmOptimisticAfterSend(idCanal, conversaKey, tempId, res, conversaSelecionada.value, {
       messagetype: 'audioMessage',
       media_url: url,
-      filename: `audio_${Date.now()}.webm`,
+      filename,
     })
   } catch (err: unknown) {
     mensagensStore.removeByTempId(conversaKey, tempId)
@@ -654,20 +582,40 @@ function confirmOptimisticAfterSend(
       </div>
 
       <div class="flex shrink-0 items-center gap-2">
-        <button
-          v-if="isRecording"
-          type="button"
-          class="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
-          :aria-label="isPaused ? 'Continuar gravação' : 'Pausar gravação'"
-          @click="togglePauseRecording"
-        >
-          <span class="material-symbols-outlined" aria-hidden="true">
-            {{ isPaused ? 'play_arrow' : 'pause' }}
-          </span>
-        </button>
+        <template v-if="isRecording">
+          <button
+            type="button"
+            class="flex h-12 w-12 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-600 shadow-sm transition-all hover:bg-rose-50 active:scale-95 dark:border-rose-900/50 dark:bg-slate-800 dark:text-rose-400 dark:hover:bg-rose-950/40"
+            aria-label="Cancelar gravação"
+            @click="cancelRecording"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+          </button>
+
+          <button
+            type="button"
+            class="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+            :aria-label="isPaused ? 'Continuar gravação' : 'Pausar gravação'"
+            @click="togglePauseRecording"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">
+              {{ isPaused ? 'play_arrow' : 'pause' }}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            class="flex items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95"
+            :class="compact ? 'h-10 w-10' : 'h-12 w-12'"
+            aria-label="Enviar áudio"
+            @click="sendRecordedAudio"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">send</span>
+          </button>
+        </template>
 
         <button
-          v-if="hasText"
+          v-else-if="hasText"
           type="button"
           class="flex items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95"
           :class="compact ? 'h-10 w-10' : 'h-12 w-12'"
@@ -682,19 +630,16 @@ function confirmOptimisticAfterSend(
           type="button"
           class="flex items-center justify-center rounded-full bg-gradient-to-br from-primary to-primary-container text-white shadow-lg transition-all hover:scale-105 active:scale-95"
           :class="compact ? 'h-10 w-10' : 'h-12 w-12'"
-          :aria-label="isRecording ? 'Enviar áudio' : 'Gravar áudio'"
-          @click="isRecording ? sendRecordedAudio() : startRecording()"
+          aria-label="Gravar áudio"
+          @click="startRecording"
         >
-          <span class="material-symbols-outlined" aria-hidden="true">
-            {{ isRecording ? 'send' : 'mic' }}
-          </span>
+          <span class="material-symbols-outlined" aria-hidden="true">mic</span>
         </button>
       </div>
     </div>
     <p v-if="isRecording" class="mt-2 text-center text-[11px] text-on-surface-variant dark:text-slate-400">
-      Gravando áudio… {{ Math.floor(recordSeconds / 60).toString().padStart(2, '0') }}:{{
-        (recordSeconds % 60).toString().padStart(2, '0')
-      }}
+      <span :class="isPaused ? '' : 'animate-pulse'">●</span>
+      {{ isPaused ? 'Pausado' : 'Gravando' }}… {{ formatRecordTime(recordSeconds) }}
     </p>
   </footer>
 </template>

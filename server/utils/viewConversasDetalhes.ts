@@ -143,6 +143,7 @@ export function mapViewRowToContato(row: Record<string, unknown>): Contato {
     name_group: strOrNull(row.name_group),
     ia_ligada: row.ia_ligada === true ? true : row.ia_ligada === false ? false : null,
     nao_lidas: naoLidas,
+    /** Preenchido depois via tabelas, se a API anexar; da view vem vazio. */
     campos_personalizados: parseCamposPersonalizadosView(row.campos_personalizados),
     status_funil: parseStatusFunilView(row.status_funil) ?? statusFunilFromKanbanViewRow(row),
   }

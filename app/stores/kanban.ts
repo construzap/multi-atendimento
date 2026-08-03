@@ -51,6 +51,12 @@ function normalizeKanbanCard(card: KanbanCard): KanbanCard {
     campos_personalizados: Array.isArray(card.campos_personalizados)
       ? card.campos_personalizados.map((c) => ({ ...c }))
       : [],
+    notificacoes_ia: Array.isArray(card.notificacoes_ia)
+      ? card.notificacoes_ia.map((n) => ({
+          ...n,
+          produtos: Array.isArray(n.produtos) ? [...n.produtos] : [],
+        }))
+      : [],
   }
 }
 
@@ -282,6 +288,134 @@ export const useKanbanStore = defineStore('kanban', {
       if (!workspaceId) return
       if (!options?.force && this.funisWorkspaceIdLoaded === workspaceId) return
       await this.fetchFunis(workspaceId)
+    },
+
+    /**
+     * Resolve o `id` da coluna com `ordem` no funil atual.
+     * Preferência: `columns` do board → `funis[].columns` → fetch de funis se faltar.
+     */
+    async resolveColunaIdPorOrdem(
+      workspaceId: number,
+      ordem: number,
+      funilId?: number | null,
+    ): Promise<number | null> {
+      if (!workspaceId || !Number.isFinite(ordem) || ordem < 1) return null
+
+      const wsId = Number(workspaceId)
+      const fidPreferido =
+        funilId
+        ?? (this.workspaceIdLoaded === wsId ? this.funilIdLoaded ?? this.funilId : null)
+        ?? this.funilId
+
+      const fromBoard = (): number | null => {
+        if (Number(this.workspaceIdLoaded) !== wsId || this.columns.length === 0) return null
+        const col = this.columns.find((c) => Number(c.ordem) === Number(ordem))
+        return col?.id ?? null
+      }
+
+      const fromFunis = (): number | null => {
+        if (Number(this.funisWorkspaceIdLoaded) !== wsId || this.funis.length === 0) return null
+        const funil =
+          (fidPreferido != null
+            ? this.funis.find((f) => f.id === fidPreferido)
+            : null)
+          ?? this.funis.find((f) => f.ordem === 1)
+          ?? this.funis[0]
+          ?? null
+        const col = funil?.columns?.find((c) => Number(c.ordem) === Number(ordem))
+        return col?.id ?? null
+      }
+
+      const boardId = fromBoard()
+      if (boardId != null) return boardId
+
+      const funilIdLocal = fromFunis()
+      if (funilIdLocal != null) return funilIdLocal
+
+      await this.ensureFunisLoaded(wsId)
+      const aposEnsure = fromFunis() ?? fromBoard()
+      if (aposEnsure != null) return aposEnsure
+
+      await this.ensureFunisLoaded(wsId, { force: true })
+      return fromFunis() ?? fromBoard()
+    },
+
+    /**
+     * Move a conversa para a coluna de determinada `ordem` (ex.: 4 = Em Separação).
+     * Usa Pinia (`funis` / `columns`); busca funis se ainda não estiverem carregados.
+     * Sempre dispara `POST /api/kanban/mover` quando a coluna destino é diferente da atual.
+     */
+    async moverConversaParaColunaOrdem(input: {
+      workspaceId: number
+      conversaKey: string
+      ordem: number
+      funilId?: number | null
+    }): Promise<boolean> {
+      const key = input.conversaKey?.trim()
+      const workspaceId = Number(input.workspaceId)
+      if (!key || !Number.isFinite(workspaceId) || workspaceId < 1) return false
+
+      const toColunaId = await this.resolveColunaIdPorOrdem(
+        workspaceId,
+        input.ordem,
+        input.funilId,
+      )
+      if (!toColunaId) {
+        toast.error(`Coluna de ordem ${input.ordem} não encontrada neste funil.`, {
+          duration: 6000,
+        })
+        return false
+      }
+
+      let fromColunaId: number | null = null
+      for (const col of this.columns) {
+        if (col.cards.some((c) => c.conversa_key === key)) {
+          fromColunaId = col.id
+          break
+        }
+      }
+      // Fallback: coluna_id no próprio card (mesmo se não estiver na lista filtrada).
+      if (fromColunaId == null) {
+        for (const col of this.columns) {
+          const card = col.cards.find((c) => c.conversa_key === key)
+          if (card?.coluna_id) {
+            fromColunaId = card.coluna_id
+            break
+          }
+        }
+      }
+
+      if (fromColunaId != null && fromColunaId === toColunaId) {
+        return true
+      }
+
+      if (fromColunaId != null) {
+        await this.moveCard({
+          workspaceId,
+          conversaKey: key,
+          fromColumnId: String(fromColunaId),
+          toColumnId: String(toColunaId),
+        })
+        return true
+      }
+
+      // Card fora do board visível: só persiste no banco.
+      try {
+        await $fetch('/api/kanban/mover', {
+          method: 'POST',
+          body: {
+            workspace_id: workspaceId,
+            conversa_key: key,
+            coluna_id: toColunaId,
+          },
+        })
+        return true
+      } catch (err: unknown) {
+        toast.error(mensagemErroFetch(err, 'Não foi possível mover a conversa.'), {
+          duration: 8000,
+        })
+        return false
+      }
     },
 
     adicionarFunilCriado(res: KanbanCriarFunilResponse) {
@@ -581,6 +715,222 @@ export const useKanbanStore = defineStore('kanban', {
         break
       }
       if (changed) this.columns = next
+    },
+
+    /** Atualiza `concluido` de uma notificação I.A. no card do board (Pinia). */
+    setNotificacaoIaConcluido(
+      conversaKey: string,
+      notificacaoId: number,
+      concluido: boolean,
+    ) {
+      const key = conversaKey?.trim()
+      if (!key || !Number.isFinite(notificacaoId) || notificacaoId < 1) return
+
+      let changed = false
+      const next = cloneColumns(this.columns)
+      for (const col of next) {
+        const idx = col.cards.findIndex((c) => c.conversa_key === key)
+        if (idx === -1) continue
+
+        const current = col.cards[idx]!
+        const list = [...(current.notificacoes_ia ?? [])]
+        const nIdx = list.findIndex((n) => n.id === notificacaoId)
+        if (nIdx < 0) break
+
+        list[nIdx] = {
+          ...list[nIdx]!,
+          concluido,
+          updated_at: new Date().toISOString(),
+        }
+        col.cards[idx] = normalizeKanbanCard({
+          ...current,
+          notificacoes_ia: list,
+        })
+        changed = true
+        break
+      }
+      if (changed) this.columns = next
+    },
+
+    /** Remove uma notificação I.A. do card no board (Pinia). */
+    removerNotificacaoIaDoCard(conversaKey: string, notificacaoId: number) {
+      const key = conversaKey?.trim()
+      if (!key || !Number.isFinite(notificacaoId) || notificacaoId < 1) return
+
+      let changed = false
+      const next = cloneColumns(this.columns)
+      for (const col of next) {
+        const idx = col.cards.findIndex((c) => c.conversa_key === key)
+        if (idx === -1) continue
+
+        const current = col.cards[idx]!
+        const list = (current.notificacoes_ia ?? []).filter((n) => n.id !== notificacaoId)
+        if (list.length === (current.notificacoes_ia ?? []).length) break
+
+        col.cards[idx] = normalizeKanbanCard({
+          ...current,
+          notificacoes_ia: list,
+        })
+        changed = true
+        break
+      }
+      if (changed) this.columns = next
+    },
+
+    /**
+     * Reinsere uma notificação I.A. no card (rollback otimista).
+     * Se o id já existir, substitui; senão adiciona no início da lista.
+     */
+    restaurarNotificacaoIaNoCard(
+      conversaKey: string,
+      notificacao: KanbanCard['notificacoes_ia'][number],
+    ) {
+      const key = conversaKey?.trim()
+      if (!key || !notificacao || !Number.isFinite(notificacao.id) || notificacao.id < 1) return
+
+      let changed = false
+      const next = cloneColumns(this.columns)
+      for (const col of next) {
+        const idx = col.cards.findIndex((c) => c.conversa_key === key)
+        if (idx === -1) continue
+
+        const current = col.cards[idx]!
+        const list = [...(current.notificacoes_ia ?? [])]
+        const nIdx = list.findIndex((n) => n.id === notificacao.id)
+        if (nIdx >= 0) {
+          list[nIdx] = { ...notificacao }
+        } else {
+          list.unshift({ ...notificacao })
+        }
+
+        col.cards[idx] = normalizeKanbanCard({
+          ...current,
+          notificacoes_ia: list,
+        })
+        changed = true
+        break
+      }
+      if (changed) this.columns = next
+    },
+
+    /** Adiciona notificação I.A. criada no card (Pinia). */
+    adicionarNotificacaoIaNoCard(
+      conversaKey: string,
+      notificacao: KanbanCard['notificacoes_ia'][number],
+    ) {
+      this.restaurarNotificacaoIaNoCard(conversaKey, notificacao)
+    },
+
+    /**
+     * POST /api/kanban/notificacoes_ia — cria pedido_pronto e injeta no Pinia.
+     */
+    async criarNotificacaoPedidoPronto(input: {
+      workspaceId: number
+      canalId: number
+      conversaKey: string
+      produtos: Array<{ nome: string; qtd: number; preco: number }>
+      formaPagamento: string
+      observacoes?: string | null
+      nome?: string | null
+      fone?: string | null
+    }) {
+      const workspaceId = input.workspaceId
+      const canalId = input.canalId
+      const conversaKey = input.conversaKey?.trim()
+      if (
+        !Number.isFinite(workspaceId)
+        || workspaceId < 1
+        || !Number.isFinite(canalId)
+        || canalId < 1
+        || !conversaKey
+      ) {
+        throw new Error('Dados inválidos para criar o pedido.')
+      }
+
+      const res = await $fetch<{
+        ok: true
+        notificacao: KanbanCard['notificacoes_ia'][number]
+      }>('/api/kanban/notificacoes_ia', {
+        method: 'POST',
+        body: {
+          workspace_id: workspaceId,
+          canal_id: canalId,
+          conversa_key: conversaKey,
+          produtos: input.produtos,
+          forma_pagamento: input.formaPagamento,
+          observacoes: input.observacoes ?? null,
+          nome: input.nome ?? null,
+          fone: input.fone ?? null,
+        },
+      })
+
+      this.adicionarNotificacaoIaNoCard(conversaKey, res.notificacao)
+      return res
+    },
+
+    /** PATCH /api/kanban/notificacoes_ia — só persiste (Pinia fica a cargo do caller, otimista). */
+    async patchNotificacaoIaConcluido(input: {
+      workspaceId: number
+      conversaKey: string
+      notificacaoId: number
+      concluido: boolean
+    }) {
+      const workspaceId = input.workspaceId
+      const conversaKey = input.conversaKey?.trim()
+      const notificacaoId = input.notificacaoId
+      if (
+        !Number.isFinite(workspaceId)
+        || workspaceId < 1
+        || !conversaKey
+        || !Number.isFinite(notificacaoId)
+        || notificacaoId < 1
+      ) {
+        throw new Error('Dados inválidos para atualizar a notificação.')
+      }
+
+      return await $fetch<{
+        ok: true
+        id: number
+        concluido: boolean
+        updated_at: string
+      }>('/api/kanban/notificacoes_ia', {
+        method: 'PATCH',
+        body: {
+          workspace_id: workspaceId,
+          id: notificacaoId,
+          concluido: input.concluido,
+        },
+      })
+    },
+
+    /** DELETE /api/kanban/notificacoes_ia — só persiste (Pinia fica a cargo do caller, otimista). */
+    async deleteNotificacaoIa(input: {
+      workspaceId: number
+      conversaKey: string
+      notificacaoId: number
+    }) {
+      const workspaceId = input.workspaceId
+      const conversaKey = input.conversaKey?.trim()
+      const notificacaoId = input.notificacaoId
+      if (
+        !Number.isFinite(workspaceId)
+        || workspaceId < 1
+        || !conversaKey
+        || !Number.isFinite(notificacaoId)
+        || notificacaoId < 1
+      ) {
+        throw new Error('Dados inválidos para excluir a notificação.')
+      }
+
+      await $fetch('/api/kanban/notificacoes_ia', {
+        method: 'DELETE',
+        body: {
+          workspace_id: workspaceId,
+          id: notificacaoId,
+        },
+      })
+
+      return { ok: true as const, id: notificacaoId }
     },
 
     /** Remove um campo personalizado do card do board (ex.: após exclusão da definição). */

@@ -1,53 +1,32 @@
 -- view_kanban_conversas — chat, kanban e contatos (posição em conversas.coluna_id)
+-- Inclui agregação de notificacoes_ia. Campos personalizados continuam nas tabelas.
 DROP VIEW IF EXISTS public.view_kanban_conversas;
 
 CREATE VIEW public.view_kanban_conversas
 WITH (security_invoker = on) AS
 WITH
-  m_agrupadas AS (
+  n_agrupadas AS (
     SELECT
-      mensagens.key_conversa,
+      n_1.conversa_key,
       jsonb_agg(
         jsonb_build_object(
-          'message_id', mensagens.message_id,
-          'created_at', mensagens.created_at,
-          'from_me', mensagens.from_me,
-          'message', mensagens.message,
-          'phone', mensagens.phone,
-          'lid', mensagens.lid,
-          'connected_phone', mensagens.connected_phone,
-          'messagetype', mensagens.messagetype,
-          'from_api', mensagens.from_api,
-          'id_canal', mensagens.id_canal,
-          'media_url', mensagens.media_url,
-          'caption', mensagens.caption,
-          'filename', mensagens.filename,
-          'latitude', mensagens.latitude,
-          'longitude', mensagens.longitude,
-          'name', mensagens.name,
-          'replyid', mensagens.replyid
+          'id', n_1.id,
+          'produtos', n_1.produtos,
+          'total_orcamento', n_1.total_orcamento,
+          'observacoes', n_1.observacoes,
+          'forma_pagamento', n_1.forma_pagamento,
+          'latitude', n_1.latitude,
+          'longitude', n_1.longitude,
+          'tipo_solicitacao', n_1.tipo_solicitacao,
+          'created_at', n_1.created_at,
+          'updated_at', n_1.updated_at,
+          'entrega_ou_retirada', n_1.entrega_ou_retirada,
+          'concluido', n_1.concluido
         )
-        ORDER BY mensagens.created_at
-      ) AS historico_mensagens
-    FROM public.mensagens
-    WHERE mensagens.key_conversa IS NOT NULL
-    GROUP BY mensagens.key_conversa
-  ),
-  c_personalizados AS (
-    SELECT
-      v.conversa_key,
-      jsonb_agg(
-        jsonb_build_object(
-          'id', cp.id,
-          'nome', cp.nome,
-          'tipo', cp.tipo,
-          'valor', v.valor
-        )
-        ORDER BY cp.nome
-      ) AS lista_campos
-    FROM public.valores_campos_personalizados v
-    JOIN public.campos_personalizados cp ON cp.id = v.campo_id
-    GROUP BY v.conversa_key
+        ORDER BY n_1.created_at DESC
+      ) AS lista_notificacoes
+    FROM public.notificacoes_ia n_1
+    GROUP BY n_1.conversa_key
   )
 SELECT
   c.key AS conversa_key,
@@ -76,8 +55,7 @@ SELECT
   c.atendente_id,
   NULL::integer AS posicao,
   NULL::smallint AS prioridade,
-  COALESCE(m.historico_mensagens, '[]'::jsonb) AS mensagens,
-  COALESCE(cp.lista_campos, '[]'::jsonb) AS campos_personalizados
+  COALESCE(n.lista_notificacoes, '[]'::jsonb) AS notificacoes_ia
 FROM public.conversas c
 LEFT JOIN public.funil_workspace fw ON fw.id = c.funil_id
 LEFT JOIN public.funil_workspace_colunas fwc
@@ -85,8 +63,7 @@ LEFT JOIN public.funil_workspace_colunas fwc
   AND fwc.funil_id = fw.id
   AND fwc.deleted_at IS NULL
 LEFT JOIN public.canais ca ON ca.id = c.id_canal AND ca.deleted_at IS NULL
-LEFT JOIN m_agrupadas m ON m.key_conversa = c.key
-LEFT JOIN c_personalizados cp ON cp.conversa_key = c.key
+LEFT JOIN n_agrupadas n ON n.conversa_key = c.key
 WHERE c.deleted_at IS NULL;
 
 GRANT SELECT ON public.view_kanban_conversas TO authenticated;

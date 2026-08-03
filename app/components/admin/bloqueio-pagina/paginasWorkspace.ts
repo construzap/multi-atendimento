@@ -24,9 +24,7 @@ const LABELS: Record<string, string> = {
 }
 
 /** Páginas de ação / aninhadas que não entram no bloqueio. */
-const PATHS_IGNORADOS = new Set([
-  'produtos/criar',
-])
+const PATHS_IGNORADOS = new Set<string>([])
 
 /**
  * Descobre páginas em `app/pages/workspaces/[id]/...`.

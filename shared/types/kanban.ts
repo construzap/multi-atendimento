@@ -4,12 +4,28 @@
 
 import type { TipoCampoPersonalizado } from './camposPersonalizados'
 
-/** Campo personalizado embutido na view `view_kanban_conversas`. */
+/** Campo personalizado (tabelas `campos_personalizados` + `valores_campos_personalizados`). */
 export type KanbanCampoPersonalizadoResumo = {
   id: number
   nome: string
   tipo: TipoCampoPersonalizado
   valor: string | null
+}
+
+/** Item de `notificacoes_ia` na view `view_kanban_conversas`. */
+export type KanbanNotificacaoIa = {
+  id: number
+  produtos: string[]
+  total_orcamento: number
+  observacoes: string | null
+  forma_pagamento: string | null
+  latitude: number | null
+  longitude: number | null
+  tipo_solicitacao: string | null
+  created_at: string
+  updated_at: string
+  entrega_ou_retirada: string | null
+  concluido: boolean
 }
 
 export type KanbanCard = {
@@ -40,8 +56,10 @@ export type KanbanCard = {
   ia_ligada: boolean | null
   /** Mensagens não lidas (`conversas.nao_lidas`). */
   nao_lidas: number
-  /** Valores dos campos personalizados (view `view_kanban_conversas`). */
+  /** Valores dos campos personalizados (tabelas, não da view). */
   campos_personalizados: KanbanCampoPersonalizadoResumo[]
+  /** Notificações da I.A. agregadas na view (`notificacoes_ia`). */
+  notificacoes_ia: KanbanNotificacaoIa[]
 }
 
 export type KanbanColumn = {

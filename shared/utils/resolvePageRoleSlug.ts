@@ -5,7 +5,7 @@
  * Exemplos:
  * - `chat` → `chat`
  * - `chat/12/abc` → `chat`
- * - `produtos/criar` → `produtos`
+ * - `produtos` → `produtos`
  * - `produtos/enviar-para-ia/vector-store` → `vector-store`
  * - `kanban/5` → `kanban`
  */

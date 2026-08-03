@@ -5,7 +5,6 @@ import AdminAcessoNegado from '~/components/admin/AdminAcessoNegado.vue'
 import AdminEmpresaSeletor from '~/components/admin/AdminEmpresaSeletor.vue'
 import SeletorCanaisIa from '~/components/admin/ia/SeletorCanaisIa.vue'
 import type { AdminEmpresaRow } from '#shared/types/admin'
-import type { AdminVerificarResponse } from '#shared/types/profile'
 
 const adminStore = useAdminStore()
 const route = useRoute()
@@ -13,15 +12,7 @@ const mobileSidebarOpen = ref(false)
 
 const isPaginaIa = computed(() => route.path.startsWith('/admin/ia'))
 
-const {
-  data: verificarData,
-  pending: verificarPending,
-  error: verificarError,
-} = await useFetch<AdminVerificarResponse>('/api/admin/verificar', {
-  server: false,
-})
-
-const isAdmin = computed(() => verificarData.value?.isAdmin === true)
+const { pending: verificarPending, isAdmin, erroTexto: verificarErroTexto } = useAdminGate()
 
 watch(
   isAdmin,
@@ -54,12 +45,6 @@ watch(isPaginaIa, (paginaIa) => {
 })
 
 const companies = computed<AdminEmpresaRow[]>(() => adminStore.workspaceSeletorRows)
-
-const verificarErroTexto = computed(() => {
-  const e = verificarError.value as Error & { data?: { statusMessage?: string; message?: string } } | null
-  if (!e) return null
-  return e.data?.statusMessage ?? e.data?.message ?? e.message ?? 'Não foi possível verificar o acesso.'
-})
 
 const carregandoInicial = computed(
   () =>
