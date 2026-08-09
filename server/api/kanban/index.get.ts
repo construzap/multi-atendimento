@@ -7,6 +7,10 @@ import type {
   KanbanColumnPageResponse,
   KanbanNotificacaoIa,
 } from '#shared/types/kanban'
+import {
+  normalizeProdutosRaw,
+  normalizeTotalOrcamento,
+} from '#shared/utils/notificacaoIaProdutos'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { fetchCamposPersonalizadosPorConversas } from '../../utils/camposPersonalizadosPorConversas'
@@ -112,21 +116,16 @@ function parseNotificacoesIa(raw: unknown): KanbanNotificacaoIa[] {
     const id = intOrNull(o.id)
     if (id == null) continue
 
-    const produtosRaw = o.produtos
-    const produtos = Array.isArray(produtosRaw)
-      ? produtosRaw.map((p) => String(p ?? '')).filter((p) => p.length > 0)
-      : []
-
-    const totalRaw = o.total_orcamento
-    const total_orcamento =
-      totalRaw != null && Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : 0
+    const forma_pagamento = o.forma_pagamento != null ? String(o.forma_pagamento) : null
+    const produtos = normalizeProdutosRaw(o.produtos)
+    const total_orcamento = normalizeTotalOrcamento(o.total_orcamento)
 
     out.push({
       id,
       produtos,
       total_orcamento,
       observacoes: o.observacoes != null ? String(o.observacoes) : null,
-      forma_pagamento: o.forma_pagamento != null ? String(o.forma_pagamento) : null,
+      forma_pagamento,
       latitude: numberOrNull(o.latitude),
       longitude: numberOrNull(o.longitude),
       tipo_solicitacao: o.tipo_solicitacao != null ? String(o.tipo_solicitacao) : null,

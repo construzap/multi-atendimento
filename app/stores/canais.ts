@@ -330,19 +330,31 @@ export const useCanaisStore = defineStore('canais', {
       this.error = null
 
       try {
+        const body: Record<string, unknown> = {
+          id_canal: input.id_canal,
+          workspace_id: input.workspace_id,
+        }
+        if (input.nome !== undefined) body.nome = input.nome
+        if (input.descricao !== undefined) body.descricao = input.descricao ?? null
+        if (input.endereco !== undefined) body.endereco = input.endereco
+        if (input.latitude !== undefined) body.latitude = input.latitude
+        if (input.longitude !== undefined) body.longitude = input.longitude
+        if (input.tempo_aviso_minutos !== undefined) {
+          body.tempo_aviso_minutos = input.tempo_aviso_minutos
+        }
+        if (input.horarios !== undefined) body.horarios = input.horarios
+        if (input.tem_inteligencia_artificial !== undefined) {
+          body.tem_inteligencia_artificial = input.tem_inteligencia_artificial
+        }
+        if (input.url !== undefined) body.url = input.url
+        if (input.model_name !== undefined) body.model_name = input.model_name
+        if (input.api_key !== undefined && input.api_key !== null && input.api_key !== '') {
+          body.api_key = input.api_key
+        }
+
         const updated = await $fetch<CanalAtualizado>('/api/canais/editarcanal', {
           method: 'POST',
-          body: {
-            id_canal: input.id_canal,
-            workspace_id: input.workspace_id,
-            nome: input.nome,
-            descricao: input.descricao ?? null,
-            endereco: input.endereco,
-            latitude: input.latitude,
-            longitude: input.longitude,
-            tempo_aviso_minutos: input.tempo_aviso_minutos,
-            horarios: input.horarios,
-          }
+          body,
         })
 
         const idx = this.items.findIndex((c) => c.id === updated.id)

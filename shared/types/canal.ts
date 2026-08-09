@@ -14,7 +14,7 @@ export type CanalHorarios = {
 }
 
 /**
- * Tabela `public.canais` (Supabase) — projeção para listagem (sem token/servidor).
+ * Tabela `public.canais` (Supabase) — projeção para listagem (sem token/servidor/api_key).
  */
 export interface Canal {
   id: number
@@ -27,6 +27,12 @@ export interface Canal {
   endereco: string | null
   tempo_aviso_minutos: number
   horarios: CanalHorarios
+  tem_inteligencia_artificial: boolean
+  /** Endpoint OpenAI-compatible do agente (sem segredo). */
+  url: string | null
+  model_name: string | null
+  /** Indica se há api_key_encrypted no banco (nunca envia a chave). */
+  tem_api_key: boolean
 }
 
 /** Payload de criação de canal (POST /api/canais/criarcanal). */
@@ -45,11 +51,16 @@ export type CanalCreateInput = {
 export type CanalUpdateInput = {
   id_canal: number
   workspace_id: number
-  nome: string
+  nome?: string
   descricao?: string | null
   endereco?: string | null
   latitude?: number | null
   longitude?: number | null
   tempo_aviso_minutos?: number
   horarios?: CanalHorarios
+  tem_inteligencia_artificial?: boolean
+  url?: string | null
+  model_name?: string | null
+  /** Texto plano da API key — o servidor criptografa com pgp_sym_encrypt. */
+  api_key?: string | null
 }

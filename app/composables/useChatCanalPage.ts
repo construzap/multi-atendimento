@@ -12,8 +12,8 @@ function isWorkspaceChatPath(path: string, wid: number | null): boolean {
 /**
  * Layout do chat por canal.
  * - Ao abrir/trocar canal: GET `/api/conversas` → Pinia `byCanal[id].items`
- * - Se a URL tem `conversaKey`: garante a conversa na lista e define `conversaAtual`
- * - Sem `conversaKey` na URL: `conversaAtual = null`
+ * - Conversa ativa fica em Pinia (`conversaAtual`), não na URL
+ * - Se a URL ainda tiver `conversaKey` (link antigo): hidrata o Pinia e normaliza a URL
  */
 export function useChatCanalPage() {
   const route = useRoute()
@@ -33,7 +33,7 @@ export function useChatCanalPage() {
 
   const mobilePane = useState<'list' | 'chat' | 'info'>('chat_mobile_pane', () => 'list')
 
-  /** Evita refetch da lista quando só a conversa da URL muda. */
+  /** Evita refetch da lista quando só a conversa muda. */
   let lastListaCanalId: number | null = null
   let loadSeq = 0
 
@@ -58,8 +58,8 @@ export function useChatCanalPage() {
   )
 
   watch(
-    [canalId, conversaKeyFromRoute],
-    async ([id, key]) => {
+    canalId,
+    async (id) => {
       if (id == null) {
         throw createError({ statusCode: 404, statusMessage: 'Canal inválido.' })
       }
@@ -79,7 +79,6 @@ export function useChatCanalPage() {
         return
       }
 
-      // Lista paginada do canal (GET /api/conversas) — refetch ao trocar de canal.
       if (lastListaCanalId !== id) {
         try {
           await conversasStore.fetchPage(1, id, conversasStore.resolveFetchOptions())
@@ -90,17 +89,28 @@ export function useChatCanalPage() {
         lastListaCanalId = id
       }
 
-      if (key) {
-        await conversasStore.ensureConversaNaLista(id, key)
+      const keyFromRoute = conversaKeyFromRoute.value
+      if (keyFromRoute) {
+        await conversasStore.ensureConversaNaLista(id, keyFromRoute)
         if (seq !== loadSeq) return
-        conversasStore.setConversaAtual(key, id)
-        void mensagensStore.ensureLoaded(id, key, 1).catch(() => {})
-      } else {
-        conversasStore.setConversaAtual(null, id)
-        mensagensStore.setActiveKey(null)
+        conversasStore.setConversaAtual(keyFromRoute, id)
+        void mensagensStore.ensureLoaded(id, keyFromRoute, 1).catch(() => {})
       }
+      // Sem key na URL: não zera Pinia — a seleção vive em `byCanal[id].conversaAtual`.
     },
     { immediate: true },
+  )
+
+  // Links antigos `/chat/:canalId/:conversaKey` → hidrata Pinia (canal watch também cobre).
+  watch(
+    conversaKeyFromRoute,
+    async (key) => {
+      const id = canalId.value
+      if (!key || id == null) return
+      await conversasStore.ensureConversaNaLista(id, key)
+      conversasStore.setConversaAtual(key, id)
+      void mensagensStore.ensureLoaded(id, key, 1).catch(() => {})
+    },
   )
 
   function limparConversaAoSairDoChat() {

@@ -104,6 +104,17 @@ function parseSearchTerm(raw: unknown): string | undefined {
   return q ? q : undefined
 }
 
+function parseNaoLidasFilter(raw: unknown): boolean | undefined {
+  if (raw === undefined || raw === null || raw === '') return undefined
+  const s = String(raw).trim().toLowerCase()
+  if (s === 'true' || s === '1') return true
+  if (s === 'false' || s === '0') return false
+  throw createError({
+    statusCode: 400,
+    statusMessage: 'nao_lidas inválido (use true para filtrar nao_lidas > 0).',
+  })
+}
+
 /**
  * GET /api/conversas?id_canal=&page=&conversa_aberta=&is_group=
  * Lista conversas do canal via `view_kanban_conversas`, paginadas
@@ -115,6 +126,7 @@ function parseSearchTerm(raw: unknown): string | undefined {
  * - `conversa_aberta` (opcional): `true` = só abertas (inclui null legado); `false` = só fechadas; omitido = todas
  * - `is_group` (opcional): `false` = só 1:1 (inclui null legado); omitido = todas (inclui grupos)
  * - `coluna_id` (opcional): restringe à coluna específica do kanban
+ * - `nao_lidas` (opcional): `true` = só conversas com `nao_lidas > 0`; omitido = sem esse filtro
  * - `q` (opcional): termo de busca em `name` OU `phone` (parcial, case-insensitive)
  * - `key` (opcional): busca uma conversa específica por `conversa_key` (ignora paginação/filtros)
  */
@@ -177,6 +189,7 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
   const conversaAbertaFilter = parseConversaAbertaFilter(q.conversa_aberta)
   const isGroupFilter = parseIsGroupFilter(q.is_group)
   const colunaIdFilter = parseColunaIdFilter(q.coluna_id)
+  const naoLidasFilter = parseNaoLidasFilter(q.nao_lidas)
   const searchTerm = parseSearchTerm(q.q)
   const rawKey = q.key
   const conversaKeyFilter =
@@ -233,6 +246,10 @@ export default defineEventHandler(async (event): Promise<ConversasListResponse> 
 
   if (colunaIdFilter != null) {
     query = query.eq('coluna_id', colunaIdFilter)
+  }
+
+  if (naoLidasFilter === true) {
+    query = query.gt('nao_lidas', 0)
   }
 
   if (searchTerm) {

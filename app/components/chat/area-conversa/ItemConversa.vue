@@ -24,6 +24,8 @@ const props = withDefaults(
     fechada?: boolean
     isGrupo?: boolean
     naoLidas?: number
+    /** Última mensagem enviada por nós (`conversas.from_me`). */
+    fromMe?: boolean
   }>(),
   {
     horario: '',
@@ -36,6 +38,7 @@ const props = withDefaults(
     fechada: false,
     isGrupo: false,
     naoLidas: 0,
+    fromMe: false,
   }
 )
 
@@ -198,6 +201,18 @@ const preview = computed(() => {
   return `${emoji} ${props.ultimaMensagem}`.trim()
 })
 
+/**
+ * Duplo check ao lado do preview quando a última msg foi nossa.
+ * Fonte: prop da lista + `conversas.items[].from_me` no Pinia.
+ */
+const mostrarDuploCheck = computed(() => {
+  if (props.fromMe === true) return true
+  const key = props.conversaId.trim()
+  if (!key) return false
+  const conv = conversasStore.findConversaByKey(key)
+  return conv?.from_me === true
+})
+
 const temNaoLidas = computed(() => (props.naoLidas ?? 0) >= 1)
 
 const naoLidasLabel = computed(() => {
@@ -315,8 +330,28 @@ function onSelect() {
           Sem status
         </button>
       </div>
-      <p class="flex items-center gap-2 font-body text-xs text-on-surface-variant dark:text-slate-400">
-        <span class="min-w-0 flex-1 truncate">{{ preview }}</span>
+      <p class="flex min-w-0 items-center gap-1.5 font-body text-xs text-on-surface-variant dark:text-slate-400">
+        <span class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+          <!-- Duplo check (mesmo papel do BalaoMensagens `done_all`) — só se from_me -->
+          <svg
+            v-if="mostrarDuploCheck"
+            class="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400"
+            viewBox="0 0 16 11"
+            fill="none"
+            aria-label="Enviada por você"
+            title="Enviada por você"
+          >
+            <path
+              d="M11.07 1.14 5.4 8.07 2.93 5.5 1.8 6.67l3.6 3.73L12.2 2.27 11.07 1.14Z"
+              fill="currentColor"
+            />
+            <path
+              d="M14.2 1.14 8.53 8.07 7.4 6.9 6.27 8.07l2.26 2.33L15.33 2.27 14.2 1.14Z"
+              fill="currentColor"
+            />
+          </svg>
+          <span class="min-w-0 truncate">{{ preview }}</span>
+        </span>
         <span
           v-if="temNaoLidas"
           class="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-[#25D366] px-1.5 text-[11px] font-semibold leading-none text-white shadow-sm"

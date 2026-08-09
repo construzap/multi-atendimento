@@ -4,10 +4,31 @@ import type { Canal } from '#shared/types/canal'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 
+const CANAL_SELECT =
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted'
+
+type CanalRow = Record<string, unknown> & {
+  api_key_encrypted?: unknown
+}
+
+function mapCanalPublico(row: CanalRow): Canal {
+  const { api_key_encrypted, ...rest } = row
+  const temApiKey =
+    api_key_encrypted != null && String(api_key_encrypted).trim().length > 0
+
+  return {
+    ...(rest as Omit<Canal, 'tem_api_key' | 'tem_inteligencia_artificial'>),
+    tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
+    url: typeof row.url === 'string' ? row.url : null,
+    model_name: typeof row.model_name === 'string' ? row.model_name : null,
+    tem_api_key: temApiKey,
+  }
+}
+
 /**
  * GET /api/canais?workspace_id=
  * Lista canais do workspace para o usuário logado (não deletados).
- * Filtra apenas por workspace_id (sem user_id na query de canais).
+ * Não expõe `api_key_encrypted` — só `tem_api_key`.
  */
 export default defineEventHandler(async (event): Promise<Canal[]> => {
   const client = await serverSupabaseClient(event)
@@ -41,7 +62,7 @@ export default defineEventHandler(async (event): Promise<Canal[]> => {
 
   const { data, error } = await admin
     .from('canais')
-    .select('id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios')
+    .select(CANAL_SELECT)
     .eq('workspace_id', workspaceId)
     .is('deleted_at', null)
     .is('deleted_by', null)
@@ -51,5 +72,5 @@ export default defineEventHandler(async (event): Promise<Canal[]> => {
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
 
-  return (data ?? []) as Canal[]
+  return ((data ?? []) as CanalRow[]).map(mapCanalPublico)
 })

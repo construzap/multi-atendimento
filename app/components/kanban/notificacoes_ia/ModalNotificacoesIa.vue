@@ -14,7 +14,9 @@ import {
   formatMoedaBr,
   isPedidoPronto,
   labelTipoSolicitacao,
+  normalizeTotalOrcamento,
   parseProdutosNotificacao,
+  resolveTotalOrcamento,
 } from './parseProdutosNotificacao'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -31,6 +33,9 @@ const { columns } = storeToRefs(kanban)
 const expandidoId = ref<number | null>(null)
 const modalExcluirAberto = ref(false)
 const notificacaoParaExcluir = ref<KanbanNotificacaoIa | null>(null)
+/** Padrão: só pendentes (`concluido === false`). */
+const mostrarTodos = ref(false)
+const filtroPending = ref(false)
 
 /** IDs com request em andamento (não bloqueia outras notificações). */
 const emVoo = reactive<Record<number, true>>({})
@@ -54,6 +59,7 @@ watch(open, (aberto) => {
     expandidoId.value = null
     modalExcluirAberto.value = false
     notificacaoParaExcluir.value = null
+    mostrarTodos.value = false
   }
 })
 
@@ -71,13 +77,30 @@ const notificacoes = computed<KanbanNotificacaoIa[]>(() => {
   const list = cardNoPinia.value?.notificacoes_ia
   if (!Array.isArray(list)) return []
   return [...list]
-    .filter((n) => n.concluido === false && isPedidoPronto(n.tipo_solicitacao))
+    .filter((n) => {
+      if (!isPedidoPronto(n.tipo_solicitacao)) return false
+      if (mostrarTodos.value) return true
+      return n.concluido === false
+    })
     .sort((a, b) => {
       const ta = a.created_at ? new Date(a.created_at).getTime() : 0
       const tb = b.created_at ? new Date(b.created_at).getTime() : 0
       return tb - ta
     })
 })
+
+async function onToggleMostrarTodos() {
+  const wsId = workspaceId.value
+  if (!wsId) return
+  filtroPending.value = true
+  try {
+    await kanban.refetchCurrentBoard(wsId)
+  } catch {
+    // erro já tratado na store
+  } finally {
+    filtroPending.value = false
+  }
+}
 
 watch(
   notificacoes,
@@ -112,6 +135,10 @@ function qtdItensPedido(item: KanbanNotificacaoIa): number {
   return parseProdutosNotificacao(item.produtos).length
 }
 
+function totalPedidoExibicao(item: KanbanNotificacaoIa): number | null {
+  return resolveTotalOrcamento(item.total_orcamento, item.forma_pagamento)
+}
+
 function toggleExpandido(id: number) {
   expandidoId.value = expandidoId.value === id ? null : id
 }
@@ -120,6 +147,7 @@ function clonarNotificacao(item: KanbanNotificacaoIa): KanbanNotificacaoIa {
   return {
     ...item,
     produtos: Array.isArray(item.produtos) ? [...item.produtos] : [],
+    total_orcamento: normalizeTotalOrcamento(item.total_orcamento),
   }
 }
 
@@ -255,11 +283,45 @@ function confirmarExcluirNotificacao() {
     panel-class="w-full max-w-lg"
     body-class="max-h-[min(75vh,36rem)] overflow-y-auto !p-4 sm:!p-5"
   >
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <label class="inline-flex cursor-pointer items-center gap-2 select-none">
+        <span class="relative inline-flex items-center">
+          <input
+            v-model="mostrarTodos"
+            type="checkbox"
+            class="peer sr-only"
+            role="switch"
+            :disabled="filtroPending"
+            aria-label="Mostrar todos os pedidos"
+            @change="onToggleMostrarTodos"
+          />
+          <span
+            class="relative h-5 w-9 rounded-full bg-outline/40 transition-colors peer-checked:bg-primary-500 peer-disabled:opacity-60 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-300 dark:bg-dark-outline/50 dark:peer-checked:bg-primary-500"
+            aria-hidden="true"
+          >
+            <span
+              class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform"
+              :class="mostrarTodos ? 'translate-x-4' : 'translate-x-0'"
+            />
+          </span>
+        </span>
+        <span class="text-sm font-medium text-on-surface dark:text-dark-on-surface">
+          Mostrar todos
+        </span>
+      </label>
+      <span
+        v-if="filtroPending"
+        class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+      >
+        Atualizando…
+      </span>
+    </div>
+
     <p
       v-if="notificacoes.length === 0"
       class="py-6 text-center text-sm text-on-surface-variant dark:text-dark-on-surface-variant"
     >
-      Nenhum pedido pendente nesta conversa.
+      {{ mostrarTodos ? 'Nenhum pedido nesta conversa.' : 'Nenhum pedido pendente nesta conversa.' }}
     </p>
 
     <ul v-else class="space-y-3" role="list">
@@ -315,7 +377,7 @@ function confirmarExcluirNotificacao() {
             <template v-if="isPedidoPronto(item.tipo_solicitacao)">
               <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
                 <span class="font-semibold tabular-nums text-on-surface dark:text-dark-on-surface">
-                  {{ formatMoedaBr(item.total_orcamento) }}
+                  {{ formatMoedaBr(totalPedidoExibicao(item)) }}
                 </span>
                 <span class="text-on-surface-variant dark:text-dark-on-surface-variant">
                   {{ textoOuTraco(item.forma_pagamento) }}

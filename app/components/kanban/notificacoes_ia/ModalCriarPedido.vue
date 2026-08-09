@@ -15,7 +15,10 @@ export type LinhaPedidoCriar = {
   produtoId: number | null
   nome: string
   qtd: number
+  /** Preço à vista (unitário). */
   preco: number
+  /** Preço a prazo (unitário); se ausente, igual ao à vista. */
+  precoPrazo: number
 }
 
 const open = defineModel<boolean>('open', { default: false })
@@ -68,8 +71,15 @@ const lojaNome = computed(() => {
   return ws?.nome?.trim() || null
 })
 
-const totalOrcamento = computed(() =>
+const totalVista = computed(() =>
   linhas.value.reduce((acc, l) => acc + Math.max(0, l.qtd) * Math.max(0, l.preco), 0),
+)
+
+const totalPrazo = computed(() =>
+  linhas.value.reduce(
+    (acc, l) => acc + Math.max(0, l.qtd) * Math.max(0, l.precoPrazo),
+    0,
+  ),
 )
 
 const podeCriar = computed(() => {
@@ -120,7 +130,7 @@ function uid(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-function precoProduto(p: ProdutoWorkspaceItem): number {
+function precoVistaProduto(p: ProdutoWorkspaceItem): number {
   const promo = p.preco_promocional
   if (promo != null && Number.isFinite(Number(promo)) && Number(promo) > 0) {
     return Number(promo)
@@ -128,17 +138,27 @@ function precoProduto(p: ProdutoWorkspaceItem): number {
   return Number.isFinite(Number(p.preco)) ? Number(p.preco) : 0
 }
 
+function precoPrazoProduto(p: ProdutoWorkspaceItem, vista: number): number {
+  const prazo = p.preco_prazo
+  if (prazo != null && Number.isFinite(Number(prazo)) && Number(prazo) >= 0) {
+    return Number(prazo)
+  }
+  return vista
+}
+
 function adicionarProduto(p: ProdutoWorkspaceItem) {
   const existente = linhas.value.find((l) => l.produtoId === p.id)
   if (existente) {
     existente.qtd += 1
   } else {
+    const vista = precoVistaProduto(p)
     linhas.value.push({
       key: uid(),
       produtoId: p.id,
       nome: p.nome?.trim() || `Produto #${p.id}`,
       qtd: 1,
-      preco: precoProduto(p),
+      preco: vista,
+      precoPrazo: precoPrazoProduto(p, vista),
     })
   }
   buscaTexto.value = ''
@@ -211,8 +231,12 @@ async function criarPedido() {
       conversaKey: key,
       produtos: linhas.value.map((l) => ({
         nome: l.nome.trim(),
+        nome_produto: l.nome.trim(),
         qtd: l.qtd,
+        quantidade: l.qtd,
         preco: l.preco,
+        preco_vista: l.preco,
+        preco_prazo: l.precoPrazo,
       })),
       formaPagamento: formaPagamento.value.trim(),
       nome: props.clienteNome ?? null,
@@ -295,7 +319,7 @@ async function criarPedido() {
               {{ p.nome }}
             </span>
             <span class="shrink-0 tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-              {{ formatMoedaBr(precoProduto(p)) }}
+              {{ formatMoedaBr(precoVistaProduto(p)) }}
             </span>
           </button>
         </div>
@@ -313,7 +337,10 @@ async function criarPedido() {
               {{ linha.nome }}
             </p>
             <p class="text-xs tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-              {{ formatMoedaBr(linha.preco) }} un.
+              À vista {{ formatMoedaBr(linha.preco) }}
+              <template v-if="linha.precoPrazo !== linha.preco">
+                · Prazo {{ formatMoedaBr(linha.precoPrazo) }}
+              </template>
             </p>
           </div>
           <input
@@ -337,13 +364,23 @@ async function criarPedido() {
           </button>
         </div>
 
-        <div class="flex items-baseline justify-between gap-3 pt-1">
-          <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
-            Total
-          </span>
-          <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-            {{ formatMoedaBr(totalOrcamento) }}
-          </span>
+        <div class="space-y-1 pt-1">
+          <div class="flex items-baseline justify-between gap-3">
+            <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
+              Total à vista
+            </span>
+            <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
+              {{ formatMoedaBr(totalVista) }}
+            </span>
+          </div>
+          <div class="flex items-baseline justify-between gap-3">
+            <span class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+              Total a prazo
+            </span>
+            <span class="text-sm font-semibold tabular-nums text-on-surface dark:text-dark-on-surface">
+              {{ formatMoedaBr(totalPrazo) }}
+            </span>
+          </div>
         </div>
       </div>
       <p

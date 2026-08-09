@@ -3,7 +3,7 @@
  * Chat do canal sem conversa na URL:
  * `/workspaces/:id/chat/:canalId`
  *
- * Carrega a lista via GET /api/conversas e deixa `conversaAtual = null`.
+ * A conversa selecionada fica só no Pinia (`conversaAtual`).
  */
 definePageMeta({
   layout: 'workspace',

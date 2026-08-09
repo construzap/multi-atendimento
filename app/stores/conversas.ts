@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import type { Anotacao, AnotacoesListResponse } from '#shared/types/anotacao'
 import type { CampoPersonalizado, ValorCampoPersonalizado } from '#shared/types/camposPersonalizados'
 import type { Conversa, ConversaAtualizarResponse, ConversaCampoPersonalizado, ConversaPatch, ConversasListResponse } from '#shared/types/conversa'
+import type { PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { useCanaisStore } from '~/stores/canais'
 import { useCamposPersonalizadosStore } from '~/stores/camposPersonalizados'
@@ -68,6 +69,8 @@ type CanalConversasState = {
 export type ConversasFiltrosKanban = {
   funilId: number | null
   colunaId: number | null
+  /** Quando true, lista só conversas com `nao_lidas > 0`. */
+  naoLidas: boolean
 }
 
 export type ConversasFiltros = {
@@ -97,6 +100,7 @@ function emptyFiltros(): ConversasFiltros {
     kanban: {
       funilId: null,
       colunaId: null,
+      naoLidas: false,
     },
   }
 }
@@ -154,6 +158,8 @@ type FetchOptions = {
   q?: string
   /** Filtro opcional de coluna do kanban. */
   colunaId?: number
+  /** Quando true, API retorna só conversas com `nao_lidas > 0`. */
+  naoLidas?: boolean
 }
 
 export const useConversasStore = defineStore('conversas', {
@@ -246,6 +252,9 @@ export const useConversasStore = defineStore('conversas', {
     filtroKanbanColunaId(state): number | null {
       return state.filtros.kanban.colunaId
     },
+    filtroKanbanNaoLidas(state): boolean {
+      return state.filtros.kanban.naoLidas === true
+    },
     temFiltroKanbanAtivo(state): boolean {
       return state.filtros.kanban.funilId != null || state.filtros.kanban.colunaId != null
     },
@@ -260,6 +269,7 @@ export const useConversasStore = defineStore('conversas', {
       if (!this.filtros.mostrarFechadas) opts.conversaAberta = true
       if (!this.filtros.mostrarGrupos) opts.isGroup = false
       if (this.filtros.kanban.colunaId != null) opts.colunaId = this.filtros.kanban.colunaId
+      if (this.filtros.kanban.naoLidas) opts.naoLidas = true
       return opts
     },
 
@@ -295,6 +305,17 @@ export const useConversasStore = defineStore('conversas', {
     async setMostrarGrupos(value: boolean) {
       if (this.filtros.mostrarGrupos === value) return
       this.filtros.mostrarGrupos = value
+      this.filtros.termoPesquisa = ''
+
+      const idCanal = this.activeCanalId
+      if (idCanal == null) return
+
+      await this.fetchPage(1, idCanal, this.listFetchOptions())
+    },
+
+    async setFiltroNaoLidas(value: boolean) {
+      if (this.filtros.kanban.naoLidas === value) return
+      this.filtros.kanban.naoLidas = value
       this.filtros.termoPesquisa = ''
 
       const idCanal = this.activeCanalId
@@ -473,6 +494,7 @@ export const useConversasStore = defineStore('conversas', {
         this.filtros.termoPesquisa = ''
         this.filtros.kanban.funilId = null
         this.filtros.kanban.colunaId = null
+        this.filtros.kanban.naoLidas = false
       }
       this.activeCanalId = id
       if (id == null) return
@@ -620,6 +642,9 @@ export const useConversasStore = defineStore('conversas', {
 
       bucket.pending = true
       bucket.error = null
+      if (!options.append) {
+        bucket.items = []
+      }
       try {
         const query: Record<string, string | number | boolean> = {
           id_canal: idCanal,
@@ -629,6 +654,7 @@ export const useConversasStore = defineStore('conversas', {
         else if (options.conversaAberta === false) query.conversa_aberta = false
         if (options.isGroup === false) query.is_group = false
         if (options.colunaId != null) query.coluna_id = options.colunaId
+        if (options.naoLidas === true) query.nao_lidas = true
         if (options.q) query.q = options.q
 
         const res = await $fetch<ConversasListResponse>('/api/conversas', {
@@ -652,10 +678,12 @@ export const useConversasStore = defineStore('conversas', {
         bucket.perPage = res.perPage
         bucket.total = res.total
         bucket.loadedAt = Date.now()
+        this._syncConversaAtualComItems(idCanal)
       } catch (err) {
         bucket.items = []
         bucket.total = 0
         bucket.error = mensagemErroFetch(err, 'Não foi possível carregar as conversas.')
+        this._syncConversaAtualComItems(idCanal)
         throw err
       } finally {
         bucket.pending = false
@@ -1019,10 +1047,55 @@ export const useConversasStore = defineStore('conversas', {
       bucket.conversaAtual = key && key.trim() ? key.trim() : null
     },
 
+    /**
+     * Se `conversaAtual` não estiver em `items` do canal, zera a seleção.
+     * (ex.: após filtro/refresh da lista).
+     */
+    _syncConversaAtualComItems(canalId?: number) {
+      const idCanal = canalId ?? this.activeCanalId
+      if (idCanal == null) return
+      const bucket = this.byCanal[idCanal]
+      if (!bucket) return
+      const key = bucket.conversaAtual?.trim()
+      if (!key) return
+      if (!bucket.items.some((c) => c.key === key)) {
+        bucket.conversaAtual = null
+      }
+    },
+
     /** Zera a seleção em todos os canais (ex.: ao sair do chat). */
     clearAllConversaAtual() {
       for (const bucket of Object.values(this.byCanal)) {
         bucket.conversaAtual = null
+      }
+    },
+
+    /**
+     * Evento Pusher `kanban-atualizacao` (N8N): se a conversa já estiver no cache,
+     * espelha `coluna_id` / `funil_id`. Se não estiver na lista, não faz nada.
+     */
+    mergeFromPusherKanbanAtualizacao(payload: PusherKanbanAtualizacaoPayload) {
+      const key = payload.conversa_key?.trim()
+      if (!key) return
+
+      const colunaId =
+        payload.coluna_id != null && Number.isFinite(Number(payload.coluna_id))
+          ? Number(payload.coluna_id)
+          : null
+      const funilId =
+        payload.funil_id != null && Number.isFinite(Number(payload.funil_id))
+          ? Number(payload.funil_id)
+          : null
+
+      for (const bucket of Object.values(this.byCanal)) {
+        const idx = bucket.items.findIndex((c) => c.key === key)
+        if (idx === -1) continue
+        const prev = bucket.items[idx]!
+        bucket.items[idx] = {
+          ...prev,
+          coluna_id: colunaId,
+          funil_id: payload.funil_id !== undefined ? funilId : prev.funil_id,
+        }
       }
     },
 

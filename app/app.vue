@@ -2,6 +2,7 @@
 import { NuxtPage, NuxtRouteAnnouncer } from '#components'
 import { Toaster } from 'vue-sonner'
 import 'vue-sonner/style.css'
+import KanbanPusherAlertaModal from '~/components/kanban/KanbanPusherAlertaModal.vue'
 
 const { isDark } = useColorMode()
 </script>
@@ -14,6 +15,7 @@ const { isDark } = useColorMode()
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
+    <KanbanPusherAlertaModal />
     <Toaster
       rich-colors
       position="top-right"

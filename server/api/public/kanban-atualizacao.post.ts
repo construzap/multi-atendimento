@@ -1,10 +1,22 @@
 import { assertMethod, createError, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import type { KanbanNotificacaoIa, PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
+import {
+  normalizeProdutosRaw,
+  normalizeTotalOrcamento,
+} from '#shared/utils/notificacaoIaProdutos'
 import { requireN8nKanbanApiKey } from '../../utils/requireN8nKanbanApiKey'
 import { triggerKanbanAtualizacao } from '../../utils/pusherServer'
 
-type ProdutoBody = { nome?: unknown; qtd?: unknown; quantidade?: unknown; preco?: unknown }
+type ProdutoBody = {
+  nome?: unknown
+  nome_produto?: unknown
+  qtd?: unknown
+  quantidade?: unknown
+  preco?: unknown
+  preco_vista?: unknown
+  preco_prazo?: unknown
+}
 
 type Body = {
   workspace_id?: unknown
@@ -55,16 +67,42 @@ function formatPrecoBr(valor: number): string {
   })
 }
 
+function parsePrecoNumber(raw: unknown): number {
+  if (typeof raw === 'number') return raw
+  return Number.parseFloat(String(raw ?? '').replace(/\./g, '').replace(',', '.'))
+}
+
 /**
  * Aceita:
- * - `[{ nome, qtd, preco }, …]`
+ * - `[{ nome|nome_produto, qtd|quantidade, preco|preco_vista|preco_prazo }, …]`
  * - `["50X CIMENTO - R$ 54,00", "2X AREIA - R$ 130,00"]`
  * - `"50X CIMENTO - R$ 54,00\\n2X AREIA - R$ 130,00"` (string multilinha)
+ *
+ * Se `produtos` chegar como string `"[object Object],…"` (erro clássico do N8N
+ * ao interpolar array em JSON texto), devolve 400 com orientação.
  */
 function parseProdutosBody(raw: unknown): { linhas: string[]; total: number } {
-  // String multilinha já formatada (comum no N8N).
+  // String: pode ser multilinha formatada OU JSON array stringificado pelo N8N.
   if (typeof raw === 'string') {
-    const linhas = raw
+    const trimmed = raw.trim()
+    if (/\[object Object\]/i.test(trimmed)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage:
+          'produtos chegou como "[object Object]". No N8N use body ={{ { ..., produtos: $json.produtos } }} (objeto JS), sem JSON.stringify.',
+      })
+    }
+    if (trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed) as unknown
+        if (Array.isArray(parsed)) {
+          return parseProdutosBody(parsed)
+        }
+      } catch {
+        // cai no fluxo de linhas abaixo
+      }
+    }
+    const linhas = trimmed
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter((l) => l.length > 0)
@@ -106,7 +144,7 @@ function parseProdutosBody(raw: unknown): { linhas: string[]; total: number } {
     if (!item || typeof item !== 'object') {
       throw createError({ statusCode: 400, statusMessage: 'Produto inválido.' })
     }
-    const nome = strOrNull(item.nome)
+    const nome = strOrNull(item.nome) ?? strOrNull(item.nome_produto)
     if (!nome) {
       throw createError({ statusCode: 400, statusMessage: 'Nome do produto é obrigatório.' })
     }
@@ -123,11 +161,8 @@ function parseProdutosBody(raw: unknown): { linhas: string[]; total: number } {
       })
     }
 
-    const precoRaw = item.preco
-    const preco =
-      typeof precoRaw === 'number'
-        ? precoRaw
-        : Number.parseFloat(String(precoRaw ?? '').replace(/\./g, '').replace(',', '.'))
+    const precoRaw = item.preco ?? item.preco_vista ?? item.preco_prazo
+    const preco = parsePrecoNumber(precoRaw)
     if (!Number.isFinite(preco) || preco < 0) {
       throw createError({
         statusCode: 400,
@@ -148,21 +183,17 @@ function temProdutosNoBody(raw: unknown): boolean {
 }
 
 function mapNotificacao(row: Record<string, unknown>): KanbanNotificacaoIa {
-  const produtosRaw = row.produtos
-  const produtos = Array.isArray(produtosRaw)
-    ? produtosRaw.map((p) => String(p ?? '')).filter((p) => p.length > 0)
-    : []
-
-  const totalRaw = row.total_orcamento
-  const total_orcamento =
-    totalRaw != null && Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : 0
+  const forma_pagamento =
+    row.forma_pagamento != null ? String(row.forma_pagamento) : null
+  const produtos = normalizeProdutosRaw(row.produtos)
+  const total_orcamento = normalizeTotalOrcamento(row.total_orcamento)
 
   return {
     id: typeof row.id === 'number' ? row.id : Number(row.id),
     produtos,
     total_orcamento,
     observacoes: row.observacoes != null ? String(row.observacoes) : null,
-    forma_pagamento: row.forma_pagamento != null ? String(row.forma_pagamento) : null,
+    forma_pagamento,
     latitude: row.latitude != null && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null,
     longitude:
       row.longitude != null && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null,
@@ -342,10 +373,9 @@ export default defineEventHandler(async (event) => {
     }
 
     const { linhas, total: totalCalculado } = parseProdutosBody(body.produtos)
-    const totalBody =
-      body.total_orcamento != null && Number.isFinite(Number(body.total_orcamento))
-        ? Number(body.total_orcamento)
-        : totalCalculado
+    const totalBody = normalizeTotalOrcamento(
+      body.total_orcamento != null ? body.total_orcamento : totalCalculado,
+    )
 
     const nowIso = new Date().toISOString()
     const nome = strOrNull(body.nome) ?? strOrNull(conversa.name)

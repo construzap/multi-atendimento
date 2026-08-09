@@ -13,6 +13,7 @@ export function useConversasFiltros() {
     termoPesquisa,
     filtroKanbanFunilId,
     filtroKanbanColunaId,
+    filtroKanbanNaoLidas,
     temFiltroKanbanAtivo,
   } = storeToRefs(conversasStore)
 
@@ -24,6 +25,7 @@ export function useConversasFiltros() {
     termoPesquisa,
     filtroKanbanFunilId,
     filtroKanbanColunaId,
+    filtroKanbanNaoLidas,
     temFiltroKanbanAtivo,
   }
 }

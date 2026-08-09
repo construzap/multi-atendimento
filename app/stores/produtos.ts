@@ -1090,17 +1090,26 @@ export const useProdutosStore = defineStore('produtos', {
       this.criarEmMassaItems = next
     },
 
-    /** Remove rascunhos sem nome (não serão enviados). */
-    removerLinhasCriarEmMassaSemNome() {
-      this.criarEmMassaItems = this.criarEmMassaItems.filter(
-        (r) => String(r.nome ?? '').trim().length > 0,
-      )
+    /** Remove rascunhos sem os campos obrigatórios (nome, termo, unidade, preço). */
+    removerLinhasCriarEmMassaIncompletas() {
+      this.criarEmMassaItems = this.criarEmMassaItems.filter((r) => {
+        const nomeOk = String(r.nome ?? '').trim().length > 0
+        const termoOk = (r.termos_pesquisa?.[0]?.id ?? 0) > 0
+        const unidadeOk = String(r.unidade_venda ?? '').trim().length > 0
+        const precoOk = r.preco != null && Number.isFinite(r.preco) && r.preco >= 0
+        return nomeOk && termoOk && unidadeOk && precoOk
+      })
     },
 
     montarPayloadCriarEmMassa(): ProdutoCriarEmMassaLinha[] {
       return this.criarEmMassaItems
+        .filter((r) => {
+          const nomeOk = String(r.nome ?? '').trim().length > 0
+          const termoOk = (r.termos_pesquisa?.[0]?.id ?? 0) > 0
+          const unidadeOk = String(r.unidade_venda ?? '').trim().length > 0
+          return nomeOk && termoOk && unidadeOk
+        })
         .map((r) => linhaParaPayload(r))
-        .filter((r) => r.nome.trim().length > 0)
     },
 
     /** Linha mínima para variação: só `nome` + `parent_id`. */

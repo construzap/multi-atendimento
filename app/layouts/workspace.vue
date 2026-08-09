@@ -37,6 +37,7 @@ const route = useRoute()
 const workspaces = useWorkspacesStore()
 const profile = useProfileStore()
 const pageRoles = usePageRolesStore()
+const canais = useCanaisStore()
 
 try {
   await profile.ensureAdminVerificado()
@@ -47,6 +48,23 @@ const isAdmin = computed(() => profile.isAdminConfirmado)
 
 const workspaceId = computed(() => workspaces.currentWorkspaceId ?? String(route.params.id ?? ''))
 const base = computed(() => `/workspaces/${workspaceId.value}`)
+
+/** Garante canais no Pinia em qualquer página do workspace → Pusher inscrito (alerta de pedido fora do Kanban). */
+watch(
+  workspaceId,
+  async (idRaw) => {
+    const wsId = Number.parseInt(String(idRaw ?? '').trim(), 10)
+    if (!Number.isFinite(wsId) || wsId < 1) return
+    workspaces.setCurrentWorkspaceId(String(wsId))
+    try {
+      await canais.ensureCanaisLoaded(wsId)
+    } catch {
+      /* listError na store; não bloqueia a navegação */
+    }
+  },
+  { immediate: true },
+)
+
 watch(
   () => [workspaces.currentWorkspaceId ?? String(route.params.id ?? ''), profile.me?.id] as const,
   async ([wsRaw, profileId]) => {

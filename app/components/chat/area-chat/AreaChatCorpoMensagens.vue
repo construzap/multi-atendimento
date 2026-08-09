@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
+import type { Mensagem } from '#shared/types/mensagem'
+import { dayKeyFromIso, labelDiaChat } from '#shared/utils/chatDiaLabel'
 import BalaoMensagem from '~/components/chat/area-chat/BalaoMensagens/BalaoMensagem.vue'
+
+type TimelineItem =
+  | { kind: 'day'; key: string; label: string }
+  | { kind: 'msg'; key: string; mensagem: Mensagem }
 
 const conversas = useConversasStore()
 const mensagens = useMensagensStore()
@@ -21,18 +27,47 @@ watch(
   (k) => {
     mensagens.setActiveKey(k)
   },
-  { immediate: true }
+  { immediate: true },
 )
 
 // API vem mais recente primeiro; para UI tipo WhatsApp (de cima para baixo),
 // exibimos do mais antigo para o mais novo e ancoramos o bloco no rodapé.
 const mensagensOrdenadas = computed(() => [...mensagens.items].reverse())
 
+const timeline = computed<TimelineItem[]>(() => {
+  const out: TimelineItem[] = []
+  let lastDay: string | null = null
+  const agora = new Date()
+
+  for (const m of mensagensOrdenadas.value) {
+    const dayKey = dayKeyFromIso(m.created_at) ?? 'sem-data'
+    if (dayKey !== lastDay) {
+      lastDay = dayKey
+      out.push({
+        kind: 'day',
+        key: `day-${dayKey}`,
+        label: labelDiaChat(m.created_at, agora) || dayKey,
+      })
+    }
+    out.push({
+      kind: 'msg',
+      key: m.temp_id ?? m.message_id,
+      mensagem: m,
+    })
+  }
+  return out
+})
+
 const scroller = ref<HTMLElement | null>(null)
 const isAtBottom = ref(true)
 /** Próximo do topo do rolagem (para exibir “Carregar mais mensagens”). */
 const isAtTop = ref(true)
 const shouldScrollOnOpen = ref(false)
+
+/** Pill flutuante (estilo WhatsApp) com o dia visível ao rolar. */
+const stickyDayLabel = ref('')
+const stickyDayVisible = ref(false)
+let stickyHideTimer: ReturnType<typeof setTimeout> | null = null
 
 const TOP_THRESHOLD_PX = 80
 
@@ -49,9 +84,44 @@ function updateIsAtTop() {
   isAtTop.value = el.scrollTop <= TOP_THRESHOLD_PX
 }
 
+function updateStickyDay() {
+  const el = scroller.value
+  if (!el) return
+
+  const markers = el.querySelectorAll<HTMLElement>('[data-day-divider]')
+  if (markers.length === 0) {
+    stickyDayLabel.value = ''
+    return
+  }
+
+  const boxTop = el.getBoundingClientRect().top
+  const threshold = boxTop + 56
+  let label = ''
+
+  for (const marker of markers) {
+    if (marker.getBoundingClientRect().top <= threshold) {
+      label = marker.dataset.dayLabel ?? ''
+    }
+  }
+
+  if (label) stickyDayLabel.value = label
+}
+
+function showStickyDayTemporarily() {
+  updateStickyDay()
+  if (!stickyDayLabel.value) return
+  stickyDayVisible.value = true
+  if (stickyHideTimer) clearTimeout(stickyHideTimer)
+  stickyHideTimer = setTimeout(() => {
+    stickyDayVisible.value = false
+    stickyHideTimer = null
+  }, 1200)
+}
+
 function onScrollerScroll() {
   updateIsAtBottom()
   updateIsAtTop()
+  showStickyDayTemporarily()
 }
 
 async function scrollToBottom() {
@@ -89,7 +159,6 @@ async function onLoadMoreMensagens() {
   try {
     const added = await mensagens.fetchNextPage()
     if (added === 0) {
-      // Se não há mais páginas, não insiste em toast a cada clique.
       toast.info('Não há mais mensagens para serem carregadas.', { duration: 2500 })
       return
     }
@@ -105,6 +174,7 @@ async function onLoadMoreMensagens() {
     box.scrollTop = prevTop + delta
     updateIsAtTop()
     updateIsAtBottom()
+    updateStickyDay()
   })
 }
 
@@ -112,14 +182,17 @@ async function onLoadMoreMensagens() {
 watch(
   activeKey,
   async (k) => {
+    stickyDayVisible.value = false
+    stickyDayLabel.value = ''
     if (!k) return
     shouldScrollOnOpen.value = true
     await scrollToBottom()
     shouldScrollOnOpen.value = false
     updateIsAtBottom()
     updateIsAtTop()
+    updateStickyDay()
   },
-  { flush: 'post' }
+  { flush: 'post' },
 )
 
 // Quando novas mensagens chegarem: se o usuário já estava no fim, mantém no fim.
@@ -131,26 +204,38 @@ watch(
     await scrollToBottom()
     updateIsAtBottom()
     updateIsAtTop()
+    updateStickyDay()
   },
-  { flush: 'post' }
+  { flush: 'post' },
 )
+
+onBeforeUnmount(() => {
+  if (stickyHideTimer) clearTimeout(stickyHideTimer)
+})
 </script>
 
 <template>
   <div class="relative flex min-h-0 flex-1 flex-col">
+    <!-- Pill flutuante do dia (some após parar de rolar) -->
+    <Transition name="day-sticky">
+      <div
+        v-if="stickyDayVisible && stickyDayLabel"
+        class="pointer-events-none absolute left-1/2 top-3 z-20 -translate-x-1/2"
+        aria-hidden="true"
+      >
+        <span
+          class="inline-block rounded-lg bg-[#e1f2dc] px-3 py-1 text-[12px] font-medium text-[#54656f] shadow-sm dark:bg-slate-700 dark:text-slate-200"
+        >
+          {{ stickyDayLabel }}
+        </span>
+      </div>
+    </Transition>
+
     <div
       ref="scroller"
       class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-6 py-2 sm:px-8"
       @scroll="onScrollerScroll"
     >
-      <div class="my-6 flex justify-center">
-        <span
-          class="rounded-full bg-surface-container px-4 py-1 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:bg-slate-800 dark:text-slate-400"
-        >
-          Hoje
-        </span>
-      </div>
-
       <div
         v-if="!activeKey"
         class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
@@ -161,12 +246,25 @@ watch(
       <!-- Ancora mensagens no rodapé quando houver poucas (como WhatsApp Web). -->
       <div v-else class="flex min-h-full flex-col justify-end">
         <div class="flex flex-col">
-          <BalaoMensagem
-            v-for="m in mensagensOrdenadas"
-            :key="m.temp_id ?? m.message_id"
-            :mensagem="m"
-            :eh-grupo="ehGrupo"
-          />
+          <template v-for="item in timeline" :key="item.key">
+            <div
+              v-if="item.kind === 'day'"
+              class="my-3 flex justify-center"
+              data-day-divider
+              :data-day-label="item.label"
+            >
+              <span
+                class="rounded-lg bg-[#e1f2dc] px-3 py-1 text-[12px] font-medium text-[#54656f] shadow-sm dark:bg-slate-700 dark:text-slate-200"
+              >
+                {{ item.label }}
+              </span>
+            </div>
+            <BalaoMensagem
+              v-else
+              :mensagem="item.mensagem"
+              :eh-grupo="ehGrupo"
+            />
+          </template>
         </div>
       </div>
     </div>
@@ -217,6 +315,15 @@ watch(
 }
 .fab-load-top-enter-from,
 .fab-load-top-leave-to {
+  opacity: 0;
+}
+
+.day-sticky-enter-active,
+.day-sticky-leave-active {
+  transition: opacity 0.22s ease;
+}
+.day-sticky-enter-from,
+.day-sticky-leave-to {
   opacity: 0;
 }
 </style>

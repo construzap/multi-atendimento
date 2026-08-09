@@ -552,7 +552,7 @@ async function confirmarCadastro(item: ProdutoOportunidadeVendaItem) {
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
-                Termo de pesquisa
+                Categoria / Termo de pesquisa
               </label>
               <ProdutosSelecaoUnica
                 catalogo="termos_pesquisa"

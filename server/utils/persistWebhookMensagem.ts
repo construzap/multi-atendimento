@@ -354,6 +354,8 @@ function buildConversaUpdateRow(
     message: normalizada.message,
     messatype: normalizada.messagetype,
     updated_at: updatedAt,
+    from_me: normalizada.from_me,
+    media_url: normalizada.media_url,
     ...patchNaoLidas(normalizada, existing),
   }
 
@@ -666,6 +668,8 @@ async function persistGrupo(
       message: normalizada.message,
       messatype: normalizada.messagetype,
       updated_at: updatedAt,
+      from_me: normalizada.from_me,
+      media_url: normalizada.media_url,
       ...patchNaoLidas(normalizada, existing),
     }
     if (!normalizada.from_me) {

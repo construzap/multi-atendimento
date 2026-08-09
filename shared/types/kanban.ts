@@ -12,11 +12,34 @@ export type KanbanCampoPersonalizadoResumo = {
   valor: string | null
 }
 
+/** Item estruturado em `notificacoes_ia.produtos` (formato N8N / app). */
+export type KanbanNotificacaoProdutoItem = {
+  quantidade: number
+  nome_produto: string
+  /** `null` quando o N8N/app não enviou preço à vista. */
+  preco_vista: number | null
+  /** `null` quando o N8N/app não enviou preço a prazo. */
+  preco_prazo: number | null
+  subtotal_vista: number | null
+  subtotal_prazo: number | null
+}
+
+/** Totais em `notificacoes_ia.total_orcamento` (jsonb). */
+export type KanbanNotificacaoTotalOrcamento = {
+  total_a_vista: number | null
+  total_a_prazo: number | null
+}
+
 /** Notificação I.A. agregada na view (`notificacoes_ia`). */
 export type KanbanNotificacaoIa = {
   id: number
-  produtos: string[]
-  total_orcamento: number
+  /**
+   * Formato novo: objetos `{ quantidade, nome_produto, preco_vista, … }`.
+   * Legado: strings `10X NOME - R$ 54,00`.
+   */
+  produtos: Array<string | KanbanNotificacaoProdutoItem>
+  /** jsonb `{ total_a_vista, total_a_prazo }` (legado numérico é normalizado no parse). */
+  total_orcamento: KanbanNotificacaoTotalOrcamento
   observacoes: string | null
   forma_pagamento: string | null
   latitude: number | null

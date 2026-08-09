@@ -1,8 +1,8 @@
-import { chatConversaPath, parsePositiveIntParam } from '~/utils/chatRouteParams'
+import { chatCanalPath, parsePositiveIntParam } from '~/utils/chatRouteParams'
 
 /**
  * Define canal + conversa ativa no Pinia (fonte da verdade da UI do chat).
- * Se estiver em rota de chat do workspace, sincroniza a URL com a conversa.
+ * Não coloca a key na URL — permanece em `/workspaces/:id/chat/:canalId`.
  */
 export function selecionarConversaNoChat(canalId: number, conversaKey: string) {
   const canais = useCanaisStore()
@@ -23,15 +23,16 @@ export function selecionarConversaNoChat(canalId: number, conversaKey: string) {
 
   const wid = parsePositiveIntParam(route.params.id)
   if (wid != null) {
-    const target = chatConversaPath(wid, cid, key)
+    const target = chatCanalPath(wid, cid)
     if (route.path !== target) {
+      // Remove key da URL se estiver em `/chat/:canalId/:conversaKey`
       void navigateTo(target, { replace: true })
     }
   }
 }
 
 /**
- * Vai para `/workspaces/:id/chat/:canalId/:conversaKey` e seleciona no Pinia.
+ * Vai para `/workspaces/:id/chat/:canalId` e seleciona a conversa só no Pinia.
  */
 export async function abrirConversaNoChat(
   workspaceId: number | string,
@@ -43,7 +44,7 @@ export async function abrirConversaNoChat(
   const key = conversaKey.trim()
   if (!key || cid < 1) return
 
-  await navigateTo(chatConversaPath(workspaceId, cid, key), {
+  await navigateTo(chatCanalPath(workspaceId, cid), {
     replace: options?.replace ?? true,
   })
   selecionarConversaNoChat(cid, key)

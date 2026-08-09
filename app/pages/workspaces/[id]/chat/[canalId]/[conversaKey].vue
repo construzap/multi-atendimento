@@ -1,10 +1,9 @@
 <script setup lang="ts">
 /**
- * Chat do canal com conversa na URL:
+ * Rota legada com conversa na URL:
  * `/workspaces/:id/chat/:canalId/:conversaKey`
  *
- * Carrega a lista via GET /api/conversas, garante a conversa da URL no Pinia
- * e define `conversaAtual`.
+ * Hidrata `conversaAtual` no Pinia; cliques seguintes normalizam para `/chat/:canalId`.
  */
 definePageMeta({
   layout: 'workspace',

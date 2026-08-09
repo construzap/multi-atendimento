@@ -14,7 +14,7 @@ import ItemTabela from '~/components/produtos/ItemTabela.vue'
 import ProdutosModalEditarProduto from '~/components/produtos/ProdutosModalEditarProduto.vue'
 import ProdutosModalImagens from '~/components/produtos/ProdutosModalImagens.vue'
 import ProdutosModalNovaVariacao from '~/components/produtos/ProdutosModalNovaVariacao.vue'
-import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
+import ModalAlerta from '~/components/ModalAlerta.vue'
 import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useProdutoCategoriasStore } from '~/stores/produtoCategorias'
@@ -440,6 +440,9 @@ const paiVariacaoAlvo = ref<ProdutoWorkspaceItem | null>(null)
 const salvandoVariacao = ref(false)
 const modalEdicaoAberto = ref(false)
 const produtoEmEdicao = ref<ProdutoWorkspaceCampos | null>(null)
+const alertaApagarAberto = ref(false)
+const produtoParaApagar = ref<ProdutoWorkspaceCampos | null>(null)
+const apagandoUm = ref(false)
 /** Ids selecionados (podem abranger várias páginas). */
 const selecionadosIds = ref<number[]>([])
 
@@ -639,7 +642,12 @@ function sincronizarInputsRascunho() {
   }
 }
 
-defineExpose({ resetarEstadoPosImportacao, focarNomeUltimaLinha, sincronizarInputsRascunho })
+defineExpose({
+  resetarEstadoPosImportacao,
+  focarNomeUltimaLinha,
+  abrirEdicaoUltimaLinha,
+  sincronizarInputsRascunho,
+})
 
 watch(
   itemsExibicao,
@@ -840,12 +848,13 @@ function focarCampoNaLinha(tr: Element, campo: string) {
 }
 
 async function focarNomeUltimaLinha() {
+  await abrirEdicaoUltimaLinha()
+}
+
+async function abrirEdicaoUltimaLinha() {
   await nextTick()
-  const root = tabelaScrollRef.value
-  if (!root) return
-  const rows = Array.from(root.querySelectorAll<HTMLElement>('tbody tr[data-linha-produto-id]'))
-  const last = rows[rows.length - 1]
-  if (last) focarCampoNaLinha(last, 'nome')
+  const last = itemsExibicao.value[itemsExibicao.value.length - 1]
+  if (last) abrirEdicaoCompleta(last)
 }
 
 async function onEnterCelula(ev: Event) {
@@ -873,9 +882,7 @@ async function onEnterCelula(ev: Event) {
 
   emit('adicionar-linha')
   await nextTick()
-  const updatedRows = Array.from(root.querySelectorAll<HTMLElement>('tbody tr[data-linha-produto-id]'))
-  const last = updatedRows[updatedRows.length - 1]
-  if (last) focarCampoNaLinha(last, campo)
+  await abrirEdicaoUltimaLinha()
 }
 
 /** Clicar em qualquer área da célula abre o campo para edição (estilo Notion). */
@@ -1102,9 +1109,64 @@ function aoSalvarEdicaoCompleta(patch: ProdutoWorkspacePatch) {
   void gravarPatch(row, patch)
 }
 
+function pedirApagar(row: ProdutoWorkspaceCampos) {
+  if (props.modo !== 'api') return
+  if (rowDesabilitada(row)) return
+  produtoParaApagar.value = row
+  alertaApagarAberto.value = true
+}
+
+function cancelarApagar() {
+  if (apagandoUm.value) return
+  alertaApagarAberto.value = false
+  produtoParaApagar.value = null
+}
+
+const textoAlertaApagar = computed(() => {
+  const nome = produtoParaApagar.value?.nome?.trim()
+  if (nome) {
+    return `Eliminar o produto «${nome}»? Esta ação não pode ser anulada.`
+  }
+  return 'Eliminar este produto? Esta ação não pode ser anulada.'
+})
+
+async function confirmarApagar() {
+  if (props.modo !== 'api') return
+  const row = produtoParaApagar.value
+  const wid = props.workspaceId
+  if (!row || wid == null || wid < 1) return
+  if (apagandoUm.value) return
+
+  apagandoUm.value = true
+  const id = row.id
+  const snapshot = produtosStore.removerProdutosOtimista([id])
+  selecionadosIds.value = selecionadosIds.value.filter((x) => x !== id)
+  alertaApagarAberto.value = false
+  produtoParaApagar.value = null
+
+  try {
+    const res = await $fetch<ProdutosExcluirResponse>('/api/produtos/enviar-para-ia/excluir', {
+      method: 'POST',
+      body: { workspace_id: wid, ids: [id] },
+    })
+    if ((res.removidos ?? 0) <= 0) {
+      toast.info('Nenhum produto foi eliminado (o id pode já não existir).')
+    } else {
+      toast.success('Produto eliminado.')
+    }
+    emit('eliminados')
+  } catch (err: unknown) {
+    produtosStore.restaurarProdutosOtimista(snapshot)
+    flashErroCelulas(id, ['nome'])
+    toast.error(mensagemErroFetch(err, 'Não foi possível eliminar o produto.'))
+  } finally {
+    apagandoUm.value = false
+  }
+}
+
 function rowDesabilitada(row: ProdutoWorkspaceCampos): boolean {
   if (props.modo === 'rascunho') return false
-  return !podeGravar() || excluindo.value
+  return !podeGravar() || excluindo.value || apagandoUm.value
 }
 
 onUnmounted(() => {
@@ -1245,9 +1307,8 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <!-- Modo API: lista em cards -->
+      <!-- Lista em cards (listagem API e rascunho criar em massa) -->
       <div
-        v-if="modo === 'api'"
         ref="tabelaScrollRef"
         class="w-full min-w-0 max-w-full overflow-auto"
         :style="{ maxHeight: `${alturaMaxScrollCardsPx}px` }"
@@ -1271,6 +1332,7 @@ onUnmounted(() => {
             :mostrar-selecao="mostrarSelecao"
             :desabilitado="rowDesabilitada(row)"
             :mostrar-imagens="mostrarImagens"
+            :mostrar-nova-variacao="modo === 'api'"
             :tem-variacoes-visiveis="!!(pai && paiTemVariacoesVisiveis(pai))"
             :expandido="estaExpandido(row.id)"
             :salvando-variacao="salvandoVariacao"
@@ -1283,571 +1345,10 @@ onUnmounted(() => {
             @abrir-imagens="abrirGaleriaImagens(row, tipo, pai)"
             @nova-variacao="abrirModalNovaVariacao(pai ?? (row as ProdutoWorkspaceItem))"
             @editar="abrirEdicaoCompleta(row)"
+            @apagar="pedirApagar(row)"
             @commit-termo="commitCatalogo(row, $event)"
           />
         </template>
-      </div>
-
-      <!-- Modo rascunho: planilha (criar em massa) -->
-      <div
-        v-else
-        ref="tabelaScrollRef"
-        class="w-full min-w-0 max-w-full overflow-auto"
-      >
-      <table
-        class="table-fixed border-collapse text-left"
-        :style="{ width: larguraTabelaPx + 'px' }"
-      >
-        <colgroup>
-          <col v-for="c in columns" :key="'cw-' + c.id" :style="{ width: colWidths[c.id] + 'px' }" />
-        </colgroup>
-        <thead class="sticky top-0 z-30 border-b border-zinc-200 dark:border-zinc-800">
-          <tr>
-            <th
-              v-for="col in columns"
-              :key="col.id"
-              :class="[thClass, col.id === 'sel' ? thSelClass : '']"
-            >
-              <template v-if="col.id === 'sel'">
-                <label
-                  :class="[
-                    checkboxCelulaLabelHeaderClass,
-                    !mostrarSelecao || pending || !itemsExibicao.length || !podeGravar() || excluindo
-                      ? 'cursor-not-allowed opacity-40'
-                      : '',
-                  ]"
-                >
-                  <span
-                    :class="[
-                      checkboxVisualBaseClass,
-                      todosDaPaginaSelecionados || indeterminadoCabecalhoPagina
-                        ? checkboxVisualMarcadoClass
-                        : checkboxVisualOcultoClass,
-                    ]"
-                    aria-hidden="true"
-                  >
-                    <svg
-                      v-if="indeterminadoCabecalhoPagina && !todosDaPaginaSelecionados"
-                      class="h-3 w-3 text-white"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                    >
-                      <path
-                        d="M2.5 6h7"
-                        stroke="currentColor"
-                        stroke-width="1.75"
-                        stroke-linecap="round"
-                      />
-                    </svg>
-                    <svg
-                      v-else-if="todosDaPaginaSelecionados"
-                      class="h-3 w-3 text-white"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                    >
-                      <path
-                        d="M2.25 6.25L4.75 8.75L9.75 3.25"
-                        stroke="currentColor"
-                        stroke-width="1.75"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
-                  </span>
-                  <input
-                    type="checkbox"
-                    class="sr-only"
-                    :checked="todosDaPaginaSelecionados"
-                    :indeterminate="indeterminadoCabecalhoPagina"
-                    :disabled="!mostrarSelecao || pending || !itemsExibicao.length || !podeGravar() || excluindo"
-                    aria-label="Selecionar todos os produtos desta página"
-                    @change="alternarSelecionarTodosNaPagina(($event.target as HTMLInputElement).checked)"
-                  />
-                </label>
-              </template>
-              <template v-else-if="col.id === 'produto'">
-                <div class="flex min-w-0 items-center gap-1.5 pr-3">
-                  <span
-                    class="material-symbols-outlined shrink-0 text-[15px] text-zinc-400 dark:text-zinc-500"
-                    aria-hidden="true"
-                  >
-                    title
-                  </span>
-                  <span class="min-w-0 truncate leading-snug">{{ col.label }}</span>
-                </div>
-                <span
-                  class="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize select-none hover:bg-zinc-300/50 active:bg-zinc-400/50 dark:hover:bg-zinc-600/50"
-                  role="separator"
-                  :title="'Arrastar para ajustar a coluna «' + col.label + '»'"
-                  aria-hidden="true"
-                  @mousedown="iniciarResize(col.id, $event)"
-                />
-              </template>
-              <!--
-              <template v-else-if="col.id === 'categoria'">
-                <div class="flex min-w-0 items-center gap-1.5 pr-3">
-                  <span
-                    class="material-symbols-outlined shrink-0 text-[15px] text-zinc-400 dark:text-zinc-500"
-                    aria-hidden="true"
-                  >
-                    category
-                  </span>
-                  <span class="min-w-0 truncate leading-snug">{{ col.label }}</span>
-                </div>
-                <span
-                  class="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize select-none hover:bg-zinc-300/50 active:bg-zinc-400/50 dark:hover:bg-zinc-600/50"
-                  role="separator"
-                  :title="'Arrastar para ajustar a coluna «' + col.label + '»'"
-                  aria-hidden="true"
-                  @mousedown="iniciarResize(col.id, $event)"
-                />
-              </template>
-              -->
-              <template v-else>
-                <div class="flex min-w-0 items-center pr-3">
-                  <span class="min-w-0 truncate leading-snug">{{ col.label }}</span>
-                </div>
-                <span
-                  class="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize select-none hover:bg-zinc-300/50 active:bg-zinc-400/50 dark:hover:bg-zinc-600/50"
-                  role="separator"
-                  :title="'Arrastar para ajustar a coluna «' + col.label + '»'"
-                  aria-hidden="true"
-                  @mousedown="iniciarResize(col.id, $event)"
-                />
-              </template>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="pending">
-            <td :colspan="columns.length" :class="[tdClass, 'py-12 text-center text-sm text-zinc-500 dark:text-zinc-400']">
-              Carregando…
-            </td>
-          </tr>
-          <template v-if="!pending">
-            <tr
-              v-for="{ row, tipo, pai } in linhasExibicao"
-              :key="tipo + '-' + row.id"
-              :data-linha-produto-id="row.id"
-              :class="[
-                trClassBase,
-                tipo === 'variacao'
-                  ? 'border-l-2 border-l-zinc-300 bg-zinc-50/70 dark:border-l-zinc-600 dark:bg-zinc-900/40'
-                  : '',
-                { 'pointer-events-none opacity-50': excluindo },
-              ]"
-            >
-              <td :class="tdSelClass">
-                <label
-                  :class="[
-                    checkboxCelulaLabelClass,
-                    !mostrarSelecao || rowDesabilitada(row) ? 'cursor-not-allowed opacity-40' : '',
-                  ]"
-                  @click.stop
-                >
-                  <span
-                    :class="[
-                      checkboxVisualBaseClass,
-                      selecionadosIds.includes(row.id)
-                        ? checkboxVisualMarcadoClass
-                        : checkboxVisualOcultoClass,
-                    ]"
-                    aria-hidden="true"
-                  >
-                    <svg
-                      v-if="selecionadosIds.includes(row.id)"
-                      class="h-3 w-3 text-white"
-                      viewBox="0 0 12 12"
-                      fill="none"
-                    >
-                      <path
-                        d="M2.25 6.25L4.75 8.75L9.75 3.25"
-                        stroke="currentColor"
-                        stroke-width="1.75"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                      />
-                    </svg>
-                  </span>
-                  <input
-                    type="checkbox"
-                    class="sr-only"
-                    :checked="selecionadosIds.includes(row.id)"
-                    :disabled="!mostrarSelecao || rowDesabilitada(row)"
-                    :aria-label="'Selecionar produto ' + row.nome"
-                    @change="alternarSelecionado(row.id, ($event.target as HTMLInputElement).checked)"
-                  />
-                </label>
-              </td>
-              <td :class="tdClass">
-                <div
-                  :class="[celulaLinhaClass, 'group/produto cursor-text gap-0.5 px-1 py-2']"
-                  @click="focusarInputCelula"
-                >
-                  <button
-                    v-if="tipo === 'pai' && pai && paiTemVariacoesVisiveis(pai)"
-                    type="button"
-                    class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-200/80 dark:text-zinc-400 dark:hover:bg-zinc-700"
-                    :aria-expanded="estaExpandido(row.id)"
-                    :aria-label="estaExpandido(row.id) ? 'Recolher variações' : 'Expandir variações'"
-                    @click.stop="toggleExpandir(row.id)"
-                  >
-                    <span class="material-symbols-outlined text-[18px]" aria-hidden="true">
-                      {{ estaExpandido(row.id) ? 'expand_more' : 'chevron_right' }}
-                    </span>
-                  </button>
-                  <span
-                    v-else-if="tipo === 'variacao'"
-                    class="material-symbols-outlined w-6 shrink-0 text-center text-[16px] text-zinc-400 dark:text-zinc-500"
-                    aria-hidden="true"
-                  >
-                    subdirectory_arrow_right
-                  </span>
-                  <span v-else class="w-6 shrink-0" aria-hidden="true" />
-                  <button
-                    v-if="mostrarImagens"
-                    type="button"
-                    :class="iconImagemProdutoClass"
-                    :disabled="rowDesabilitada(row)"
-                    :aria-label="'Gerir imagens de ' + row.nome"
-                    :title="contagemImagensLinha(row) === 0 ? 'Adicionar imagem' : contagemImagensLinha(row) + ' foto(s)'"
-                    @click.stop="abrirGaleriaImagens(row, tipo, pai)"
-                  >
-                    <img
-                      v-if="urlImagemLinha(row)"
-                      :src="urlImagemLinha(row)!"
-                      alt=""
-                      class="h-full w-full object-cover"
-                      loading="lazy"
-                    />
-                    <span
-                      v-else
-                      class="material-symbols-outlined text-[16px]"
-                      aria-hidden="true"
-                    >
-                      photo
-                    </span>
-                    <span
-                      v-if="contagemImagensLinha(row) > 1"
-                      class="absolute -bottom-0.5 -right-0.5 flex h-3 min-w-3 items-center justify-center rounded-full bg-zinc-700 px-0.5 text-[7px] font-bold leading-none text-white dark:bg-zinc-300 dark:text-zinc-900"
-                    >
-                      {{ contagemImagensLinha(row) }}
-                    </span>
-                  </button>
-                  <div class="min-w-0 flex flex-1 items-center gap-1 pr-2">
-                    <div class="min-w-0 flex-1">
-                      <p
-                        v-if="tipo === 'variacao' && resumoVariacao(row)"
-                        class="truncate text-[10px] font-medium leading-tight text-zinc-500 dark:text-zinc-400"
-                      >
-                        {{ resumoVariacao(row) }}
-                      </p>
-                      <input
-                        type="text"
-                        autocomplete="off"
-                        data-campo-produto="nome"
-                        :class="classesInput(row.id, 'nome', tipo === 'pai' ? inpClassProduto : inpClass)"
-                        :value="row.nome"
-                        :disabled="rowDesabilitada(row)"
-                        :title="row.nome"
-                        @keydown.enter.prevent="onEnterCelula"
-                        @blur="blurNome(row, $event)"
-                      />
-                    </div>
-                    <span
-                      v-if="tipo === 'pai' && pai && paiTemVariacoesVisiveis(pai)"
-                      class="shrink-0 text-[10px] tabular-nums text-zinc-400 dark:text-zinc-500"
-                    >
-                      {{ pai.variacoes.length }}
-                    </span>
-                  </div>
-                </div>
-              </td>
-              <!--
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'categoria_id', 'min-h-[2.75rem] w-full')">
-                  <ProdutosSelecaoUnica
-                    variant="celula"
-                    :workspace-id="workspaceId"
-                    :produto-id="row.id"
-                    :categoria-id="row.categoria_id"
-                    :categoria-nome="row.categoria_nome"
-                    :disabled="rowDesabilitada(row)"
-                    @commit="commitCatalogo(row, $event)"
-                  />
-                </div>
-              </td>
-              -->
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'termos_pesquisa_ids', celulaInnerClass)">
-                  <ProdutosSelecaoUnica
-                    catalogo="termos_pesquisa"
-                    variant="celula"
-                    :workspace-id="workspaceId"
-                    :produto-id="row.id"
-                    :termo-id="row.termos_pesquisa?.[0]?.id ?? null"
-                    :termo-nome="row.termos_pesquisa?.[0]?.nome ?? row.termos_pesquisa_busca ?? null"
-                    :disabled="rowDesabilitada(row)"
-                    @commit="commitCatalogo(row, $event)"
-                  />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'unidade_venda', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  autocomplete="off"
-                  data-campo-produto="unidade_venda"
-                  :class="classesInput(row.id, 'unidade_venda', inpClass)"
-                  :value="row.unidade_venda ?? ''"
-                  :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurUnidade(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'marca', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  autocomplete="off"
-                  data-campo-produto="marca"
-                  :class="classesInput(row.id, 'marca', inpClass)"
-                  :value="row.marca ?? ''"
-                  :disabled="rowDesabilitada(row)"
-                  placeholder="Marca"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurMarca(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'preco_custo', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  data-campo-produto="preco_custo"
-                  :class="classesInput(row.id, 'preco_custo', inpClass)"
-                  :value="fmtPrecoCelula(row.preco_custo)"
-                  :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurPrecoCusto(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'preco', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  data-campo-produto="preco"
-                  :class="classesInput(row.id, 'preco', inpClass)"
-                  :value="fmtPrecoCelula(row.preco)"
-                  :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurPreco(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'preco_prazo', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  data-campo-produto="preco_prazo"
-                  :class="classesInput(row.id, 'preco_prazo', inpClass)"
-                  :value="fmtPrecoCelula(row.preco_prazo)"
-                  :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurPrecoPrazo(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'preco_promocional', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  data-campo-produto="preco_promocional"
-                  :class="classesInput(row.id, 'preco_promocional', inpClass)"
-                  :value="fmtPrecoCelula(row.preco_promocional)"
-                  :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurPrecoPromocional(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'peso_kg', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  data-campo-produto="peso_kg"
-                  :class="classesInput(row.id, 'peso_kg', inpClass)"
-                  :value="row.peso_kg != null ? String(row.peso_kg).replace('.', ',') : ''"
-                  :disabled="rowDesabilitada(row)"
-                  placeholder="ex.: 1,5"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurPeso(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'largura', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  data-campo-produto="largura"
-                  :class="classesInput(row.id, 'largura', inpClass)"
-                  :value="String(row.largura ?? 0).replace('.', ',')"
-                  :disabled="rowDesabilitada(row)"
-                  placeholder="0"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurDimensao(row, 'largura', $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'comprimento', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  data-campo-produto="comprimento"
-                  :class="classesInput(row.id, 'comprimento', inpClass)"
-                  :value="String(row.comprimento ?? 0).replace('.', ',')"
-                  :disabled="rowDesabilitada(row)"
-                  placeholder="0"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurDimensao(row, 'comprimento', $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'altura', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  data-campo-produto="altura"
-                  :class="classesInput(row.id, 'altura', inpClass)"
-                  :value="String(row.altura ?? 0).replace('.', ',')"
-                  :disabled="rowDesabilitada(row)"
-                  placeholder="0"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurDimensao(row, 'altura', $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'sku', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  autocomplete="off"
-                  data-campo-produto="sku"
-                  :class="classesInput(row.id, 'sku', inpClass)"
-                  :value="row.sku ?? ''"
-                  :disabled="rowDesabilitada(row)"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurSku(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'codigo_ncm', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  autocomplete="off"
-                  data-campo-produto="codigo_ncm"
-                  :class="classesInput(row.id, 'codigo_ncm', inpClass)"
-                  :value="row.codigo_ncm ?? ''"
-                  :disabled="rowDesabilitada(row)"
-                  placeholder="NCM"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurCodigoNcm(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'codigo_barras_ean', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  autocomplete="off"
-                  data-campo-produto="codigo_barras_ean"
-                  :class="classesInput(row.id, 'codigo_barras_ean', inpClass)"
-                  :value="row.codigo_barras_ean ?? ''"
-                  :disabled="rowDesabilitada(row)"
-                  placeholder="EAN"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurCodigoBarras(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'infos_relevantes', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  autocomplete="off"
-                  data-campo-produto="infos_relevantes"
-                  :class="classesInput(row.id, 'infos_relevantes', inpClass)"
-                  :value="row.infos_relevantes ?? ''"
-                  :disabled="rowDesabilitada(row)"
-                  placeholder="—"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurInfos(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <div :class="classesCelula(row.id, 'codigo', celulaInnerClass)" @click="focusarInputCelula">
-                <input
-                  type="text"
-                  inputmode="numeric"
-                  autocomplete="off"
-                  data-campo-produto="codigo"
-                  :class="classesInput(row.id, 'codigo', inpClass)"
-                  :value="row.codigo != null ? String(row.codigo) : ''"
-                  :disabled="rowDesabilitada(row)"
-                  title="Código no workspace"
-                  @keydown.enter.prevent="onEnterCelula"
-                  @blur="blurCodigo(row, $event)"
-                />
-                </div>
-              </td>
-              <td :class="tdClass">
-                <button
-                  type="button"
-                  :class="[classesCelula(row.id, 'status', celulaInnerClass), 'cursor-pointer']"
-                  :disabled="rowDesabilitada(row)"
-                  @click="alternarStatus(row)"
-                >
-                  <span
-                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
-                    :class="
-                      row.status
-                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400'
-                        : 'bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400'
-                    "
-                  >
-                    <span
-                      class="h-1.5 w-1.5 shrink-0 rounded-full"
-                      :class="row.status ? 'bg-emerald-500' : 'bg-red-500'"
-                      aria-hidden="true"
-                    />
-                    {{ row.status ? 'Ativo' : 'Inativo' }}
-                  </span>
-                </button>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
       </div>
     </div>
 
@@ -1863,6 +1364,19 @@ onUnmounted(() => {
       :workspace-id="workspaceId"
       :row="produtoEmEdicao"
       @salvar="aoSalvarEdicaoCompleta"
+    />
+
+    <ModalAlerta
+      v-model:open="alertaApagarAberto"
+      title="Apagar produto"
+      :texto="textoAlertaApagar"
+      variante="perigo"
+      texto-confirmar="Apagar"
+      texto-cancelar="Cancelar"
+      :confirmar-desabilitado="apagandoUm"
+      :cancelar-desabilitado="apagandoUm"
+      @confirmar="confirmarApagar"
+      @cancelar="cancelarApagar"
     />
 
     <ModalEnvioProdutos

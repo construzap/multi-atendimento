@@ -1,6 +1,10 @@
 import { defineStore } from 'pinia'
 import { toast } from 'vue-sonner'
 import type { KanbanBoardResponse, KanbanCard, KanbanColumn, KanbanColumnPageResponse, KanbanConversaAtualizarResponse, KanbanConversaPatch, KanbanCriarFunilResponse, KanbanFunilColunaResumo, KanbanFunilItem, KanbanListarFunisResponse, PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
+import {
+  normalizeProdutosRaw,
+  normalizeTotalOrcamento,
+} from '#shared/utils/notificacaoIaProdutos'
 import type { Conversa } from '#shared/types/conversa'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { mensagemErroFetch } from '~/stores/canais'
@@ -54,7 +58,8 @@ function normalizeKanbanCard(card: KanbanCard): KanbanCard {
     notificacoes_ia: Array.isArray(card.notificacoes_ia)
       ? card.notificacoes_ia.map((n) => ({
           ...n,
-          produtos: Array.isArray(n.produtos) ? [...n.produtos] : [],
+          produtos: normalizeProdutosRaw(n.produtos),
+          total_orcamento: normalizeTotalOrcamento(n.total_orcamento),
         }))
       : [],
   }
@@ -293,6 +298,16 @@ export const useKanbanStore = defineStore('kanban', {
       if (!workspaceId) return
       if (!options?.force && this.funisWorkspaceIdLoaded === workspaceId) return
       await this.fetchFunis(workspaceId)
+    },
+
+    /** Percorre `funis[].columns` e devolve o funil dono da coluna (ou `null`). */
+    findFunilIdByColunaId(colunaId: number): number | null {
+      const id = Number(colunaId)
+      if (!Number.isFinite(id) || id < 1) return null
+      for (const funil of this.funis) {
+        if (funil.columns?.some((c) => Number(c.id) === id)) return funil.id
+      }
+      return null
     },
 
     /**
@@ -833,7 +848,16 @@ export const useKanbanStore = defineStore('kanban', {
       workspaceId: number
       canalId: number
       conversaKey: string
-      produtos: Array<{ nome: string; qtd: number; preco: number }>
+      produtos: Array<{
+        nome?: string
+        nome_produto?: string
+        qtd?: number
+        quantidade?: number
+        preco?: number
+        preco_vista?: number | null
+        preco_prazo?: number | null
+      }>
+      totalOrcamento?: { total_a_vista: number | null; total_a_prazo: number | null }
       formaPagamento: string
       observacoes?: string | null
       nome?: string | null
@@ -862,6 +886,9 @@ export const useKanbanStore = defineStore('kanban', {
           canal_id: canalId,
           conversa_key: conversaKey,
           produtos: input.produtos,
+          total_orcamento: input.totalOrcamento
+            ? normalizeTotalOrcamento(input.totalOrcamento)
+            : undefined,
           forma_pagamento: input.formaPagamento,
           observacoes: input.observacoes ?? null,
           nome: input.nome ?? null,
@@ -1101,10 +1128,17 @@ export const useKanbanStore = defineStore('kanban', {
         let card = { ...fromCol.cards[cardIdx]! }
 
         if (payload.notificacao && Number.isFinite(payload.notificacao.id)) {
+          const notifNorm = {
+            ...payload.notificacao,
+            produtos: normalizeProdutosRaw(payload.notificacao.produtos),
+            total_orcamento: normalizeTotalOrcamento(
+              payload.notificacao.total_orcamento,
+            ),
+          }
           const list = [...(card.notificacoes_ia ?? [])]
-          const nIdx = list.findIndex((n) => n.id === payload.notificacao!.id)
-          if (nIdx >= 0) list[nIdx] = { ...payload.notificacao }
-          else list.unshift({ ...payload.notificacao })
+          const nIdx = list.findIndex((n) => n.id === notifNorm.id)
+          if (nIdx >= 0) list[nIdx] = notifNorm
+          else list.unshift(notifNorm)
           card = { ...card, notificacoes_ia: list }
         }
 

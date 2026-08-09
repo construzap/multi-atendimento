@@ -7,8 +7,10 @@ import { abrirConversaNoChat } from '~/composables/useConversasRouteSync'
 import { useCanaisStore } from '~/stores/canais'
 import { useConversasStore } from '~/stores/conversas'
 import { useKanbanStore } from '~/stores/kanban'
+import { useKanbanPusherAlertaStore } from '~/stores/kanbanPusherAlerta'
 import { useMensagensStore } from '~/stores/mensagens'
 import { useWorkspacesStore } from '~/stores/workspaces'
+import { playNotificationSound } from '~/utils/playNotificationSound'
 
 /** Inscreve em `String(id_canal)` conforme `canais.items` + canais dos cards do kanban. */
 export default defineNuxtPlugin(() => {
@@ -29,8 +31,10 @@ export default defineNuxtPlugin(() => {
   }
 
   const canais = useCanaisStore()
+  const conversas = useConversasStore()
   const kanban = useKanbanStore()
   const workspaces = useWorkspacesStore()
+  const kanbanAlerta = useKanbanPusherAlertaStore()
 
   function canalIdsParaInscrever(): number[] {
     const ids = new Set<number>()
@@ -97,32 +101,18 @@ export default defineNuxtPlugin(() => {
     if (!conversaKey) return
 
     kanban.mergeFromPusherKanbanAtualizacao(data)
+    conversas.mergeFromPusherKanbanAtualizacao(data)
 
     if (data.motivo === 'coluna' && !data.notificacao) {
       const contato = data.nome_contato?.trim() || 'Contato'
-      toast.info('Kanban atualizado', {
-        description: `${contato} mudou de coluna.`,
-        duration: 6000,
-      })
+      playNotificationSound()
+      kanbanAlerta.showColunaMovida(contato)
       return
     }
 
     const contato = data.nome_contato?.trim() || 'Contato'
-    const toastId = toast.success('Pedido novo', {
-      description: `${contato} — toque em Abrir para ver o pedido.`,
-      duration: 12000,
-      action: {
-        label: 'Abrir',
-        onClick: () => {
-          const wsId = workspaces.currentWorkspaceId
-          if (wsId) {
-            void navigateTo(`/workspaces/${wsId}/kanban`)
-          }
-          kanban.requestOpenNotificacoesIa(conversaKey)
-          toast.dismiss(toastId)
-        },
-      },
-    })
+    playNotificationSound({ forte: true })
+    kanbanAlerta.showPedidoNovo(contato, conversaKey)
   }
 
   watch(

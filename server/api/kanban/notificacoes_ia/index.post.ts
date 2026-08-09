@@ -1,6 +1,14 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
-import type { KanbanNotificacaoIa } from '#shared/types/kanban'
+import type {
+  KanbanNotificacaoIa,
+  KanbanNotificacaoProdutoItem,
+  KanbanNotificacaoTotalOrcamento,
+} from '#shared/types/kanban'
+import {
+  normalizeProdutosRaw,
+  normalizeTotalOrcamento,
+} from '#shared/utils/notificacaoIaProdutos'
 import { checkChannel } from '../../../utils/checkChannel'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
@@ -35,14 +43,10 @@ function strOrNull(v: unknown): string | null {
   return s.length ? s : null
 }
 
-function formatPrecoBr(valor: number): string {
-  return valor.toLocaleString('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-}
-
-function parseProdutosBody(raw: unknown): { linhas: string[]; total: number } {
+function parseProdutosBody(raw: unknown): {
+  itens: KanbanNotificacaoProdutoItem[]
+  total: KanbanNotificacaoTotalOrcamento
+} {
   if (!Array.isArray(raw) || raw.length === 0) {
     throw createError({
       statusCode: 400,
@@ -50,15 +54,16 @@ function parseProdutosBody(raw: unknown): { linhas: string[]; total: number } {
     })
   }
 
-  const linhas: string[] = []
-  let total = 0
+  const itens: KanbanNotificacaoProdutoItem[] = []
+  let total_a_vista = 0
+  let total_a_prazo = 0
 
   for (const item of raw) {
     if (!item || typeof item !== 'object') {
       throw createError({ statusCode: 400, statusMessage: 'Produto inválido.' })
     }
     const o = item as Record<string, unknown>
-    const nome = strOrNull(o.nome)
+    const nome = strOrNull(o.nome) ?? strOrNull(o.nome_produto)
     if (!nome) {
       throw createError({ statusCode: 400, statusMessage: 'Nome do produto é obrigatório.' })
     }
@@ -75,41 +80,74 @@ function parseProdutosBody(raw: unknown): { linhas: string[]; total: number } {
       })
     }
 
-    const precoRaw = o.preco
-    const preco =
-      typeof precoRaw === 'number'
-        ? precoRaw
-        : Number.parseFloat(String(precoRaw ?? '').replace(/\./g, '').replace(',', '.'))
-    if (!Number.isFinite(preco) || preco < 0) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Preço inválido para «${nome}».`,
-      })
+    const parsePrecoOpcional = (raw: unknown): number | null => {
+      if (raw === undefined || raw === null || raw === '') return null
+      const n =
+        typeof raw === 'number'
+          ? raw
+          : Number.parseFloat(String(raw).replace(',', '.'))
+      if (!Number.isFinite(n) || n < 0) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: `Preço inválido para «${nome}».`,
+        })
+      }
+      return n
     }
 
-    total += qtd * preco
-    linhas.push(`${qtd}X ${nome} - R$ ${formatPrecoBr(preco)}`)
+    // null permanece null — não substitui prazo por vista nem por 0.
+    const precoVista =
+      o.preco_vista !== undefined
+        ? parsePrecoOpcional(o.preco_vista)
+        : parsePrecoOpcional(o.preco)
+    const precoPrazo = parsePrecoOpcional(o.preco_prazo)
+
+    const subtotal_vista = precoVista != null ? qtd * precoVista : null
+    const subtotal_prazo = precoPrazo != null ? qtd * precoPrazo : null
+    if (subtotal_vista != null) total_a_vista += subtotal_vista
+    if (subtotal_prazo != null) total_a_prazo += subtotal_prazo
+
+    itens.push({
+      quantidade: qtd,
+      nome_produto: nome,
+      preco_vista: precoVista,
+      preco_prazo: precoPrazo,
+      subtotal_vista,
+      subtotal_prazo,
+    })
   }
 
-  return { linhas, total }
+  const temAlgumPreco = itens.some(
+    (i) => i.preco_vista != null || i.preco_prazo != null,
+  )
+  if (!temAlgumPreco) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Informe ao menos um preço (à vista ou a prazo) nos produtos.',
+    })
+  }
+
+  return {
+    itens,
+    total: {
+      total_a_vista: itens.every((i) => i.subtotal_vista == null) ? null : total_a_vista,
+      total_a_prazo: itens.every((i) => i.subtotal_prazo == null) ? null : total_a_prazo,
+    },
+  }
 }
 
 function mapNotificacao(row: Record<string, unknown>): KanbanNotificacaoIa {
-  const produtosRaw = row.produtos
-  const produtos = Array.isArray(produtosRaw)
-    ? produtosRaw.map((p) => String(p ?? '')).filter((p) => p.length > 0)
-    : []
-
-  const totalRaw = row.total_orcamento
-  const total_orcamento =
-    totalRaw != null && Number.isFinite(Number(totalRaw)) ? Number(totalRaw) : 0
+  const forma_pagamento =
+    row.forma_pagamento != null ? String(row.forma_pagamento) : null
+  const produtos = normalizeProdutosRaw(row.produtos)
+  const total_orcamento = normalizeTotalOrcamento(row.total_orcamento)
 
   return {
     id: typeof row.id === 'number' ? row.id : Number(row.id),
     produtos,
     total_orcamento,
     observacoes: row.observacoes != null ? String(row.observacoes) : null,
-    forma_pagamento: row.forma_pagamento != null ? String(row.forma_pagamento) : null,
+    forma_pagamento,
     latitude: row.latitude != null && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null,
     longitude:
       row.longitude != null && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null,
@@ -124,8 +162,8 @@ function mapNotificacao(row: Record<string, unknown>): KanbanNotificacaoIa {
 
 /**
  * POST /api/kanban/notificacoes_ia
- * Body: `{ workspace_id, canal_id, conversa_key, produtos[{nome,qtd,preco}], forma_pagamento? }`
- * Cria `pedido_pronto` em `notificacoes_ia`.
+ * Body: `{ workspace_id, canal_id, conversa_key, produtos[{nome,quantidade,preco_vista,preco_prazo}], forma_pagamento? }`
+ * Persiste produtos como objetos JSON e cria `pedido_pronto` em `notificacoes_ia`.
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
@@ -155,11 +193,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Informe a forma de pagamento.' })
   }
 
-  const { linhas, total: totalCalculado } = parseProdutosBody(body.produtos)
+  const { itens, total: totalCalculado } = parseProdutosBody(body.produtos)
 
   const totalBody =
-    body.total_orcamento != null && Number.isFinite(Number(body.total_orcamento))
-      ? Number(body.total_orcamento)
+    body.total_orcamento != null
+      ? normalizeTotalOrcamento(body.total_orcamento)
       : totalCalculado
 
   await checkWorkspace(event, workspaceId, userId)
@@ -244,7 +282,7 @@ export default defineEventHandler(async (event) => {
       conversa_key: conversaKey,
       fone,
       nome,
-      produtos: linhas,
+      produtos: itens,
       total_orcamento: totalBody,
       forma_pagamento: formaPagamento,
       observacoes,

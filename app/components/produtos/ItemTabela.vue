@@ -6,6 +6,7 @@ import type {
   ProdutoWorkspacePatch,
 } from '#shared/types/produtos'
 import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
+import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -23,6 +24,8 @@ const props = withDefaults(
     urlImagem?: string | null
     contagemImagens?: number
     resumoVariacao?: string
+    /** Mostra botão "+" de nova variação (só faz sentido na listagem API). */
+    mostrarNovaVariacao?: boolean
   }>(),
   {
     pai: null,
@@ -37,6 +40,7 @@ const props = withDefaults(
     urlImagem: null,
     contagemImagens: 0,
     resumoVariacao: '',
+    mostrarNovaVariacao: true,
   },
 )
 
@@ -47,6 +51,7 @@ const emit = defineEmits<{
   'abrir-imagens': []
   'nova-variacao': []
   editar: []
+  apagar: []
   'commit-termo': [patch: ProdutoWorkspacePatch]
 }>()
 
@@ -171,10 +176,15 @@ const checkboxVisualBaseClass =
       <div class="min-w-0 flex-1 space-y-1.5">
         <div class="flex min-w-0 items-center gap-1.5">
           <p
-            class="truncate text-[15px] font-bold leading-snug text-zinc-900 dark:text-zinc-50"
-            :title="row.nome"
+            class="truncate text-[15px] font-bold leading-snug"
+            :class="
+              row.nome?.trim()
+                ? 'text-zinc-900 dark:text-zinc-50'
+                : 'text-zinc-400 dark:text-zinc-500'
+            "
+            :title="row.nome || 'Novo produto'"
           >
-            {{ row.nome }}
+            {{ row.nome?.trim() || 'Novo produto' }}
           </p>
           <span
             v-if="tipo === 'pai' && temVariacoesVisiveis && pai"
@@ -183,7 +193,7 @@ const checkboxVisualBaseClass =
             {{ pai.variacoes.length }}
           </span>
           <button
-            v-if="tipo === 'pai'"
+            v-if="tipo === 'pai' && mostrarNovaVariacao"
             type="button"
             class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-zinc-400 opacity-0 transition-all hover:bg-emerald-100/90 hover:text-emerald-700 focus-visible:opacity-100 group-hover/item:opacity-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-zinc-500 dark:hover:bg-emerald-950/50 dark:hover:text-emerald-400"
             :disabled="desabilitado || salvandoVariacao"
@@ -279,16 +289,46 @@ const checkboxVisualBaseClass =
         </div>
       </div>
 
-      <button
-        type="button"
-        class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 shadow-sm transition-colors hover:bg-zinc-100 hover:text-zinc-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-        :disabled="desabilitado"
-        aria-label="Editar produto"
-        title="Editar produto"
-        @click.stop="emit('editar')"
+      <BaseDropdown
+        title="Ações"
+        align="right"
+        side="bottom"
+        panel-class="w-48 min-w-[12rem]"
+        :teleport="true"
       >
-        <span class="material-symbols-outlined text-[22px]" aria-hidden="true">more_vert</span>
-      </button>
+        <template #trigger>
+          <span
+            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 shadow-sm transition-colors hover:bg-zinc-100 hover:text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+            :class="desabilitado ? 'pointer-events-none opacity-50' : ''"
+            aria-label="Ações do produto"
+            title="Ações"
+          >
+            <span class="material-symbols-outlined text-[22px]" aria-hidden="true">more_vert</span>
+          </span>
+        </template>
+        <template #default="{ close }">
+          <button
+            type="button"
+            role="menuitem"
+            class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high disabled:cursor-not-allowed disabled:opacity-50 dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+            :disabled="desabilitado"
+            @click="close(); emit('editar')"
+          >
+            <span class="material-symbols-outlined text-[18px] text-on-surface-variant dark:text-dark-on-surface-variant" aria-hidden="true">edit</span>
+            Editar
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            class="mt-0.5 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-red-400 dark:hover:bg-red-950/40"
+            :disabled="desabilitado"
+            @click="close(); emit('apagar')"
+          >
+            <span class="material-symbols-outlined text-[18px]" aria-hidden="true">delete</span>
+            Apagar
+          </button>
+        </template>
+      </BaseDropdown>
     </div>
   </div>
 </template>

@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import type { ProdutoWorkspaceCampos, ProdutoWorkspacePatch } from '#shared/types/produtos'
+import type {
+  ProdutoCriarEmMassaLinha,
+  ProdutosCriarEmMassaResponse,
+  ProdutoWorkspaceCampos,
+  ProdutoWorkspacePatch,
+} from '#shared/types/produtos'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
+import { mensagemErroFetch } from '~/stores/canais'
 import { parseDecimalPtBr } from '~/utils/mapearLinhasImportacaoProduto'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -14,6 +20,7 @@ const open = defineModel<boolean>('open', { default: false })
 const props = withDefaults(
   defineProps<{
     workspaceId?: number | null
+    /** Se `null`/omitido com modal aberto → modo criar. */
     row?: ProdutoWorkspaceCampos | null
   }>(),
   {
@@ -23,8 +30,14 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
+  /** Edição de produto existente (PATCH via pai). */
   salvar: [patch: ProdutoWorkspacePatch]
+  /** Produto novo gravado com sucesso. */
+  gravado: []
 }>()
+
+const isCriar = computed(() => open.value && props.row == null)
+const tituloModal = computed(() => (isCriar.value ? 'Novo produto' : 'Editar produto'))
 
 const nome = ref('')
 const termoSelecao = ref<{ id: number; nome: string } | null>(null)
@@ -109,17 +122,23 @@ function limpar() {
 watch(
   () => [open.value, props.row] as const,
   ([isOpen, row]) => {
-    if (isOpen && row) {
-      popularDoRow(row)
-    } else if (!isOpen) {
+    if (!isOpen) {
       limpar()
+      return
     }
+    if (row) popularDoRow(row)
+    else limpar()
   },
   { immediate: true },
 )
 
 const podeSalvar = computed(() => {
-  return nome.value.trim().length > 0 && !salvando.value && props.row != null
+  if (salvando.value) return false
+  if (!nome.value.trim()) return false
+  if (termoSelecao.value?.id == null) return false
+  if (!unidadeVenda.value.trim()) return false
+  if (!precoVista.value.trim()) return false
+  return true
 })
 
 function strOuNull(v: string): string | null {
@@ -127,9 +146,13 @@ function strOuNull(v: string): string | null {
   return t.length ? t : null
 }
 
+/** Preço obrigatório: vazio ou inválido → null (erro). */
 function parsePrecoObrigatorio(raw: string, label: string): number | null {
   const t = raw.trim()
-  if (!t.length) return 0
+  if (!t.length) {
+    toast.error(`Informe o ${label.toLowerCase()}.`)
+    return null
+  }
   const n = parseDecimalPtBr(t)
   if (n == null || n < 0) {
     toast.error(`${label} inválido.`)
@@ -163,14 +186,23 @@ function parseDimensao(raw: string, label: string): number | null {
 function montarPatch(): ProdutoWorkspacePatch | null {
   const n = nome.value.trim()
   if (!n) {
-    toast.error('O nome não pode ser vazio.')
+    toast.error('Informe o nome do produto.')
+    return null
+  }
+  if (termoSelecao.value?.id == null) {
+    toast.error('Selecione uma categoria / termo de pesquisa.')
+    return null
+  }
+  const unidade = unidadeVenda.value.trim()
+  if (!unidade) {
+    toast.error('Informe a unidade de venda.')
     return null
   }
 
   const preco = parsePrecoObrigatorio(precoVista.value, 'Preço à vista')
   if (preco == null) return null
-  const precoCustoN = parsePrecoObrigatorio(precoCusto.value, 'Preço de custo')
-  if (precoCustoN == null) return null
+  const precoCustoN = parsePrecoOpcional(precoCusto.value, 'Preço de custo')
+  if (precoCustoN === undefined) return null
   const precoPrazoN = parsePrecoOpcional(precoPrazo.value, 'Preço a prazo')
   if (precoPrazoN === undefined) return null
   const precoPromoN = parsePrecoOpcional(precoPromocional.value, 'Preço promocional')
@@ -196,10 +228,10 @@ function montarPatch(): ProdutoWorkspacePatch | null {
 
   const patch: ProdutoWorkspacePatch = {
     nome: n,
-    unidade_venda: strOuNull(unidadeVenda.value),
+    unidade_venda: unidade,
     marca: strOuNull(marca.value),
     preco,
-    preco_custo: precoCustoN,
+    preco_custo: precoCustoN ?? 0,
     preco_prazo: precoPrazoN,
     preco_promocional: precoPromoN,
     peso_kg: pesoN,
@@ -211,19 +243,69 @@ function montarPatch(): ProdutoWorkspacePatch | null {
     codigo_barras_ean: strOuNull(codigoBarras.value),
     infos_relevantes: strOuNull(infosRelevantes.value),
     status: statusAtivo.value,
-    termos_pesquisa_ids: termoSelecao.value?.id != null ? [termoSelecao.value.id] : [],
+    termos_pesquisa_ids: [termoSelecao.value.id],
   }
   return patch
 }
 
-function salvar() {
-  if (!props.row) return
+function patchParaLinhaCriar(patch: ProdutoWorkspacePatch): ProdutoCriarEmMassaLinha {
+  return {
+    nome: patch.nome!,
+    unidade_venda: patch.unidade_venda ?? null,
+    marca: patch.marca ?? null,
+    preco: patch.preco,
+    preco_custo: patch.preco_custo,
+    preco_prazo: patch.preco_prazo ?? null,
+    preco_promocional: patch.preco_promocional ?? null,
+    peso_kg: patch.peso_kg ?? null,
+    infos_relevantes: patch.infos_relevantes ?? null,
+    status: patch.status ?? true,
+    codigo_ncm: patch.codigo_ncm ?? null,
+    termo_pesquisa: patch.termos_pesquisa_ids?.[0] ?? null,
+    codigo_barras_ean: patch.codigo_barras_ean ?? null,
+    sku: patch.sku ?? null,
+    largura: patch.largura,
+    altura: patch.altura,
+    comprimento: patch.comprimento,
+  }
+}
+
+async function salvar() {
   const patch = montarPatch()
   if (!patch) return
+
+  if (!isCriar.value) {
+    if (!props.row) return
+    salvando.value = true
+    emit('salvar', patch)
+    open.value = false
+    salvando.value = false
+    return
+  }
+
+  const wid = props.workspaceId
+  if (wid == null || wid < 1) {
+    toast.error('Workspace inválido.')
+    return
+  }
+
   salvando.value = true
-  emit('salvar', patch)
-  open.value = false
-  salvando.value = false
+  try {
+    await $fetch<ProdutosCriarEmMassaResponse>('/api/produtos/criar-em-massa', {
+      method: 'POST',
+      body: {
+        workspace_id: wid,
+        linhas: [patchParaLinhaCriar(patch)],
+      },
+    })
+    toast.success('Produto criado.')
+    open.value = false
+    emit('gravado')
+  } catch (err) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível criar o produto.'))
+  } finally {
+    salvando.value = false
+  }
 }
 
 function fechar() {
@@ -234,11 +316,11 @@ function fechar() {
 <template>
   <BaseModal
     v-model:open="open"
-    title="Editar produto"
+    :title="tituloModal"
     panel-class="w-full max-w-3xl max-h-[90vh]"
   >
     <template #subtitle>
-      Altere os campos abaixo e salve. As alterações são aplicadas imediatamente.
+      Campos com * são obrigatórios. Os demais são opcionais.
     </template>
 
     <div class="grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2">
@@ -247,7 +329,7 @@ function fechar() {
           for="produto-edit-nome"
           class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
         >
-          Nome do produto
+          Nome do produto <span class="text-red-600 dark:text-red-400">*</span>
         </label>
         <BaseInput
           id="produto-edit-nome"
@@ -262,7 +344,7 @@ function fechar() {
           for="produto-edit-termo"
           class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
         >
-          Termo de pesquisa
+          Categoria / Termo de pesquisa <span class="text-red-600 dark:text-red-400">*</span>
         </label>
         <ProdutosSelecaoUnica
           catalogo="termos_pesquisa"
@@ -280,12 +362,12 @@ function fechar() {
           for="produto-edit-unidade"
           class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
         >
-          Unidade de venda
+          Unidade de venda <span class="text-red-600 dark:text-red-400">*</span>
         </label>
         <BaseInput
           id="produto-edit-unidade"
           v-model="unidadeVenda"
-          placeholder="Ex: UN, CX, KG"
+          placeholder="Ex: UNIDADE, SACO, FARDO, KG"
           autocomplete="off"
         />
       </div>
@@ -307,6 +389,23 @@ function fechar() {
 
       <div>
         <label
+          for="produto-edit-vista"
+          class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
+        >
+          Preço à vista (R$) <span class="text-red-600 dark:text-red-400">*</span>
+        </label>
+        <BaseInput
+          id="produto-edit-vista"
+          v-model="precoVista"
+          type="text"
+          inputmode="decimal"
+          placeholder="Ex: 109,23"
+          autocomplete="off"
+        />
+      </div>
+
+      <div>
+        <label
           for="produto-edit-custo"
           class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
         >
@@ -318,23 +417,6 @@ function fechar() {
           type="text"
           inputmode="decimal"
           placeholder="Ex: 50,00"
-          autocomplete="off"
-        />
-      </div>
-
-      <div>
-        <label
-          for="produto-edit-vista"
-          class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
-        >
-          Preço à vista (R$)
-        </label>
-        <BaseInput
-          id="produto-edit-vista"
-          v-model="precoVista"
-          type="text"
-          inputmode="decimal"
-          placeholder="Ex: 109,23"
           autocomplete="off"
         />
       </div>

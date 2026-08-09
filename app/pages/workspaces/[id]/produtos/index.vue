@@ -5,7 +5,7 @@ import ProdutosBarraAcoes from '~/components/produtos/ProdutosBarraAcoes.vue'
 import ProdutosBuscaInput from '~/components/produtos/ProdutosBuscaInput.vue'
 import AlertaOportunidadesDeVendas from '~/components/produtos/oportunidades-de-vendas/AlertaOportunidadesDeVendas.vue'
 import FerramentaImportarProduto from '~/components/produtos/FerramentaImportarProduto.vue'
-import ProdutosModalCriarProdutosEmMassa from '~/components/produtos/ProdutosModalCriarProdutosEmMassa.vue'
+import ProdutosModalEditarProduto from '~/components/produtos/ProdutosModalEditarProduto.vue'
 import ProdutosTabela from '~/components/produtos/ProdutosTabela.vue'
 import { useProdutosStore } from '~/stores/produtos'
 import { useWorkspacesStore } from '~/stores/workspaces'
@@ -46,7 +46,7 @@ const limiteProdutos = computed(() => {
   return Math.trunc(lim)
 })
 
-const modalCriarEmMassaAberto = ref(false)
+const modalNovoProdutoAberto = ref(false)
 
 /** Seletor de ficheiro + modal de mapeamento (`FerramentaImportarProduto`). */
 const ferramentaImportarProdutoRef = ref<{ abrirSeletorImportacao: () => void } | null>(null)
@@ -54,6 +54,10 @@ const produtosTabelaRef = ref<{ resetarEstadoPosImportacao: () => void } | null>
 
 function aoClicarImportar() {
   ferramentaImportarProdutoRef.value?.abrirSeletorImportacao()
+}
+
+function aoClicarNovo() {
+  modalNovoProdutoAberto.value = true
 }
 
 /** Texto no campo (edição); a listagem usa `termoPesquisa` após Enter ou «Pesquisar». */
@@ -120,6 +124,7 @@ async function aoProdutoNovoGravado() {
     page: 1,
     q: termoPesquisa.value,
   })
+  await workspacesStore.ensureAllLoaded({ force: true })
 }
 
 /** Após cadastrar via oportunidades de vendas e fechar o modal: refresca workspace + lista/total. */
@@ -160,7 +165,7 @@ function aposImportacao() {
 
     <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
       <ProdutosBuscaInput v-model="busca" :termo-aplicado="termoPesquisa" @pesquisar="aoPesquisar" />
-      <ProdutosBarraAcoes @importar="aoClicarImportar" @novo="modalCriarEmMassaAberto = true" />
+      <ProdutosBarraAcoes @importar="aoClicarImportar" @novo="aoClicarNovo" />
     </div>
 
     <FerramentaImportarProduto
@@ -169,8 +174,10 @@ function aposImportacao() {
       :termo-busca="termoPesquisa"
       @importado="aposImportacao"
     />
-    <ProdutosModalCriarProdutosEmMassa
-      v-model:open="modalCriarEmMassaAberto"
+    <ProdutosModalEditarProduto
+      v-model:open="modalNovoProdutoAberto"
+      :workspace-id="workspaceId"
+      :row="null"
       @gravado="aoProdutoNovoGravado"
     />
     <ProdutosTabela

@@ -4,13 +4,19 @@ import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import AreaChatRespostaPreview from '~/components/chat/area-chat/AreaChatRespostaPreview.vue'
 import CriarAgendamentoModal from '~/components/agendamento-de-mensagem/CriarAgendamentoModal.vue'
+import DropdownMensagensProntas from '~/components/chat/area-chat/mensagem-pronta/DropdownMensagensProntas.vue'
+import ModalCriarMensagemPronta from '~/components/chat/area-chat/mensagem-pronta/ModalCriarMensagemPronta.vue'
 import type { ContatoDestinoUi } from '~/components/agendamento-de-mensagem/types'
+import type {
+  MensagemProntaListaItem,
+} from '#shared/types/mensagensProntas'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 import type { Mensagem, PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import type { MessageType } from '#shared/types/messageType'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useAgendamentosMensagensStore } from '~/stores/agendamentosMensagens'
+import { useMensagensProntasStore } from '~/stores/mensagensProntas'
 
 export type AreaChatRodapeContexto = {
   conversaKey: string
@@ -53,11 +59,116 @@ const canaisStore = useCanaisStore()
 const mensagensStore = useMensagensStore()
 const workspacesStore = useWorkspacesStore()
 const agendamentosStore = useAgendamentosMensagensStore()
+const mensagensProntasStore = useMensagensProntasStore()
 const { items } = storeToRefs(conversasStore)
 const { conversaKeyAtiva } = useConversaKeyAtiva()
 const { mensagemEmResposta } = storeToRefs(mensagensStore)
 
 const modalAgendamentoAberto = ref(false)
+const modalMensagemProntaAberto = ref(false)
+/** `null` = criar; uuid = editar essa sequência. */
+const mensagemProntaEditandoId = ref<string | null>(null)
+/** Visão do menu `+`: mídia | mensagens prontas. */
+const menuPlusView = ref<'midia' | 'prontas'>('midia')
+
+/** Atalho `/` no input abre a lista de mensagens prontas. */
+const slashProntasAberto = computed(() => mensagem.value === '/')
+
+function fecharSlashProntas() {
+  if (mensagem.value === '/') mensagem.value = ''
+}
+
+function onMenuPlusOpenChange(isOpen: boolean) {
+  if (!isOpen) menuPlusView.value = 'midia'
+}
+
+async function onSelecionarMensagemPronta(item: MensagemProntaListaItem, close: () => void) {
+  const workspaceId = Number.parseInt(
+    String(props.contextoExterno?.workspaceId ?? workspacesStore.currentWorkspaceId ?? ''),
+    10,
+  )
+  if (!Number.isFinite(workspaceId) || workspaceId < 1) {
+    toast.error('Selecione um workspace.')
+    return
+  }
+
+  const canalId =
+    props.contextoExterno?.idCanal
+    ?? conversasStore.activeCanalId
+    ?? null
+  if (canalId == null || canalId < 1) {
+    toast.error('Canal não identificado.')
+    return
+  }
+
+  const conversaKey =
+    (props.contextoExterno?.conversaKey ?? conversasStore.conversaAtual ?? '').trim()
+  if (!conversaKey) {
+    toast.error('Abra uma conversa antes de usar a mensagem pronta.')
+    return
+  }
+
+  // Preferência: conversa do canal ativo em Pinia (`byCanal[activeCanalId].items`).
+  const canalAtivoId = conversasStore.activeCanalId
+  const itemsCanalAtivo =
+    canalAtivoId != null ? (conversasStore.byCanal[canalAtivoId]?.items ?? []) : []
+  const conversa =
+    itemsCanalAtivo.find((c) => c.key === conversaKey)
+    ?? conversasStore.findConversaByKey(conversaKey)
+    ?? items.value.find((c) => c.key === conversaKey)
+    ?? null
+
+  const phone =
+    props.contextoExterno?.telefone?.trim()
+    || conversa?.phone?.trim()
+    || conversa?.connect_phone?.trim()
+    || conversa?.lid?.trim()
+    || null
+
+  // Nome sempre do item da conversa atual no Pinia (não do grupo, se houver name).
+  const name =
+    conversa?.name?.trim()
+    || props.contextoExterno?.name?.trim()
+    || conversa?.name_group?.trim()
+    || null
+
+  try {
+    await mensagensProntasStore.dispararWebhookN8n({
+      workspaceId,
+      canalId,
+      conversaKey,
+      phone,
+      name,
+      sequenciaId: item.id,
+    })
+    toast.success('Mensagem pronta enviada.')
+    fecharSlashProntas()
+    close()
+    menuPlusView.value = 'midia'
+  } catch (err: unknown) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível enviar a mensagem pronta.'))
+  }
+}
+
+function abrirCriarMensagemPronta(close: () => void) {
+  fecharSlashProntas()
+  close()
+  menuPlusView.value = 'midia'
+  mensagemProntaEditandoId.value = null
+  modalMensagemProntaAberto.value = true
+}
+
+function abrirEditarMensagemPronta(item: MensagemProntaListaItem, close: () => void) {
+  fecharSlashProntas()
+  close()
+  menuPlusView.value = 'midia'
+  mensagemProntaEditandoId.value = item.id
+  modalMensagemProntaAberto.value = true
+}
+
+function aoFecharModalMensagemPronta() {
+  mensagemProntaEditandoId.value = null
+}
 
 const conversaKeyResolvida = computed(
   () => props.contextoExterno?.conversaKey ?? conversaKeyAtiva.value ?? null,
@@ -224,7 +335,7 @@ function ensureCanSend(): {
 
 function enviarMensagem() {
   const t = mensagem.value.trim()
-  if (!t) return
+  if (!t || t === '/') return
   const ctx = ensureCanSend()
   if (!ctx) return
   const { idCanal, conversaKey, telefone, lid } = ctx
@@ -455,7 +566,10 @@ async function sendRecordedAudio() {
   }
 }
 
-const hasText = computed(() => Boolean(mensagem.value.trim()))
+const hasText = computed(() => {
+  const t = mensagem.value.trim()
+  return Boolean(t) && t !== '/'
+})
 
 type UazapiSendRes = {
   messageid?: unknown
@@ -533,6 +647,7 @@ function confirmOptimisticAfterSend(
   }
 
   mensagensStore.mergeFromPusherNovaMensagem(idCanal, payload)
+  conversasStore.mergeFromPusherNovaMensagem(idCanal, payload)
 }
 </script>
 
@@ -549,7 +664,13 @@ function confirmOptimisticAfterSend(
     />
 
     <div class="flex items-end gap-3" :class="compact ? 'gap-2' : 'gap-4'">
-      <BaseDropdown title="Enviar mídia" align="left" side="top" panel-class="w-60 min-w-[14rem]">
+      <BaseDropdown
+        title="Enviar mídia"
+        align="left"
+        side="top"
+        panel-class="w-72 min-w-[16rem]"
+        @open-change="onMenuPlusOpenChange"
+      >
         <template #trigger>
           <span
             class="flex h-11 w-11 items-center justify-center rounded-full text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-primary dark:text-slate-400 dark:hover:bg-slate-800"
@@ -560,7 +681,16 @@ function confirmOptimisticAfterSend(
         </template>
 
         <template #default="{ close }">
-          <div class="flex flex-col gap-1">
+          <DropdownMensagensProntas
+            v-if="menuPlusView === 'prontas'"
+            @voltar="menuPlusView = 'midia'"
+            @criar="abrirCriarMensagemPronta(close)"
+            @editar="(item) => abrirEditarMensagemPronta(item, close)"
+            @selecionar="(item) => onSelecionarMensagemPronta(item, close)"
+          />
+
+          <!-- Menu de mídia -->
+          <div v-else class="flex flex-col gap-1">
             <button
               type="button"
               role="menuitem"
@@ -587,6 +717,15 @@ function confirmOptimisticAfterSend(
             >
               <span class="material-symbols-outlined text-[20px]" aria-hidden="true">description</span>
               Enviar documento
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+              @click="menuPlusView = 'prontas'"
+            >
+              <span class="material-symbols-outlined text-[20px]" aria-hidden="true">quickreply</span>
+              Mensagens prontas
             </button>
             <button
               type="button"
@@ -624,14 +763,31 @@ function confirmOptimisticAfterSend(
         @change="(e) => onFileSelected('document', e)"
       />
 
-      <div class="relative min-w-0 flex-1">
+      <div
+        class="relative min-w-0 flex-1"
+        @keydown.escape.capture="fecharSlashProntas"
+      >
+        <div
+          v-if="slashProntasAberto"
+          class="absolute bottom-full left-0 z-40 mb-2 max-h-[min(22rem,50vh)] w-[min(100%,18rem)] overflow-y-auto rounded-2xl border border-outline/30 bg-surface-container-lowest p-1.5 shadow-xl dark:border-dark-outline/35 dark:bg-dark-surface-container"
+          role="listbox"
+          aria-label="Mensagens prontas"
+        >
+          <DropdownMensagensProntas
+            modo="slash"
+            @voltar="fecharSlashProntas"
+            @criar="abrirCriarMensagemPronta(() => {})"
+            @editar="(item) => abrirEditarMensagemPronta(item, () => {})"
+            @selecionar="(item) => onSelecionarMensagemPronta(item, () => {})"
+          />
+        </div>
         <BaseTextarea
           ref="mensagemInputRef"
           :id="inputId"
           v-model="mensagem"
           name="mensagem"
-          placeholder="Escreva sua mensagem..."
-          title="Enter envia a mensagem · Shift+Enter quebra linha"
+          placeholder="Escreva sua mensagem... ( / mensagens prontas )"
+          title="Enter envia a mensagem · Shift+Enter quebra linha · / abre mensagens prontas"
           autocomplete="off"
           :wrapper-id="`${inputId}-wrap`"
           :min-height-px="compact ? 44 : 48"
@@ -709,6 +865,13 @@ function confirmOptimisticAfterSend(
       :prefill-canal-id="prefillCanalAgendamento"
       @criado="aoCriadoAgendamentoDoChat"
       @cancelar="agendamentosStore.limparAgendamentoSelecionado()"
+    />
+
+    <ModalCriarMensagemPronta
+      v-model:open="modalMensagemProntaAberto"
+      :sequencia-id="mensagemProntaEditandoId"
+      @close="aoFecharModalMensagemPronta"
+      @salvo="aoFecharModalMensagemPronta"
     />
   </footer>
 </template>

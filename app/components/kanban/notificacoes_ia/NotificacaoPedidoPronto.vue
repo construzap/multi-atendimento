@@ -3,7 +3,10 @@ import { computed, ref } from 'vue'
 import type { KanbanNotificacaoIa } from '#shared/types/kanban'
 import {
   formatMoedaBr,
+  normalizeTotalOrcamento,
   parseProdutosNotificacao,
+  resolveTotalOrcamento,
+  subtotalLinhaExibicao,
 } from './parseProdutosNotificacao'
 
 const STORAGE_KEY = 'kanban.notificacoes_ia.imprimir_ao_aceitar'
@@ -19,6 +22,10 @@ const emit = defineEmits<{
 }>()
 
 const produtos = computed(() => parseProdutosNotificacao(props.item.produtos))
+const totais = computed(() => normalizeTotalOrcamento(props.item.total_orcamento))
+const totalExibicao = computed(() =>
+  resolveTotalOrcamento(props.item.total_orcamento, props.item.forma_pagamento),
+)
 
 function lerPreferenciaImprimir(): boolean {
   if (!import.meta.client) return false
@@ -45,6 +52,11 @@ function onChangeImprimir(e: Event) {
 function onAceitar() {
   emit('aceitar', { imprimir: imprimirAoAceitar.value === true })
 }
+
+function linhaSubtotal(p: (typeof produtos.value)[number]): string {
+  const sub = subtotalLinhaExibicao(p, props.item.forma_pagamento)
+  return sub != null ? formatMoedaBr(sub) : '—'
+}
 </script>
 
 <template>
@@ -61,24 +73,37 @@ function onAceitar() {
       <div
         v-for="(p, idx) in produtos"
         :key="idx"
-        class="grid grid-cols-[1fr_auto_auto] items-baseline gap-x-4 gap-y-0.5"
+        class="space-y-1 border-b border-outline/15 pb-3 last:border-0 last:pb-0 dark:border-dark-outline/15"
       >
-        <p class="min-w-0 text-sm font-semibold text-on-surface dark:text-dark-on-surface">
-          {{ p.nome }}
-        </p>
-        <p class="shrink-0 text-sm tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-          <template v-if="p.qtd != null">QTD: {{ p.qtd }}</template>
-          <template v-else>—</template>
-        </p>
-        <p class="shrink-0 text-right text-sm font-medium tabular-nums text-on-surface dark:text-dark-on-surface">
-          <template v-if="p.preco != null && p.qtd != null">
-            {{ formatMoedaBr(p.preco * p.qtd) }}
-          </template>
-          <template v-else-if="p.preco != null">
-            {{ formatMoedaBr(p.preco) }}
-          </template>
-          <template v-else>—</template>
-        </p>
+        <div class="grid grid-cols-[1fr_auto_auto] items-baseline gap-x-4">
+          <p class="min-w-0 text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+            {{ p.nome }}
+          </p>
+          <p class="shrink-0 text-sm tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
+            <template v-if="p.qtd != null">QTD: {{ p.qtd }}</template>
+            <template v-else>—</template>
+          </p>
+          <p class="shrink-0 text-right text-sm font-semibold tabular-nums text-on-surface dark:text-dark-on-surface">
+            {{ linhaSubtotal(p) }}
+          </p>
+        </div>
+        <div
+          v-if="p.preco_vista != null || p.preco_prazo != null"
+          class="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant"
+        >
+          <span v-if="p.preco_vista != null">
+            À vista: {{ formatMoedaBr(p.preco_vista) }}
+            <template v-if="p.subtotal_vista != null">
+              ({{ formatMoedaBr(p.subtotal_vista) }})
+            </template>
+          </span>
+          <span v-if="p.preco_prazo != null">
+            Prazo: {{ formatMoedaBr(p.preco_prazo) }}
+            <template v-if="p.subtotal_prazo != null">
+              ({{ formatMoedaBr(p.subtotal_prazo) }})
+            </template>
+          </span>
+        </div>
       </div>
     </div>
     <p
@@ -95,8 +120,14 @@ function onAceitar() {
           Total
         </span>
         <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-          {{ formatMoedaBr(item.total_orcamento) }}
+          {{ formatMoedaBr(totalExibicao) }}
         </span>
+      </div>
+      <div
+        class="flex flex-wrap justify-end gap-x-4 gap-y-0.5 text-[11px] tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant"
+      >
+        <span>À vista: {{ formatMoedaBr(totais.total_a_vista) }}</span>
+        <span>Prazo: {{ formatMoedaBr(totais.total_a_prazo) }}</span>
       </div>
       <div class="flex items-baseline justify-between gap-4">
         <span class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant">

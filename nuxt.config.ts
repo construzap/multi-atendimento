@@ -35,6 +35,8 @@ export default defineNuxtConfig({
     b2AnotacoesBucketName: '',
     /** Bucket B2 para fotos de produtos (default no código: produtosconstruzap). */
     b2ProdutosBucketName: '',
+    /** Bucket B2 para mídia de mensagens prontas (default no código: mensagemprontas). */
+    b2MensagemProntasBucketName: '',
 
     // --- Pusher — só servidor (override: NUXT_PUSHER_SECRET) ---
     pusherSecret: '',
@@ -54,6 +56,36 @@ export default defineNuxtConfig({
      * Override: NUXT_N8N_KANBAN_API_KEY
      */
     n8nKanbanApiKey: '',
+
+    // --- Agente IA (N8N → POST /api/public/agente/responder) ---
+    /** Auth do endpoint do agente. Override: NUXT_N8N_AGENTE_API_KEY */
+    n8nAgenteApiKey: process.env.NUXT_N8N_AGENTE_API_KEY || '',
+    /**
+     * Senha mestra para pgp_sym_decrypt(api_key_encrypted) em `canais`.
+     * Override: NUXT_AGENTE_SENHA_MESTRA_ENCRIPITOGRAFIA_API_KEY
+     */
+    agenteSenhaMestraEncriptografiaApiKey:
+      process.env.NUXT_AGENTE_SENHA_MESTRA_ENCRIPITOGRAFIA_API_KEY || '',
+    /** Modelo OpenAI do agent loop (fallback se canal.model_name vazio). Override: NUXT_OPENAI_AGENT_MODEL */
+    openaiAgentModel:
+      process.env.NUXT_OPENAI_AGENT_MODEL || 'gpt-4.1-mini-2025-04-14',
+    /** Máximo de rodadas tool_calls no loop. Override: NUXT_AGENTE_MAX_TOOL_ROUNDS */
+    agenteMaxToolRounds: process.env.NUXT_AGENTE_MAX_TOOL_ROUNDS || '8',
+    /** Janela de mensagens de memória. Override: NUXT_AGENTE_CONTEXT_WINDOW */
+    agenteContextWindow: process.env.NUXT_AGENTE_CONTEXT_WINDOW || '26',
+    /** URLs HTTP das tools (webhooks N8N). Override: NUXT_AGENTE_TOOL_*_URL */
+    agenteToolEstoqueUrl: process.env.NUXT_AGENTE_TOOL_ESTOQUE_URL || '',
+    agenteToolEnviaLocalizacaoUrl:
+      process.env.NUXT_AGENTE_TOOL_ENVIA_LOCALIZACAO_URL || '',
+    agenteToolFreteUrl: process.env.NUXT_AGENTE_TOOL_FRETE_URL || '',
+    agenteToolSolicitaPagamentoUrl:
+      process.env.NUXT_AGENTE_TOOL_SOLICITA_PAGAMENTO_URL || '',
+    agenteToolOrcamentoProntoUrl:
+      process.env.NUXT_AGENTE_TOOL_ORCAMENTO_PRONTO_URL || '',
+    /** Header opcional comum aos webhooks das tools. */
+    agenteToolHttpHeaderName: process.env.NUXT_AGENTE_TOOL_HTTP_HEADER_NAME || '',
+    agenteToolHttpHeaderValue:
+      process.env.NUXT_AGENTE_TOOL_HTTP_HEADER_VALUE || '',
 
     public: {
       // --- Pusher — browser + SSR (override: NUXT_PUBLIC_PUSHER_*) ---

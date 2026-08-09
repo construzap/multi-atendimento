@@ -17,6 +17,7 @@ type ConversaListaItem = {
   fechada: boolean
   isGrupo: boolean
   naoLidas: number
+  fromMe: boolean
 }
 
 const canais = useCanaisStore()
@@ -122,6 +123,7 @@ const itens = computed<ConversaListaItem[]>(() => {
     fechada: m.conversa_aberta === false,
     isGrupo: m.is_group === true,
     naoLidas: m.nao_lidas ?? 0,
+    fromMe: m.from_me === true,
   }))
 })
 
@@ -149,13 +151,15 @@ watch(
     const ids = new Set(list.map((x) => x.id))
     selectedKeys.value = selectedKeys.value.filter((k) => ids.has(k))
 
-    if (!list.length) {
-      if (!conversaKeyAtiva.value) conversas.setConversaAtual(null)
+    const cur = conversaKeyAtiva.value
+    if (cur && !ids.has(cur)) {
+      conversas.setConversaAtual(null)
       return
     }
-    const cur = conversaKeyAtiva.value
-    // Se a conversa da URL não estiver na lista filtrada, não limpa (ex.: veio do kanban).
-    if (cur && !list.some((x) => x.id === cur)) return
+
+    if (!list.length && !cur) {
+      conversas.setConversaAtual(null)
+    }
   },
   { immediate: true },
 )
@@ -213,36 +217,74 @@ function maybeLoadMore() {
       @scroll="onScroll"
     >
       <div class="flex flex-col gap-2">
-        <ItemConversa
-          v-for="c in itens"
-          :key="c.id"
-          :conversa-id="c.id"
-          :nome="c.nome"
-          :ultima-mensagem="c.ultimaMensagem"
-          :avatar-src="c.avatarSrc"
-          :messatype="c.messatype"
-          :fechada="c.fechada"
-          :is-grupo="c.isGrupo"
-          :nao-lidas="c.naoLidas"
-          :selected="c.id === conversaKeyAtiva"
-          :multi-selected="isMultiSelected(c.id)"
-          :force-show-checkbox="selectionActive"
-          @toggle-selected="onToggleSelected"
-        />
-
-        <p
-          v-if="!conversas.pending && itens.length === 0"
-          class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+        <div
+          v-if="conversas.pending && itens.length === 0"
+          class="flex flex-col items-center justify-center gap-3 py-16"
+          role="status"
+          aria-live="polite"
+          aria-label="Carregando conversas"
         >
-          <template v-if="!canais.currentCanalId">Selecione um canal para ver as conversas.</template>
-          <template v-else-if="termoPesquisa.trim()">
-            Nenhuma conversa encontrada para “{{ termoPesquisa.trim() }}”.
-          </template>
-          <template v-else-if="filtroKanbanColunaId != null">
-            Nenhuma conversa nesta coluna do kanban.
-          </template>
-          <template v-else>Nenhuma conversa carregada para este canal.</template>
-        </p>
+          <span
+            class="material-symbols-outlined animate-spin text-4xl text-primary-600 dark:text-primary-400"
+            aria-hidden="true"
+          >
+            progress_activity
+          </span>
+          <p class="animate-pulse text-sm font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+            Carregando conversas…
+          </p>
+        </div>
+
+        <template v-else>
+          <ItemConversa
+            v-for="c in itens"
+            :key="c.id"
+            :conversa-id="c.id"
+            :nome="c.nome"
+            :ultima-mensagem="c.ultimaMensagem"
+            :avatar-src="c.avatarSrc"
+            :messatype="c.messatype"
+            :fechada="c.fechada"
+            :is-grupo="c.isGrupo"
+            :nao-lidas="c.naoLidas"
+            :from-me="c.fromMe"
+            :selected="c.id === conversaKeyAtiva"
+            :multi-selected="isMultiSelected(c.id)"
+            :force-show-checkbox="selectionActive"
+            @toggle-selected="onToggleSelected"
+          />
+
+          <p
+            v-if="!conversas.pending && itens.length === 0"
+            class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+          >
+            <template v-if="!canais.currentCanalId">Selecione um canal para ver as conversas.</template>
+            <template v-else-if="termoPesquisa.trim()">
+              Nenhuma conversa encontrada para “{{ termoPesquisa.trim() }}”.
+            </template>
+            <template v-else-if="filtroKanbanColunaId != null">
+              Nenhuma conversa nesta coluna do kanban.
+            </template>
+            <template v-else>Nenhuma conversa carregada para este canal.</template>
+          </p>
+
+          <div
+            v-if="conversas.pending && itens.length > 0"
+            class="flex items-center justify-center gap-2 py-3"
+            role="status"
+            aria-live="polite"
+          >
+            <span
+              class="material-symbols-outlined animate-spin text-[18px] text-primary-600 dark:text-primary-400"
+              aria-hidden="true"
+            >
+              progress_activity
+            </span>
+            <span class="animate-pulse text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+              Carregando conversas…
+            </span>
+          </div>
+        </template>
       </div>
     </div>
 

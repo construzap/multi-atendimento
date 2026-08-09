@@ -13,6 +13,7 @@ import ModalAddCanal from '~/components/workspaces/canais/ModalAddCanal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
 import { useWorkspacesStore } from '~/stores/workspaces'
+import { useProfileStore } from '~/stores/profile'
 import {
   isColunaOrigemLeadsNaoConfiguradaError,
   useConversasStore,
@@ -30,12 +31,15 @@ const router = useRouter()
 
 const canaisStore = useCanaisStore()
 const workspacesStore = useWorkspacesStore()
+const profileStore = useProfileStore()
 const { currentCanal, instanciaStatus, items } = storeToRefs(canaisStore)
+const { isAdminConfirmado } = storeToRefs(profileStore)
 const route = useRoute()
 const conversasStore = useConversasStore()
 const {
   mostrarFechadas,
   mostrarGrupos,
+  filtroKanbanNaoLidas,
   termoPesquisa,
 } = useConversasFiltros()
 
@@ -213,6 +217,7 @@ async function criarNovaConversa() {
 
 const alternandoFechadas = ref(false)
 const alternandoGrupos = ref(false)
+const alternandoNaoLidas = ref(false)
 const atualizandoLista = ref(false)
 
 const labelToggleFechadas = computed(() =>
@@ -230,6 +235,20 @@ const labelToggleGrupos = computed(() =>
 const iconeToggleGrupos = computed(() =>
   mostrarGrupos.value ? 'group_off' : 'groups'
 )
+
+const labelToggleNaoLidas = computed(() =>
+  filtroKanbanNaoLidas.value ? 'Todas as conversas' : 'Mostrar Não Lidas'
+)
+
+const iconeToggleNaoLidas = computed(() =>
+  filtroKanbanNaoLidas.value ? 'mark_email_read' : 'mark_email_unread'
+)
+
+watch(isAdminConfirmado, (isAdmin) => {
+  if (!isAdmin && mostrarGrupos.value) {
+    void conversasStore.setMostrarGrupos(false).catch(() => {})
+  }
+})
 
 const DEBOUNCE_BUSCA_MS = 400
 let buscaTimer: ReturnType<typeof setTimeout> | null = null
@@ -296,6 +315,7 @@ async function alternarMostrarConversasFechadas() {
 }
 
 async function alternarMostrarGrupos() {
+  if (!isAdminConfirmado.value) return
   if (alternandoGrupos.value || !currentCanal.value?.id) return
   alternandoGrupos.value = true
   try {
@@ -305,6 +325,19 @@ async function alternarMostrarGrupos() {
     toast.error(msg, { duration: 8000 })
   } finally {
     alternandoGrupos.value = false
+  }
+}
+
+async function alternarMostrarNaoLidas() {
+  if (alternandoNaoLidas.value || !currentCanal.value?.id) return
+  alternandoNaoLidas.value = true
+  try {
+    await conversasStore.setFiltroNaoLidas(!filtroKanbanNaoLidas.value)
+  } catch (err: unknown) {
+    const msg = mensagemErroFetch(err, 'Não foi possível atualizar a lista de conversas.')
+    toast.error(msg, { duration: 8000 })
+  } finally {
+    alternandoNaoLidas.value = false
   }
 }
 
@@ -541,6 +574,23 @@ async function atualizarListaConversas() {
         </BaseButton>
 
         <BaseButton
+          type="button"
+          :variant="filtroKanbanNaoLidas ? 'primary' : 'secondary'"
+          size="sm"
+          :block="false"
+          class="!flex min-h-9 w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap !px-2 !py-0 text-[11px] leading-tight"
+          :loading="alternandoNaoLidas"
+          :disabled="alternandoNaoLidas || !currentCanal?.id"
+          :aria-pressed="filtroKanbanNaoLidas"
+          :aria-label="labelToggleNaoLidas"
+          @click="alternarMostrarNaoLidas"
+        >
+          <span class="material-symbols-outlined shrink-0 text-[14px]" aria-hidden="true">{{ iconeToggleNaoLidas }}</span>
+          <span class="truncate">{{ labelToggleNaoLidas }}</span>
+        </BaseButton>
+
+        <BaseButton
+          v-if="isAdminConfirmado"
           type="button"
           :variant="mostrarGrupos ? 'primary' : 'secondary'"
           size="sm"

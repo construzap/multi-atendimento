@@ -1,7 +1,11 @@
 import type { KanbanNotificacaoIa } from '#shared/types/kanban'
 import {
   formatMoedaBr,
+  normalizeTotalOrcamento,
   parseProdutosNotificacao,
+  resolveTotalOrcamento,
+  subtotalLinhaExibicao,
+  type ProdutoNotificacaoLinha,
 } from './parseProdutosNotificacao'
 
 export type CupomPedidoImpressaoInput = {
@@ -44,20 +48,39 @@ function somaProdutos(item: KanbanNotificacaoIa): number {
   let soma = 0
   let tem = false
   for (const p of linhas) {
-    if (p.preco == null) continue
+    const sub = subtotalLinhaExibicao(p, item.forma_pagamento)
+    if (sub == null) continue
     tem = true
-    soma += p.qtd != null ? p.preco * p.qtd : p.preco
+    soma += sub
   }
   if (tem) return soma
-  return Number(item.total_orcamento) || 0
+  return resolveTotalOrcamento(item.total_orcamento, item.forma_pagamento) ?? 0
+}
+
+function detalhePrecosItem(p: ProdutoNotificacaoLinha): string {
+  const partes: string[] = []
+  if (p.preco_vista != null) {
+    const sub =
+      p.subtotal_vista != null ? ` (${formatMoedaBr(p.subtotal_vista)})` : ''
+    partes.push(`À vista: ${formatMoedaBr(p.preco_vista)}${sub}`)
+  }
+  if (p.preco_prazo != null) {
+    const sub =
+      p.subtotal_prazo != null ? ` (${formatMoedaBr(p.subtotal_prazo)})` : ''
+    partes.push(`Prazo: ${formatMoedaBr(p.preco_prazo)}${sub}`)
+  }
+  if (partes.length === 0) return ''
+  return `<div class="item-detalhe">${esc(partes.join(' · '))}</div>`
 }
 
 function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
   const { item } = input
   const loja = (input.lojaNome?.trim() || 'PEDIDO').toUpperCase()
   const produtos = parseProdutosNotificacao(item.produtos)
+  const totais = normalizeTotalOrcamento(item.total_orcamento)
   const soma = somaProdutos(item)
-  const total = Number(item.total_orcamento) || soma
+  const totalResolvido = resolveTotalOrcamento(item.total_orcamento, item.forma_pagamento)
+  const total = totalResolvido != null ? totalResolvido : soma
   const entrega = item.entrega_ou_retirada?.trim() || ''
   const obs = item.observacoes?.trim() || ''
   const pagamento = item.forma_pagamento?.trim() || '—'
@@ -69,20 +92,29 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
     ? produtos
         .map((p) => {
           const qtd = p.qtd != null ? String(p.qtd) : '—'
-          const precoUnit =
-            p.preco != null ? formatMoedaBr(p.preco) : '—'
+          const sub = subtotalLinhaExibicao(p, item.forma_pagamento)
+          const precoCell =
+            sub != null
+              ? formatMoedaBr(sub)
+              : p.preco != null
+                ? formatMoedaBr(p.preco)
+                : '—'
           return `<tr>
             <td class="qtd">${esc(qtd)}</td>
-            <td class="nome">${esc(p.nome)}</td>
-            <td class="preco">${esc(precoUnit)}</td>
+            <td class="nome">
+              <div class="item-nome">${esc(p.nome)}</div>
+              ${detalhePrecosItem(p)}
+            </td>
+            <td class="preco">${esc(precoCell)}</td>
           </tr>`
         })
         .join('')
     : `<tr><td colspan="3" class="muted">Nenhum produto listado</td></tr>`
 
+  const splitBase = total > 0 ? total : 0
   const split = [2, 3, 4, 5]
     .map((n) => {
-      const parte = total / n
+      const parte = splitBase / n
       return `<div class="split-row"><span>${n} pessoas</span><span>..... ${esc(formatMoedaBr(parte))}</span></div>`
     })
     .join('')
@@ -153,6 +185,14 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
       text-align: right;
       white-space: nowrap;
       padding-left: 6px;
+      font-weight: 700;
+    }
+    .item-nome { font-weight: 700; }
+    .item-detalhe {
+      margin-top: 2px;
+      font-size: 10px;
+      color: #333;
+      line-height: 1.35;
     }
     .totais .linha { margin: 2px 0; }
     .total-final {
@@ -214,8 +254,10 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
     <hr class="sep" />
 
     <div class="totais">
-      <div class="linha"><span>Soma dos produtos:</span><span>${esc(formatMoedaBr(soma))}</span></div>
-      <div class="linha total-final"><span>Total a pagar:</span><span>${esc(formatMoedaBr(total))}</span></div>
+      <div class="linha"><span>Soma (pagamento):</span><span>${esc(formatMoedaBr(soma))}</span></div>
+      <div class="linha"><span>Total à vista:</span><span>${esc(formatMoedaBr(totais.total_a_vista))}</span></div>
+      <div class="linha"><span>Total a prazo:</span><span>${esc(formatMoedaBr(totais.total_a_prazo))}</span></div>
+      <div class="linha total-final"><span>Total a pagar:</span><span>${esc(formatMoedaBr(totalResolvido ?? total))}</span></div>
     </div>
 
     <hr class="sep" />
