@@ -62,10 +62,11 @@ export default defineNuxtConfig({
     n8nAgenteApiKey: process.env.NUXT_N8N_AGENTE_API_KEY || '',
     /**
      * Senha mestra para pgp_sym_decrypt(api_key_encrypted) em `canais`.
-     * Override: NUXT_AGENTE_SENHA_MESTRA_ENCRIPITOGRAFIA_API_KEY
+     * Override Nuxt (nome correto): NUXT_AGENTE_SENHA_MESTRA_ENCRIPTOGRAFIA_API_KEY
+     * Alias histórico (.env):       NUXT_AGENTE_SENHA_MESTRA_ENCRIPITOGRAFIA_API_KEY
+     * Deixe vazio no build; o valor vem do ambiente do container.
      */
-    agenteSenhaMestraEncriptografiaApiKey:
-      process.env.NUXT_AGENTE_SENHA_MESTRA_ENCRIPITOGRAFIA_API_KEY || '',
+    agenteSenhaMestraEncriptografiaApiKey: '',
     /** Modelo OpenAI do agent loop (fallback se canal.model_name vazio). Override: NUXT_OPENAI_AGENT_MODEL */
     openaiAgentModel:
       process.env.NUXT_OPENAI_AGENT_MODEL || 'gpt-4.1-mini-2025-04-14',

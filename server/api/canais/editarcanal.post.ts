@@ -10,6 +10,7 @@ import {
 import { createError, readBody } from 'h3'
 import { checkChannel } from '../../utils/checkChannel'
 import { getAuthUserId } from '../../utils/getAuthUserId'
+import { getAgenteSenhaMestraPassphrase } from '../../utils/agente/getAgenteSenhaMestraPassphrase'
 import { setCanalApiKeyEncrypted } from '../../utils/encryptCanalApiKey'
 
 type EditarCanalBody = {
@@ -219,15 +220,12 @@ export default defineEventHandler(async (event) => {
   const admin = serverSupabaseServiceRole<any>(event)
 
   if (apiKeyPlain) {
-    const config = useRuntimeConfig(event)
-    const passphrase = String(
-      config.agenteSenhaMestraEncriptografiaApiKey ?? '',
-    ).trim()
+    const passphrase = getAgenteSenhaMestraPassphrase(event)
     if (!passphrase) {
       throw createError({
         statusCode: 500,
         statusMessage:
-          'NUXT_AGENTE_SENHA_MESTRA_ENCRIPITOGRAFIA_API_KEY não configurada no servidor.',
+          'NUXT_AGENTE_SENHA_MESTRA_ENCRIPTOGRAFIA_API_KEY não configurada no servidor.',
       })
     }
     await setCanalApiKeyEncrypted(admin, {

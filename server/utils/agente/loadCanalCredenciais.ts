@@ -1,6 +1,7 @@
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
+import { getAgenteSenhaMestraPassphrase } from './getAgenteSenhaMestraPassphrase'
 
 export type CanalAgenteCredenciais = {
   api_key: string
@@ -23,15 +24,12 @@ export async function loadCanalAgenteCredenciais(
   event: H3Event,
   params: { workspace_id: number; canal_id: number },
 ): Promise<CanalAgenteCredenciais> {
-  const config = useRuntimeConfig(event)
-  const passphrase = String(
-    config.agenteSenhaMestraEncriptografiaApiKey ?? '',
-  ).trim()
+  const passphrase = getAgenteSenhaMestraPassphrase(event)
   if (!passphrase) {
     throw createError({
       statusCode: 500,
       statusMessage:
-        'NUXT_AGENTE_SENHA_MESTRA_ENCRIPITOGRAFIA_API_KEY não configurada no servidor.',
+        'NUXT_AGENTE_SENHA_MESTRA_ENCRIPTOGRAFIA_API_KEY não configurada no servidor.',
     })
   }
 
