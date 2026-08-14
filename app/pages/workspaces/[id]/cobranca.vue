@@ -69,7 +69,7 @@ function fecharPainel() {
 </script>
 
 <template>
-  <div class="min-h-full bg-background pb-14 pt-6 transition-colors dark:bg-dark-background md:pt-10">
+  <div class="min-h-full bg-white pb-14 pt-6 transition-colors dark:bg-dark-background md:pt-10">
     <div class="mx-auto max-w-6xl space-y-8 px-4 md:px-6">
       <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div class="max-w-2xl space-y-2">

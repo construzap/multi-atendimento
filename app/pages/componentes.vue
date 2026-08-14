@@ -13,7 +13,7 @@ const texto = ref('')
 
 <template>
   <main
-    class="mx-auto max-w-lg space-y-8 px-4 py-8 transition-colors duration-500 ease-out-expo md:py-12"
+    class="mx-auto min-h-screen max-w-lg space-y-8 bg-white px-4 py-8 transition-colors duration-500 ease-out-expo dark:bg-dark-background md:py-12"
   >
     <header class="space-y-2">
       <NuxtLink

@@ -75,10 +75,7 @@ function onCampanhaExcluida(campanhaId: string) {
 </script>
 
 <template>
-  <div class="relative min-h-[100dvh] w-full p-4 md:p-6">
-    <div
-      class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-violet-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
-    />
+  <div class="relative min-h-[100dvh] w-full p-4 md:p-6 bg-white dark:bg-dark-background">
 
     <div class="mx-auto max-w-3xl space-y-6">
       <header class="space-y-2">

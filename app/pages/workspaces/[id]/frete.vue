@@ -10,7 +10,7 @@ definePageMeta({
 </script>
 
 <template>
-  <div class="min-h-full bg-background pb-14 pt-6 transition-colors dark:bg-dark-background md:pt-10">
+  <div class="min-h-full bg-white pb-14 pt-6 transition-colors dark:bg-dark-background md:pt-10">
     <div class="mx-auto max-w-4xl space-y-8 px-4 md:space-y-10 md:px-6">
       <header class="max-w-2xl space-y-3">
         <h1 class="font-headline text-3xl font-bold tracking-tight text-on-surface dark:text-dark-on-surface md:text-4xl">

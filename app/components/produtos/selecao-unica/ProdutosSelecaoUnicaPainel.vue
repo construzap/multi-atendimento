@@ -9,14 +9,11 @@ withDefaults(
     sugestoes: ItemSelecaoUnica[]
     mostrarOpcaoCriar: boolean
     criando: boolean
-    editandoItemId: number | null
-    guardandoEdicao: boolean
     eliminandoId: number | null
     disabled: boolean
     indiceDestaque: number
     mostrarFiltro?: boolean
     inpFiltroClass: string
-    inpEdicaoClass: string
     iconAcaoClass: string
     painelHeaderClass: string
     itemSugestaoClass: (idx: number) => string
@@ -25,7 +22,6 @@ withDefaults(
 )
 
 const filtro = defineModel<string>('filtro', { required: true })
-const nomeEdicao = defineModel<string>('nomeEdicao', { required: true })
 const listaSugestoesRef = defineModel<HTMLUListElement | null>('listaSugestoesRef', { default: null })
 
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -42,8 +38,6 @@ const emit = defineEmits<{
   enterFiltro: []
   escolher: [item: ItemSelecaoUnica]
   iniciarEdicao: [item: ItemSelecaoUnica]
-  confirmarEdicao: [id: number]
-  cancelarEdicao: []
   eliminar: [item: ItemSelecaoUnica]
   criar: []
   hoverDestaque: [idx: number]
@@ -83,43 +77,34 @@ const emit = defineEmits<{
       :key="item.id"
       class="flex min-w-0 items-stretch gap-0.5 border-b border-slate-700/40 px-1 py-0.5 last:border-b-0"
     >
-      <template v-if="editandoItemId === item.id">
-        <input
-          v-model="nomeEdicao"
-          type="text"
-          autocomplete="off"
-          :class="inpEdicaoClass"
-          :placeholder="config.placeholderEdicao"
-          :disabled="guardandoEdicao"
-          @mousedown.stop
-          @keydown.enter.prevent="emit('confirmarEdicao', item.id)"
-          @keydown.escape.prevent="emit('cancelarEdicao')"
-        />
-        <button type="button" :class="iconAcaoClass" aria-label="Guardar" :disabled="guardandoEdicao" @mousedown.stop.prevent="emit('confirmarEdicao', item.id)">
-          <span class="material-symbols-outlined text-[20px]" aria-hidden="true">check</span>
-        </button>
-        <button type="button" :class="iconAcaoClass" aria-label="Cancelar" @mousedown.stop.prevent="emit('cancelarEdicao')">
-          <span class="material-symbols-outlined text-[20px]" aria-hidden="true">close</span>
-        </button>
-      </template>
-      <template v-else>
-        <button
-          type="button"
-          role="option"
-          :data-item-idx="idx"
-          :class="itemSugestaoClass(idx)"
-          @mouseenter="emit('hoverDestaque', idx)"
-          @mousedown.prevent="emit('escolher', item)"
-        >
-          <span class="block min-w-0 truncate">{{ item.nome }}</span>
-        </button>
-        <button type="button" :class="iconAcaoClass" aria-label="Editar" :disabled="disabled || eliminandoId === item.id" @mousedown.stop.prevent="emit('iniciarEdicao', item)">
-          <span class="material-symbols-outlined text-[20px]" aria-hidden="true">edit</span>
-        </button>
-        <button type="button" :class="iconAcaoClass" aria-label="Eliminar" :disabled="disabled || eliminandoId === item.id" @mousedown.stop.prevent="emit('eliminar', item)">
-          <span class="material-symbols-outlined text-[20px]" aria-hidden="true">close</span>
-        </button>
-      </template>
+      <button
+        type="button"
+        role="option"
+        :data-item-idx="idx"
+        :class="itemSugestaoClass(idx)"
+        @mouseenter="emit('hoverDestaque', idx)"
+        @mousedown.prevent="emit('escolher', item)"
+      >
+        <span class="block min-w-0 truncate">{{ item.nome }}</span>
+      </button>
+      <button
+        type="button"
+        :class="iconAcaoClass"
+        aria-label="Editar"
+        :disabled="disabled || eliminandoId === item.id"
+        @mousedown.stop.prevent="emit('iniciarEdicao', item)"
+      >
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">edit</span>
+      </button>
+      <button
+        type="button"
+        :class="iconAcaoClass"
+        aria-label="Eliminar"
+        :disabled="disabled || eliminandoId === item.id"
+        @mousedown.stop.prevent="emit('eliminar', item)"
+      >
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">close</span>
+      </button>
     </li>
   </ul>
 

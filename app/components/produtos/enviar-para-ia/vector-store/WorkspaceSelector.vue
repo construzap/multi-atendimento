@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 
 const route = useRoute()
@@ -30,19 +30,19 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-    <h2 class="mb-3 text-sm font-semibold text-gray-700">Workspace</h2>
+  <section class="rounded-lg border border-outline/30 bg-surface-container-lowest p-4 shadow-sm">
+    <h2 class="mb-3 text-sm font-semibold text-on-surface">Workspace</h2>
 
-    <p v-if="pending" class="text-sm text-gray-500">Carregando workspace…</p>
-    <p v-else-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="workspaceId == null" class="text-sm text-gray-500">
+    <p v-if="pending" class="text-sm text-on-surface-variant">Carregando workspace…</p>
+    <p v-else-if="error" class="text-sm text-danger">{{ error }}</p>
+    <p v-else-if="workspaceId == null" class="text-sm text-on-surface-variant">
       Nenhum workspace selecionado.
     </p>
-    <div v-else class="text-sm text-gray-700">
-      <p class="font-medium text-gray-900">
+    <div v-else class="text-sm text-on-surface">
+      <p class="font-medium text-on-surface">
         {{ workspaceAtual?.nome ?? `Workspace ${workspaceId}` }}
       </p>
-      <p class="mt-0.5 text-xs text-gray-500">ID {{ workspaceId }}</p>
+      <p class="mt-0.5 text-xs text-on-surface-variant">ID {{ workspaceId }}</p>
     </div>
   </section>
 </template>

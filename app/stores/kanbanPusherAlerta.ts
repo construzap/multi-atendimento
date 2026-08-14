@@ -28,18 +28,6 @@ export const useKanbanPusherAlertaStore = defineStore('kanbanPusherAlerta', {
     acao: 'none',
   }),
   actions: {
-    showColunaMovida(contato: string) {
-      this.title = 'Kanban atualizado'
-      this.texto = `${contato} mudou de coluna.`
-      this.variante = 'info'
-      this.textoConfirmar = 'Ok'
-      this.textoCancelar = 'Fechar'
-      this.mostrarCancelar = false
-      this.conversaKey = null
-      this.acao = 'none'
-      this.open = true
-    },
-
     showPedidoNovo(contato: string, conversaKey: string) {
       this.title = 'Pedido novo!'
       this.texto = `${contato} acabou de enviar um pedido. Abra agora para aceitar ou rejeitar.`

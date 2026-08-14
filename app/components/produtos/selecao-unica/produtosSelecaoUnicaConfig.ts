@@ -7,6 +7,9 @@ export type ItemSelecaoUnica = {
 
 export type ConfigSelecaoUnica = {
   tituloPainel: string
+  tituloEditar: string
+  tituloEliminar: string
+  labelNomeCampo: string
   placeholderCelula: string
   placeholderFiltro: string
   placeholderForm: string
@@ -27,6 +30,9 @@ export type ConfigSelecaoUnica = {
 export const CONFIGS_SELECAO_UNICA: Record<CatalogoSelecaoUnica, ConfigSelecaoUnica> = {
   categoria: {
     tituloPainel: 'Categorias',
+    tituloEditar: 'Editar categoria',
+    tituloEliminar: 'Eliminar categoria',
+    labelNomeCampo: 'Nome da categoria',
     placeholderCelula: 'Selecionar categoria…',
     placeholderFiltro: 'Buscar ou criar categoria…',
     placeholderForm: 'Comece a digitar para buscar…',
@@ -46,6 +52,9 @@ export const CONFIGS_SELECAO_UNICA: Record<CatalogoSelecaoUnica, ConfigSelecaoUn
   },
   termos_pesquisa: {
     tituloPainel: 'Categoria / Termo de pesquisa',
+    tituloEditar: 'Editar categoria / termo',
+    tituloEliminar: 'Eliminar categoria / termo',
+    labelNomeCampo: 'Nome da categoria / termo',
     placeholderCelula: 'Selecionar categoria / termo…',
     placeholderFiltro: 'Buscar ou criar categoria / termo…',
     placeholderForm: 'Comece a digitar para buscar…',

@@ -1,13 +1,14 @@
 /** Posiciona painel Teleport (fixed) ancorado à célula, evitando corte no fim da tabela/viewport. */
 export function calcDropdownPanelStyle(
   anchorRect: DOMRect,
-  options?: { minWidth?: number; preferredMaxHeight?: number; margin?: number },
+  options?: { minWidth?: number; maxWidth?: number; preferredMaxHeight?: number; margin?: number },
 ): Record<string, string> {
   const margin = options?.margin ?? 8
   const minWidth = options?.minWidth ?? 280
   const preferredMaxH = options?.preferredMaxHeight ?? 320
 
-  const w = Math.max(minWidth, anchorRect.width)
+  let w = Math.max(minWidth, anchorRect.width)
+  if (options?.maxWidth != null) w = Math.min(options.maxWidth, w)
   const left = Math.max(margin, Math.min(anchorRect.left, window.innerWidth - w - margin))
 
   const spaceBelow = window.innerHeight - anchorRect.bottom - margin

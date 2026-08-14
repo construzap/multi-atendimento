@@ -86,23 +86,23 @@ onUnmounted(() => {
           leave-to-class="opacity-0 translate-y-2 scale-95"
         >
           <div
-            class="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest shadow-xl dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+            class="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest shadow-xl"
             :class="panelClass"
           >
-            <header class="flex shrink-0 items-start justify-between gap-4 border-b border-outline/30 p-5 dark:border-dark-outline/30">
+            <header class="flex shrink-0 items-start justify-between gap-4 border-b border-outline/30 p-5">
               <div class="flex items-start gap-3">
                 <div
                   v-if="$slots.icon"
-                  class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-container-high text-primary-600 dark:bg-dark-surface-container-high dark:text-dark-primary"
+                  class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-container-high text-primary-600"
                   aria-hidden="true"
                 >
                   <slot name="icon" />
                 </div>
                 <div>
-                  <h2 class="font-headline text-lg font-bold text-on-surface dark:text-dark-on-surface">
+                  <h2 class="font-headline text-lg font-bold text-on-surface">
                     {{ title }}
                   </h2>
-                  <p v-if="$slots.subtitle" class="mt-0.5 text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+                  <p v-if="$slots.subtitle" class="mt-0.5 text-sm text-on-surface-variant">
                     <slot name="subtitle" />
                   </p>
                 </div>
@@ -111,7 +111,7 @@ onUnmounted(() => {
               <button
                 v-if="showClose"
                 type="button"
-                class="rounded-xl p-2 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface"
+                class="rounded-xl p-2 text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface"
                 aria-label="Fechar"
                 @click="close"
               >
@@ -130,7 +130,7 @@ onUnmounted(() => {
 
             <footer
               v-if="$slots.footer"
-              class="shrink-0 border-t border-outline/30 p-5 dark:border-dark-outline/30"
+              class="shrink-0 border-t border-outline/30 p-5"
             >
               <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
                 <slot name="footer" />

@@ -168,7 +168,7 @@ onMounted(() => {
             :value="progress"
             @input="onSeek"
           />
-          <div class="mt-1 flex items-center justify-between text-[10px] text-on-surface-variant dark:text-slate-400">
+          <div class="mt-1 flex items-center justify-between text-[10px] text-zinc-600 dark:text-slate-400">
             <span>{{ currentLabel }}</span>
             <span>{{ durationLabel }}</span>
           </div>
@@ -184,7 +184,7 @@ onMounted(() => {
         />
       </div>
 
-      <span class="mt-1 block text-right text-[10px] text-on-surface-variant dark:text-slate-400">
+      <span class="mt-1 block text-right text-[10px] text-zinc-600 dark:text-slate-400">
         {{ hora }}
       </span>
     </div>

@@ -64,9 +64,11 @@ export default defineNuxtConfig({
      * Senha mestra para pgp_sym_decrypt(api_key_encrypted) em `canais`.
      * Override Nuxt (nome correto): NUXT_AGENTE_SENHA_MESTRA_ENCRIPTOGRAFIA_API_KEY
      * Alias histórico (.env):       NUXT_AGENTE_SENHA_MESTRA_ENCRIPITOGRAFIA_API_KEY
-     * Deixe vazio no build; o valor vem do ambiente do container.
      */
-    agenteSenhaMestraEncriptografiaApiKey: '',
+    agenteSenhaMestraEncriptografiaApiKey:
+      process.env.NUXT_AGENTE_SENHA_MESTRA_ENCRIPTOGRAFIA_API_KEY ||
+      process.env.NUXT_AGENTE_SENHA_MESTRA_ENCRIPITOGRAFIA_API_KEY ||
+      '',
     /** Modelo OpenAI do agent loop (fallback se canal.model_name vazio). Override: NUXT_OPENAI_AGENT_MODEL */
     openaiAgentModel:
       process.env.NUXT_OPENAI_AGENT_MODEL || 'gpt-4.1-mini-2025-04-14',
@@ -83,12 +85,20 @@ export default defineNuxtConfig({
       process.env.NUXT_AGENTE_TOOL_SOLICITA_PAGAMENTO_URL || '',
     agenteToolOrcamentoProntoUrl:
       process.env.NUXT_AGENTE_TOOL_ORCAMENTO_PRONTO_URL || '',
+    /**
+     * Webhook: transferir atendimento para humano.
+     * Override: NUXT_AGENTE_TOOL_TRANSFERIR_ATENDIMENTO
+     */
+    agenteToolTransferirAtendimento:
+      process.env.NUXT_AGENTE_TOOL_TRANSFERIR_ATENDIMENTO || '',
     /** Header opcional comum aos webhooks das tools. */
     agenteToolHttpHeaderName: process.env.NUXT_AGENTE_TOOL_HTTP_HEADER_NAME || '',
     agenteToolHttpHeaderValue:
       process.env.NUXT_AGENTE_TOOL_HTTP_HEADER_VALUE || '',
 
     public: {
+      /** Nome do app na aba do navegador. Override: NUXT_PUBLIC_APP_NAME */
+      appName: process.env.NUXT_PUBLIC_APP_NAME || 'ConstruZap',
       // --- Pusher — browser + SSR (override: NUXT_PUBLIC_PUSHER_*) ---
       pusherAppId: '',
       pusherKey: '',
@@ -126,15 +136,30 @@ export default defineNuxtConfig({
       ],
     },
   },
+  css: ['~/assets/css/theme.css'],
   app: {
     head: {
+      title: process.env.NUXT_PUBLIC_APP_NAME || 'ConstruZap',
       link: [
         {
+          rel: 'icon',
+          type: 'image/svg+xml',
+          href: '/favicon.svg',
+        },
+        {
           rel: 'stylesheet',
-          href: 'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap'
-        }
-      ]
-    }
+          href: 'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap',
+        },
+      ],
+      /** Aplica `html.dark` antes do paint (evita FOUC). Storage: multi-atendimento-color-mode */
+      script: [
+        {
+          key: 'color-mode-init',
+          src: '/color-mode-init.js',
+          tagPosition: 'head',
+        },
+      ],
+    },
   },
   modules: ['@nuxtjs/tailwindcss', '@nuxtjs/supabase', '@pinia/nuxt'],
   supabase: {

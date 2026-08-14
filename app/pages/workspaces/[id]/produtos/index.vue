@@ -152,7 +152,7 @@ function aposImportacao() {
 
 <template>
   <div
-    class="mx-auto w-full min-w-0 max-w-[1920px] space-y-8 bg-background px-4 py-8 md:px-6 dark:bg-dark-background"
+    class="mx-auto w-full min-w-0 max-w-[1920px] space-y-8 bg-transparent px-4 py-8 md:px-6"
   >
     <header class="space-y-1">
       <h1 class="font-headline text-2xl font-bold text-on-surface dark:text-dark-on-surface">Produtos</h1>

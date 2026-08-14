@@ -57,7 +57,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-[100dvh] w-full p-4 md:p-6">
+  <div class="min-h-[100dvh] w-full p-4 md:p-6 bg-white dark:bg-dark-background">
     <header class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div class="min-w-0">
         <h1 class="truncate font-headline text-2xl font-bold text-on-surface dark:text-dark-on-surface">Contatos</h1>

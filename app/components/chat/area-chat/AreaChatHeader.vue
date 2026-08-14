@@ -102,15 +102,15 @@ async function onConfirmarExclusaoConversa() {
 
 <template>
   <header
-    class="flex h-16 shrink-0 items-center justify-between border-b border-outline-variant/10 bg-white px-6 dark:bg-slate-950"
+    class="flex h-16 shrink-0 items-center justify-between border-b border-outline/20 bg-surface-container-lowest px-6 dark:border-slate-700/80 dark:bg-slate-900"
   >
     <div class="flex min-w-0 items-center gap-3 pl-12 md:pl-0">
       <BaseAvatar :image-url="avatarUrl" :alt="nome" :size="40" variant="circle" />
       <div class="min-w-0">
-        <h2 class="truncate font-headline text-base font-semibold text-slate-900 dark:text-slate-100">
+        <h2 class="truncate font-headline text-base font-semibold text-zinc-950 dark:text-dark-on-surface">
           {{ nome }}
         </h2>
-        <p class="text-[10px] text-on-surface-variant dark:text-slate-400">
+        <p class="text-[10px] text-zinc-600 dark:text-slate-400">
           {{ telefone }}
         </p>
       </div>
@@ -119,7 +119,7 @@ async function onConfirmarExclusaoConversa() {
     <div class="flex shrink-0 items-center gap-2">
       <button
         type="button"
-        class="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-danger disabled:pointer-events-none disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-danger"
+        class="rounded-lg p-2 text-zinc-600 transition-colors hover:bg-surface-container-high hover:text-danger disabled:pointer-events-none disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800"
         aria-label="Excluir conversa"
         :disabled="!podeExcluir || excluindo"
         @click="abrirModalExcluir"
@@ -128,7 +128,7 @@ async function onConfirmarExclusaoConversa() {
       </button>
       <button
         type="button"
-        class="rounded-lg px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-900"
+        class="rounded-lg px-3 py-2 text-sm font-medium text-zinc-950 transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-slate-800"
         @click="fecharConversa"
       >
         Fechar conversa

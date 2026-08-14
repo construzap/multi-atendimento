@@ -7,7 +7,7 @@ definePageMeta({
 </script>
 
 <template>
-  <div class="flex h-full min-h-0 flex-col p-4 md:p-6">
+  <div class="flex h-full min-h-0 flex-col bg-white p-4 dark:bg-dark-background md:p-6">
     <header class="mb-6 shrink-0">
       <h1 class="font-headline text-xl font-bold text-on-surface dark:text-dark-on-surface">
         I.A

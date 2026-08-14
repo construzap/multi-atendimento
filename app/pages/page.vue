@@ -8,7 +8,7 @@ import { NuxtLink } from '#components'
 
 <template>
   <main
-    class="mx-auto max-w-3xl animate-fade-in px-4 py-8 transition-colors duration-500 ease-out-expo md:py-12 [animation-delay:60ms]"
+    class="min-h-screen bg-white px-4 py-8 transition-colors duration-500 ease-out-expo animate-fade-in dark:bg-dark-background md:py-12 [animation-delay:60ms] mx-auto max-w-3xl"
   >
     <p
       class="font-label text-xs uppercase tracking-wide text-on-surface-variant transition-colors dark:text-dark-on-surface-variant"

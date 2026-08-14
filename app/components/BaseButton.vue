@@ -42,8 +42,7 @@ const variantClass = computed(() => {
     return [
       'border border-outline/50 bg-transparent text-on-surface-variant shadow-sm',
       'hover:bg-surface-container-high hover:text-on-surface hover:shadow-md',
-      'dark:border-dark-outline/50 dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface',
-      'disabled:hover:bg-transparent dark:disabled:hover:bg-transparent'
+      'disabled:hover:bg-transparent',
     ].join(' ')
   }
 
@@ -51,7 +50,6 @@ const variantClass = computed(() => {
     return [
       'bg-info text-info-on shadow-sm',
       'hover:brightness-110 hover:shadow-md',
-      'dark:bg-dark-info-container dark:text-dark-on-info dark:hover:brightness-110'
     ].join(' ')
   }
 
@@ -59,15 +57,12 @@ const variantClass = computed(() => {
     return [
       'bg-success text-success-on shadow-sm',
       'hover:brightness-110 hover:shadow-md',
-      'dark:bg-dark-success dark:text-dark-on-success dark:hover:brightness-110'
     ].join(' ')
   }
 
-  // primary (mais sóbrio que o gradiente anterior)
   return [
-    'bg-primary-600 text-white shadow-sm',
+    'bg-primary-600 text-on-primary shadow-sm',
     'hover:bg-primary-700 hover:shadow-md',
-    'dark:bg-primary-600 dark:hover:bg-primary-700'
   ].join(' ')
 })
 </script>

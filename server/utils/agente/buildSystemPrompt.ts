@@ -82,5 +82,9 @@ chame a ferramenta <envia_localizacao> e aposs chamar a ferramenta <envia_locali
 
 5. Se o status for "QUASE_FECHANDO":
 chame a ferramenta <envia_localizacao> e aposs chamar a ferramenta <envia_localizacao> Responda exatamente: "Olha, estamos quase fechando, talvez dê tempo de você chegar!" Em seguida, envie o endereço completo que está em <contato_e_endereco></contato_e_endereco> e adicione o Horário de Atendimento Completo.
+
+# TRANSFERÊNCIA PARA ATENDENTE HUMANO
+Se o cliente pedir para falar com um atendente humano / pessoa da loja / suporte humano, OU se a pergunta/assunto sair do escopo das suas instruções, chame IMEDIATAMENTE a ferramenta <transferir_atendimento> com um resumo da conversa.
+Não invente resposta fora do escopo: chame <transferir_atendimento> e depois avise que um humano vai continuar.
 `
 }

@@ -21,17 +21,17 @@ const tipo = computed(() => props.mensagem.messagetype ?? 'unknown')
   <div v-if="!isFromMe" class="mb-4 flex max-w-[70%] flex-col items-start">
     <div class="rounded-xl rounded-tl-none bg-surface-container-highest p-4 shadow-sm dark:bg-slate-800">
       <div class="flex items-center gap-2">
-        <span class="material-symbols-outlined text-base text-on-surface-variant dark:text-slate-300" aria-hidden="true">
+        <span class="material-symbols-outlined text-base text-zinc-600 dark:text-slate-300" aria-hidden="true">
           smartphone
         </span>
-        <p class="font-body text-sm text-on-surface dark:text-slate-200">
+        <p class="font-body text-sm text-zinc-950 dark:text-slate-200">
           Mensagem incompatível. Veja no celular.
         </p>
       </div>
-      <span class="mt-1 block text-[10px] text-on-surface-variant dark:text-slate-400">
+      <span class="mt-1 block text-[10px] text-zinc-600 dark:text-slate-400">
         Tipo: {{ tipo }}
       </span>
-      <span class="mt-1 block text-right text-[10px] text-on-surface-variant dark:text-slate-400">
+      <span class="mt-1 block text-right text-[10px] text-zinc-600 dark:text-slate-400">
         {{ hora }}
       </span>
     </div>

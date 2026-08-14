@@ -205,7 +205,7 @@ const timeLabel = computed(() => {
         @change="onToggleSelected"
       />
       <span
-        class="flex h-8 w-8 items-center justify-center rounded-xl border border-outline/45 bg-white/90 text-slate-700 shadow-sm backdrop-blur transition-colors hover:bg-slate-50 dark:border-dark-outline/45 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:bg-slate-900"
+        class="flex h-8 w-8 items-center justify-center rounded-xl border border-outline/45 bg-white/90 text-zinc-800 shadow-sm backdrop-blur transition-colors hover:bg-slate-50 dark:border-dark-outline/45 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:bg-slate-900"
         :class="props.selected ? 'ring-2 ring-primary/25' : ''"
         aria-hidden="true"
       >
@@ -245,7 +245,7 @@ const timeLabel = computed(() => {
           class="shrink-0"
         />
         <div class="min-w-0">
-          <h3 class="truncate font-headline text-sm font-bold text-slate-900 dark:text-dark-on-surface">
+          <h3 class="truncate font-headline text-sm font-bold text-zinc-950 dark:text-dark-on-surface">
             {{ titleDisplay }}
           </h3>
           <p
@@ -271,7 +271,7 @@ const timeLabel = computed(() => {
 
     <p
       v-if="card.preview || temNaoLidas"
-      class="mt-3 flex items-center gap-2 text-xs text-slate-600 dark:text-dark-on-surface-variant"
+      class="mt-3 flex items-center gap-2 text-xs text-zinc-800 dark:text-dark-on-surface-variant"
     >
       <span v-if="card.preview" class="min-w-0 flex-1 line-clamp-2">{{ card.preview }}</span>
       <span
@@ -323,7 +323,7 @@ const timeLabel = computed(() => {
       </div>
 
       <span
-        class="shrink-0 text-[11px] text-slate-400 dark:text-dark-on-surface-variant"
+        class="shrink-0 text-[11px] text-zinc-600 dark:text-dark-on-surface-variant"
       >
         {{ timeLabel }}
       </span>

@@ -1,17 +1,11 @@
 import type { H3Event } from 'h3'
 
 const DEFAULT_TIMEOUT_MS = 60_000
-const PREVIEW_MAX = 2000
 
 export type ToolHttpResult = {
   ok: boolean
   http_status?: number
   text: string
-}
-
-function preview(text: string): string {
-  if (text.length <= PREVIEW_MAX) return text
-  return `${text.slice(0, PREVIEW_MAX)}…`
 }
 
 /** POST JSON para webhook/tool N8N. Erros viram texto para o modelo (não derrubam o loop). */
@@ -61,20 +55,20 @@ export async function postToolHttp(
       return {
         ok: false,
         http_status: res.status,
-        text: preview(`HTTP ${res.status}: ${text || res.statusText}`),
+        text: `HTTP ${res.status}: ${text || res.statusText}`,
       }
     }
 
     return {
       ok: true,
       http_status: res.status,
-      text: preview(text || 'OK'),
+      text: text || 'OK',
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err)
     return {
       ok: false,
-      text: preview(`Erro ao chamar ferramenta HTTP: ${msg}`),
+      text: `Erro ao chamar ferramenta HTTP: ${msg}`,
     }
   }
 }

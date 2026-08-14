@@ -25,7 +25,7 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
         alt="Sticker"
         loading="lazy"
       />
-      <span class="mt-1 block px-1 text-right text-[10px] text-on-surface-variant dark:text-slate-400">
+      <span class="mt-1 block px-1 text-right text-[10px] text-zinc-600 dark:text-slate-400">
         {{ hora }}
       </span>
     </div>

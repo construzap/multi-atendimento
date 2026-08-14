@@ -12,9 +12,9 @@ const links = [
 </script>
 
 <template>
-  <header class="border-b border-gray-200 bg-white">
+  <header class="border-b border-outline/30 bg-surface-container-lowest">
     <div class="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 px-6 py-4">
-      <h1 class="text-lg font-semibold text-gray-900">
+      <h1 class="text-lg font-semibold text-on-surface">
         {{ title ?? 'Vector Store — Produtos' }}
       </h1>
 
@@ -26,15 +26,15 @@ const links = [
           class="text-sm font-medium transition-colors"
           :class="
             route.path === link.to
-              ? 'text-blue-600'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'text-primary-600'
+              : 'text-on-surface-variant hover:text-on-surface'
           "
         >
           {{ link.label }}
         </NuxtLink>
         <button
           type="button"
-          class="text-sm text-gray-600 hover:text-gray-900"
+          class="text-sm text-on-surface-variant hover:text-on-surface"
           @click="useSupabaseClient().auth.signOut()"
         >
           Sair

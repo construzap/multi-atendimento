@@ -7,5 +7,7 @@ definePageMeta({
 </script>
 
 <template>
-  <WorkspacesGrid />
+  <div class="min-h-full bg-white dark:bg-dark-background">
+    <WorkspacesGrid />
+  </div>
 </template>

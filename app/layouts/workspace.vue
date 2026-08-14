@@ -9,9 +9,15 @@ import { useProfileStore } from '~/stores/profile'
 const sidebarHovered = ref(false)
 const mobileSidebarOpen = ref(false)
 
-const { isDark, toggle: toggleTheme } = useColorMode()
+const { isDark, pageBg, toggle: toggleTheme } = useColorMode()
+
+function onToggleTheme() {
+  toggleTheme()
+}
 
 const temaLabel = computed(() => (isDark.value ? 'Modo claro' : 'Modo escuro'))
+/** Ícone = modo atual (sol = claro, lua = escuro). */
+const temaIcon = computed(() => (isDark.value ? 'dark_mode' : 'light_mode'))
 
 type NavItem = {
   label: string
@@ -123,11 +129,15 @@ function closeMobileSidebar() {
 </script>
 
 <template>
-  <div class="flex h-screen w-full overflow-hidden bg-background text-on-surface transition-colors dark:bg-dark-background dark:text-dark-on-surface">
+  <div
+    class="flex h-screen w-full overflow-hidden transition-colors"
+    :class="isDark ? 'text-dark-on-surface' : 'text-on-surface'"
+    :style="{ backgroundColor: pageBg }"
+  >
     <!-- Mobile: botão para abrir menu lateral -->
     <button
       type="button"
-      class="fixed left-3 top-3 z-50 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white/90 p-2 text-slate-700 shadow-sm backdrop-blur transition-colors hover:bg-white dark:border-slate-800 dark:bg-slate-950/80 dark:text-slate-200 md:hidden"
+      class="fixed left-3 top-3 z-50 inline-flex items-center justify-center rounded-xl border border-outline/40 bg-surface-container-lowest/90 p-2 text-on-surface shadow-sm backdrop-blur transition-colors hover:bg-surface-container-low md:hidden"
       aria-label="Abrir menu"
       @click="mobileSidebarOpen = true"
     >
@@ -143,18 +153,18 @@ function closeMobileSidebar() {
         @click="closeMobileSidebar"
       />
       <aside
-        class="sidebar-shell absolute left-0 top-0 flex h-full w-[18.5rem] flex-col overflow-hidden border-r border-gray-800/80 bg-gray-900 text-gray-100 shadow-2xl"
+        class="sidebar-shell absolute left-0 top-0 flex h-full w-[18.5rem] flex-col overflow-hidden border-r border-dark-outline-variant/80 bg-dark-surface text-dark-on-surface shadow-2xl"
         aria-label="Menu do workspace"
       >
         <!-- Header -->
-        <div class="sidebar-section border-b border-gray-800 p-6">
+        <div class="sidebar-section border-b border-dark-outline-variant p-6">
           <div class="flex items-center justify-between gap-3">
             <div class="flex items-center space-x-3">
               <div
                 class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 shadow-lg shadow-primary-500/20"
                 aria-hidden="true"
               >
-                <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="h-5 w-5 text-dark-on-surface" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path
                     d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H7l-4 3 1.2-4.8A8.5 8.5 0 1 1 21 11.5Z"
                     stroke-linejoin="round"
@@ -162,14 +172,14 @@ function closeMobileSidebar() {
                 </svg>
               </div>
               <div class="min-w-0 flex-1">
-                <h1 class="text-lg font-bold tracking-tight text-white">Multi Chat</h1>
-                <p class="text-xs font-medium text-gray-400">Sistema de Atendimento</p>
+                <h1 class="text-lg font-bold tracking-tight text-dark-on-surface">Multi Chat</h1>
+                <p class="text-xs font-medium text-dark-on-surface-variant">Sistema de Atendimento</p>
               </div>
             </div>
 
             <button
               type="button"
-              class="rounded-lg p-2 text-gray-300 transition-colors hover:bg-gray-800 hover:text-white"
+              class="rounded-lg p-2 text-dark-on-surface-variant transition-colors hover:bg-dark-surface-container-high hover:text-dark-on-surface"
               aria-label="Fechar menu"
               @click="closeMobileSidebar"
             >
@@ -185,7 +195,7 @@ function closeMobileSidebar() {
             :key="it.to"
             :to="it.to"
             class="sidebar-link group flex items-center space-x-3 rounded-xl px-4 py-3"
-            :class="isActive(it.to) ? 'bg-gray-800 text-primary-500 shadow-md shadow-gray-900/50' : 'text-gray-300 hover:bg-gray-800 hover:text-white'"
+            :class="isActive(it.to) ? 'bg-dark-surface-container-high text-primary-400 shadow-md shadow-black/40' : 'text-dark-on-surface-variant hover:bg-dark-surface-container-high hover:text-dark-on-surface'"
             @click="closeMobileSidebar"
           >
             <span
@@ -251,11 +261,11 @@ function closeMobileSidebar() {
         </nav>
 
         <!-- Footer -->
-        <div class="sidebar-footer border-t border-gray-800 p-4">
-          <div class="sidebar-footer-inner flex items-center space-x-3 rounded-xl border border-gray-700/50 bg-gray-800/50 px-4 py-3">
-            <div class="sidebar-avatar h-10 w-10 shrink-0 rounded-full border-2 border-gray-700 bg-gray-700/60" aria-hidden="true" />
+        <div class="sidebar-footer border-t border-dark-outline-variant p-4">
+          <div class="sidebar-footer-inner flex items-center space-x-3 rounded-xl border border-dark-outline-variant/50 bg-dark-surface-container/50 px-4 py-3">
+            <div class="sidebar-avatar h-10 w-10 shrink-0 rounded-full border-2 border-dark-outline-variant bg-dark-surface-container-high/60" aria-hidden="true" />
             <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-semibold text-white">Conta</p>
+              <p class="truncate text-sm font-semibold text-dark-on-surface">Conta</p>
               <p class="flex items-center gap-2 text-xs text-primary-400">
                 <span class="h-2 w-2 animate-pulse rounded-full bg-primary-500" />
                 Online
@@ -263,17 +273,17 @@ function closeMobileSidebar() {
             </div>
             <button
               type="button"
-              class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+              class="rounded-lg p-2 text-dark-on-surface-variant transition-colors hover:bg-dark-surface-container-high hover:text-dark-on-surface"
               :aria-label="temaLabel"
-              @click="toggleTheme"
+              @click.stop.prevent="onToggleTheme"
             >
               <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
-                {{ isDark ? 'light_mode' : 'dark_mode' }}
+                {{ temaIcon }}
               </span>
             </button>
             <NuxtLink
               to="/"
-              class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+              class="rounded-lg p-2 text-dark-on-surface-variant transition-colors hover:bg-dark-surface-container-high hover:text-dark-on-surface"
               aria-label="Alterar workspace"
               @click="closeMobileSidebar"
             >
@@ -286,7 +296,7 @@ function closeMobileSidebar() {
 
     <!-- Desktop sidebar -->
     <aside
-      class="hidden md:flex sidebar-shell shrink-0 flex-col overflow-hidden border-r border-gray-800/80 bg-gray-900 text-gray-100"
+      class="hidden md:flex sidebar-shell shrink-0 flex-col overflow-hidden border-r border-dark-outline-variant/80 bg-dark-surface text-dark-on-surface"
       :class="sidebarCollapsed ? 'w-[4.25rem]' : 'w-64'"
       :aria-expanded="sidebarHovered"
       aria-label="Menu do workspace"
@@ -294,7 +304,7 @@ function closeMobileSidebar() {
       @mouseleave="sidebarHovered = false"
     >
       <!-- Header -->
-      <div class="sidebar-section border-b border-gray-800" :class="sidebarCollapsed ? 'px-2 py-4' : 'p-6'">
+      <div class="sidebar-section border-b border-dark-outline-variant" :class="sidebarCollapsed ? 'px-2 py-4' : 'p-6'">
         <div
           class="flex items-center"
           :class="sidebarCollapsed ? 'flex-col gap-3' : 'space-x-3'"
@@ -303,7 +313,7 @@ function closeMobileSidebar() {
             class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 shadow-lg shadow-primary-500/20"
             aria-hidden="true"
           >
-            <svg class="h-5 w-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg class="h-5 w-5 text-dark-on-surface" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path
                 d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H7l-4 3 1.2-4.8A8.5 8.5 0 1 1 21 11.5Z"
                 stroke-linejoin="round"
@@ -311,8 +321,8 @@ function closeMobileSidebar() {
             </svg>
           </div>
           <div v-show="!sidebarCollapsed" class="min-w-0 flex-1">
-            <h1 class="text-lg font-bold tracking-tight text-white">Multi Chat</h1>
-            <p class="text-xs font-medium text-gray-400">Sistema de Atendimento</p>
+            <h1 class="text-lg font-bold tracking-tight text-dark-on-surface">Multi Chat</h1>
+            <p class="text-xs font-medium text-dark-on-surface-variant">Sistema de Atendimento</p>
           </div>
         </div>
       </div>
@@ -330,8 +340,8 @@ function closeMobileSidebar() {
           :class="[
             sidebarCollapsed ? 'justify-center px-2' : 'space-x-3 px-4',
             isActive(it.to)
-              ? 'bg-gray-800 text-primary-500 shadow-md shadow-gray-900/50'
-              : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              ? 'bg-dark-surface-container-high text-primary-400 shadow-md shadow-black/40'
+              : 'text-dark-on-surface-variant hover:bg-dark-surface-container-high hover:text-dark-on-surface'
           ]"
           :title="sidebarCollapsed ? it.label : undefined"
         >
@@ -402,9 +412,9 @@ function closeMobileSidebar() {
       </nav>
 
       <!-- Footer -->
-      <div class="sidebar-footer border-t border-gray-800" :class="sidebarCollapsed ? 'p-2' : 'p-4'">
+      <div class="sidebar-footer border-t border-dark-outline-variant" :class="sidebarCollapsed ? 'p-2' : 'p-4'">
         <div
-          class="sidebar-footer-inner flex rounded-xl border border-gray-700/50 bg-gray-800/50 py-3"
+          class="sidebar-footer-inner flex rounded-xl border border-dark-outline-variant/50 bg-dark-surface-container/50 py-3"
           :class="
             sidebarCollapsed
               ? 'flex-col items-center gap-2 px-1'
@@ -412,12 +422,12 @@ function closeMobileSidebar() {
           "
         >
           <div
-            class="sidebar-avatar shrink-0 rounded-full border-2 border-gray-700 bg-gray-700/60"
+            class="sidebar-avatar shrink-0 rounded-full border-2 border-dark-outline-variant bg-dark-surface-container-high/60"
             :class="sidebarCollapsed ? 'h-9 w-9' : 'h-10 w-10'"
             aria-hidden="true"
           />
           <div v-show="!sidebarCollapsed" class="min-w-0 flex-1">
-            <p class="truncate text-sm font-semibold text-white">Conta</p>
+            <p class="truncate text-sm font-semibold text-dark-on-surface">Conta</p>
             <p class="flex items-center gap-2 text-xs text-primary-400">
               <span class="h-2 w-2 animate-pulse rounded-full bg-primary-500" />
               Online
@@ -429,18 +439,18 @@ function closeMobileSidebar() {
           >
             <button
               type="button"
-              class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+              class="rounded-lg p-2 text-dark-on-surface-variant transition-colors hover:bg-dark-surface-container-high hover:text-dark-on-surface"
               :title="temaLabel"
               :aria-label="temaLabel"
-              @click="toggleTheme"
+              @click.stop.prevent="onToggleTheme"
             >
               <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
-                {{ isDark ? 'light_mode' : 'dark_mode' }}
+                {{ temaIcon }}
               </span>
             </button>
             <NuxtLink
               to="/"
-              class="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white"
+              class="rounded-lg p-2 text-dark-on-surface-variant transition-colors hover:bg-dark-surface-container-high hover:text-dark-on-surface"
               :title="sidebarCollapsed ? 'Voltar ao início' : undefined"
               aria-label="Voltar ao início"
             >
@@ -454,7 +464,10 @@ function closeMobileSidebar() {
       </div>
     </aside>
 
-    <main class="relative min-w-0 flex-1 overflow-y-auto bg-background transition-colors dark:bg-dark-background">
+    <main
+      class="relative min-w-0 flex-1 overflow-y-auto transition-colors"
+      :style="{ backgroundColor: pageBg }"
+    >
       <slot />
     </main>
   </div>

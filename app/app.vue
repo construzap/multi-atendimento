@@ -4,12 +4,27 @@ import { Toaster } from 'vue-sonner'
 import 'vue-sonner/style.css'
 import KanbanPusherAlertaModal from '~/components/kanban/KanbanPusherAlertaModal.vue'
 
-const { isDark } = useColorMode()
+const { isDark, pageBg } = useColorMode()
+useAppDocumentTitle()
+
+useHead({
+  htmlAttrs: {
+    'data-theme': computed(() => (isDark.value ? 'dark' : 'light')),
+  },
+  meta: [
+    {
+      name: 'color-scheme',
+      content: computed(() => (isDark.value ? 'dark' : 'only light')),
+    },
+  ],
+})
 </script>
 
 <template>
   <div
-    class="min-h-screen bg-background font-body text-on-surface antialiased transition-colors duration-500 ease-out-expo selection:bg-primary-container/30 dark:bg-dark-background dark:text-dark-on-surface dark:selection:bg-dark-primary-container/40"
+    class="min-h-screen font-body antialiased transition-colors duration-300 selection:bg-primary-700 selection:text-white dark:selection:bg-primary-400/55 dark:selection:text-white"
+    :class="isDark ? 'text-dark-on-surface' : 'text-on-surface'"
+    :style="{ backgroundColor: pageBg }"
   >
     <NuxtRouteAnnouncer />
     <NuxtLayout>

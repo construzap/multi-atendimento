@@ -75,7 +75,7 @@ function onInvalid(e: Event) {
   <div :id="wrapperId" class="relative w-full">
     <div
       v-if="$slots.leading"
-      class="pointer-events-none absolute left-4 top-1/2 z-[1] flex -translate-y-1/2 items-center text-gray-400"
+      class="pointer-events-none absolute left-4 top-1/2 z-[1] flex -translate-y-1/2 items-center text-on-surface-variant"
     >
       <slot name="leading" />
     </div>
@@ -93,7 +93,7 @@ function onInvalid(e: Event) {
       :readonly="readonly"
       :placeholder="placeholder"
       :class="[
-        'w-full rounded-xl border border-gray-200 bg-gray-50 py-3.5 text-sm text-gray-900 placeholder:text-gray-400 transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:border-gray-200 read-only:bg-gray-100 read-only:text-gray-700 dark:border-dark-outline/50 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant/70 dark:read-only:bg-dark-surface-container-high dark:read-only:text-dark-on-surface',
+        'w-full rounded-xl border border-outline/40 bg-surface-container-low py-3.5 text-sm text-on-surface placeholder:text-on-surface-variant/70 transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:border-outline/40 read-only:bg-surface-container read-only:text-on-surface-variant',
         paddingClass,
         inputClass,
       ]"

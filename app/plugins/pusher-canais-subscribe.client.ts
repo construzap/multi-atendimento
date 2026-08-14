@@ -106,7 +106,10 @@ export default defineNuxtPlugin(() => {
     if (data.motivo === 'coluna' && !data.notificacao) {
       const contato = data.nome_contato?.trim() || 'Contato'
       playNotificationSound()
-      kanbanAlerta.showColunaMovida(contato)
+      toast.info('Kanban atualizado', {
+        description: `${contato} mudou de coluna.`,
+        duration: 5000,
+      })
       return
     }
 

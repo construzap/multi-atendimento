@@ -8,7 +8,10 @@ import type {
   ProdutosTermoPesquisaAtualizarResponse,
   ProdutosTermoPesquisaCriarResponse,
 } from '#shared/types/produtos'
+import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
+import BaseModal from '~/components/BaseModal.vue'
+import ModalAlerta from '~/components/ModalAlerta.vue'
 import ProdutosSelecaoUnicaPainel from './ProdutosSelecaoUnicaPainel.vue'
 import {
   CONFIGS_SELECAO_UNICA,
@@ -72,8 +75,11 @@ const buscando = ref(false)
 const ultimaBuscaTexto = ref('')
 const ultimaBuscaComFiltroNome = ref(false)
 const criando = ref(false)
-const editandoItemId = ref<number | null>(null)
+const itemEmEdicao = ref<ItemSelecaoUnica | null>(null)
 const nomeEdicao = ref('')
+const modalEdicaoAberto = ref(false)
+const itemAEliminar = ref<ItemSelecaoUnica | null>(null)
+const alertaEliminarAberto = ref(false)
 const eliminandoId = ref<number | null>(null)
 const guardandoEdicao = ref(false)
 const indiceDestaque = ref(-1)
@@ -280,7 +286,10 @@ function removerChip() {
 function updatePanelPos() {
   const el = rootRef.value
   if (!el || !mostrarPainel.value) return
-  panelStyle.value = calcDropdownPanelStyle(el.getBoundingClientRect(), { minWidth: 280 })
+  panelStyle.value = calcDropdownPanelStyle(el.getBoundingClientRect(), {
+    minWidth: 220,
+    maxWidth: 280,
+  })
 }
 
 function attachScrollListeners() {
@@ -426,18 +435,24 @@ function aoFocusForm() {
 }
 
 function cancelarEdicao() {
-  editandoItemId.value = null
+  if (guardandoEdicao.value) return
+  modalEdicaoAberto.value = false
+  itemEmEdicao.value = null
   nomeEdicao.value = ''
 }
 
 function iniciarEdicao(item: ItemSelecaoUnica) {
-  editandoItemId.value = item.id
+  if (props.disabled) return
+  painelAberto.value = false
+  itemEmEdicao.value = { ...item }
   nomeEdicao.value = item.nome
+  modalEdicaoAberto.value = true
 }
 
-async function confirmarEdicao(itemId: number) {
+async function confirmarEdicao() {
   const wid = props.workspaceId
-  if (wid == null || wid < 1) return
+  const itemId = itemEmEdicao.value?.id
+  if (wid == null || wid < 1 || itemId == null) return
   const nome = nomeEdicao.value.trim()
   if (!nome) {
     toast.error(config.value.erroNomeVazio)
@@ -461,21 +476,34 @@ async function confirmarEdicao(itemId: number) {
       modeloSelecao.value = { id: itemId, nome: data.nome }
       filtro.value = data.nome
     }
+    guardandoEdicao.value = false
     cancelarEdicao()
     reaplicarSugestoesDaCache()
     if (isCelula.value) emitCommit()
     toast.success(config.value.toastAtualizado)
   } catch (err) {
     toast.error(mensagemErroFetch(err, config.value.erroAtualizar))
-  } finally {
     guardandoEdicao.value = false
   }
 }
 
-async function eliminarItem(item: ItemSelecaoUnica) {
+function pedirEliminar(item: ItemSelecaoUnica) {
+  if (props.disabled) return
+  painelAberto.value = false
+  itemAEliminar.value = { ...item }
+  alertaEliminarAberto.value = true
+}
+
+function cancelarEliminar() {
+  if (eliminandoId.value != null) return
+  alertaEliminarAberto.value = false
+  itemAEliminar.value = null
+}
+
+async function confirmarEliminar() {
   const wid = props.workspaceId
-  if (wid == null || wid < 1) return
-  if (!window.confirm(config.value.labelEliminarConfirm(item.nome))) return
+  const item = itemAEliminar.value
+  if (wid == null || wid < 1 || !item) return
   suprimirBlurCommit.value = true
   eliminandoId.value = item.id
   try {
@@ -484,12 +512,14 @@ async function eliminarItem(item: ItemSelecaoUnica) {
       query: { workspace_id: wid },
     })
     removerItemCache(wid, item.id)
-    if (editandoItemId.value === item.id) cancelarEdicao()
+    if (itemEmEdicao.value?.id === item.id) cancelarEdicao()
     if (selecionado.value?.id === item.id) selecionado.value = null
     if (isForm.value && modeloSelecao.value?.id === item.id) {
       modeloSelecao.value = null
       filtro.value = ''
     }
+    alertaEliminarAberto.value = false
+    itemAEliminar.value = null
     reaplicarSugestoesDaCache()
     if (isCelula.value) emitCommit()
     toast.success(config.value.toastEliminado)
@@ -501,6 +531,10 @@ async function eliminarItem(item: ItemSelecaoUnica) {
     agendarFimSuprimirBlur()
   }
 }
+
+const textoAlertaEliminar = computed(() =>
+  itemAEliminar.value ? config.value.labelEliminarConfirm(itemAEliminar.value.nome) : '',
+)
 
 async function criarDigitado() {
   const wid = props.workspaceId
@@ -583,7 +617,6 @@ const painelDropdownRootClass =
   'flex flex-col overflow-hidden rounded-xl border border-slate-600/90 bg-slate-900 text-slate-100 shadow-2xl ring-1 ring-white/10 dark:border-slate-500/80 dark:bg-slate-950 dark:ring-white/5'
 const painelHeaderClass = 'flex shrink-0 items-center justify-between gap-2 border-b border-slate-600/90 bg-slate-800/95 px-3 py-2 dark:border-slate-600/80 dark:bg-slate-900/95'
 const inpFiltroClass = 'block w-full rounded-lg border border-slate-600/80 bg-slate-800/80 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400/40'
-const inpEdicaoClass = 'min-w-0 flex-1 rounded-lg border border-slate-500/80 bg-slate-800/80 px-2.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400/40'
 const iconAcaoClass = 'inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-700/85 hover:text-slate-100 disabled:pointer-events-none disabled:opacity-40'
 const itemSugestaoClass = (idx: number) =>
   ['flex min-w-0 flex-1 items-center px-3 py-2.5 text-left text-sm text-slate-100 transition-colors', idx === indiceDestaque.value ? 'bg-primary-500/30 ring-2 ring-inset ring-primary-400/55' : 'hover:bg-slate-800/90'].join(' ')
@@ -617,66 +650,112 @@ const itemSugestaoClass = (idx: number) =>
         <ProdutosSelecaoUnicaPainel
           ref="painelComponentRef"
           v-model:filtro="filtro"
-          v-model:nome-edicao="nomeEdicao"
           v-model:lista-sugestoes-ref="listaSugestoesRef"
           :config="config"
           :buscando="buscando"
           :sugestoes="sugestoes"
           :mostrar-opcao-criar="mostrarOpcaoCriar"
           :criando="criando"
-          :editando-item-id="editandoItemId"
-          :guardando-edicao="guardandoEdicao"
           :eliminando-id="eliminandoId"
           :disabled="disabled"
           :indice-destaque="indiceDestaque"
           :item-sugestao-class="itemSugestaoClass"
           :inp-filtro-class="inpFiltroClass"
-          :inp-edicao-class="inpEdicaoClass"
           :icon-acao-class="iconAcaoClass"
           :painel-header-class="painelHeaderClass"
           @fechar="fecharPainel"
           @enter-filtro="mostrarOpcaoCriar ? criarDigitado() : aoEnterPainel()"
           @escolher="escolherItem"
           @iniciar-edicao="iniciarEdicao"
-          @confirmar-edicao="confirmarEdicao"
-          @cancelar-edicao="cancelarEdicao"
-          @eliminar="eliminarItem"
+          @eliminar="pedirEliminar"
           @criar="criarDigitado"
           @hover-destaque="hoverDestaque"
         />
       </div>
     </Teleport>
 
-    <div v-else-if="isForm && mostrarPainel && !disabled" ref="painelDropdownRef" role="listbox" :class="['absolute z-50 mt-1 w-full', painelDropdownRootClass]">
+    <div
+      v-else-if="isForm && mostrarPainel && !disabled"
+      ref="painelDropdownRef"
+      role="listbox"
+      :class="['absolute z-50 mt-1 w-full max-w-[280px]', painelDropdownRootClass]"
+    >
       <ProdutosSelecaoUnicaPainel
         v-model:filtro="filtro"
-        v-model:nome-edicao="nomeEdicao"
         v-model:lista-sugestoes-ref="listaSugestoesRef"
         :config="config"
         :buscando="buscando"
         :sugestoes="sugestoes"
         :mostrar-opcao-criar="mostrarOpcaoCriar"
         :criando="criando"
-        :editando-item-id="editandoItemId"
-        :guardando-edicao="guardandoEdicao"
         :eliminando-id="eliminandoId"
         :disabled="disabled"
         :indice-destaque="indiceDestaque"
         :item-sugestao-class="itemSugestaoClass"
         :inp-filtro-class="inpFiltroClass"
-        :inp-edicao-class="inpEdicaoClass"
         :icon-acao-class="iconAcaoClass"
         :painel-header-class="painelHeaderClass"
         :mostrar-filtro="false"
         @fechar="fecharPainel"
         @escolher="escolherItem"
         @iniciar-edicao="iniciarEdicao"
-        @confirmar-edicao="confirmarEdicao"
-        @cancelar-edicao="cancelarEdicao"
-        @eliminar="eliminarItem"
+        @eliminar="pedirEliminar"
         @criar="criarDigitado"
         @hover-destaque="hoverDestaque"
       />
     </div>
   </div>
+
+  <BaseModal
+    v-model:open="modalEdicaoAberto"
+    :title="config.tituloEditar"
+    panel-class="w-full max-w-md"
+    :show-close="!guardandoEdicao"
+    :close-on-backdrop="!guardandoEdicao"
+    :close-on-escape="!guardandoEdicao"
+    @close="cancelarEdicao"
+  >
+    <div class="space-y-4">
+      <div>
+        <label class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+          {{ config.labelNomeCampo }}
+        </label>
+        <BaseInput
+          v-model="nomeEdicao"
+          autocomplete="off"
+          :placeholder="config.placeholderEdicao"
+          :disabled="guardandoEdicao"
+          @keydown.enter.prevent="confirmarEdicao"
+        />
+      </div>
+
+      <div class="flex justify-end gap-2 pt-1">
+        <BaseButton :block="false" variant="secondary" size="sm" :disabled="guardandoEdicao" @click="cancelarEdicao">
+          Cancelar
+        </BaseButton>
+        <BaseButton
+          :block="false"
+          variant="primary"
+          size="sm"
+          :disabled="guardandoEdicao || !nomeEdicao.trim()"
+          @click="confirmarEdicao"
+        >
+          {{ guardandoEdicao ? 'A guardar…' : 'Salvar' }}
+        </BaseButton>
+      </div>
+    </div>
+  </BaseModal>
+
+  <ModalAlerta
+    v-model:open="alertaEliminarAberto"
+    :title="config.tituloEliminar"
+    :texto="textoAlertaEliminar"
+    variante="perigo"
+    texto-confirmar="Eliminar"
+    texto-cancelar="Cancelar"
+    :confirmar-desabilitado="eliminandoId != null"
+    :cancelar-desabilitado="eliminandoId != null"
+    @confirmar="confirmarEliminar"
+    @cancelar="cancelarEliminar"
+  />
 </template>

@@ -69,16 +69,16 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
             loading="lazy"
             referrerpolicy="no-referrer"
           />
-          <span v-else class="material-symbols-outlined text-[22px] text-on-surface-variant dark:text-slate-200" aria-hidden="true">
+          <span v-else class="material-symbols-outlined text-[22px] text-zinc-600 dark:text-slate-200" aria-hidden="true">
             {{ fileIcon }}
           </span>
         </div>
 
         <div class="min-w-0 flex-1">
-          <p class="truncate font-body text-sm font-semibold text-on-surface dark:text-slate-100">
+          <p class="truncate font-body text-sm font-semibold text-zinc-950 dark:text-slate-100">
             {{ filename || 'documento' }}
           </p>
-          <p class="mt-0.5 text-[10px] text-on-surface-variant dark:text-slate-400">
+          <p class="mt-0.5 text-[10px] text-zinc-600 dark:text-slate-400">
             {{ labelExt }}
           </p>
         </div>
@@ -90,11 +90,11 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
           :href="url"
           target="_blank"
           rel="noopener noreferrer"
-          class="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-[11px] font-semibold text-on-surface hover:bg-surface-container dark:text-slate-200 dark:hover:bg-slate-700"
+          class="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-[11px] font-semibold text-zinc-950 hover:bg-surface-container dark:text-slate-200 dark:hover:bg-slate-700"
         >
           Abrir
         </a>
-        <span v-else class="px-3 py-2 text-[11px] text-on-surface-variant dark:text-slate-400">Sem link</span>
+        <span v-else class="px-3 py-2 text-[11px] text-zinc-600 dark:text-slate-400">Sem link</span>
 
         <a
           v-if="url"
@@ -112,10 +112,10 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
       <TextoComLinks
         v-if="caption"
         :texto="caption"
-        class="mt-2 whitespace-pre-wrap break-words font-body text-sm text-on-surface dark:text-slate-200"
+        class="mt-2 whitespace-pre-wrap break-words font-body text-sm text-zinc-950 dark:text-slate-200"
       />
 
-      <span class="mt-1 block text-right text-[10px] text-on-surface-variant dark:text-slate-400">
+      <span class="mt-1 block text-right text-[10px] text-zinc-600 dark:text-slate-400">
         {{ hora }}
       </span>
     </div>

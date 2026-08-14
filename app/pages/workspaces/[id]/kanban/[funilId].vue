@@ -56,10 +56,7 @@ watch(
 </script>
 
 <template>
-  <div class="relative min-h-[100dvh] w-full p-4 md:p-6">
-    <div
-      class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-sky-50 via-white to-emerald-50 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900"
-    />
+  <div class="relative min-h-[100dvh] w-full p-4 md:p-6 bg-white dark:bg-dark-background">
 
     <div v-if="pending && kanban.columns.length === 0" class="flex min-h-[40vh] items-center justify-center">
       <div class="flex flex-col items-center gap-3 text-slate-600 dark:text-dark-on-surface-variant">

@@ -274,7 +274,7 @@ function onSelect() {
 
     <div class="min-w-0 flex-1">
       <div class="mb-0.5 flex items-baseline justify-between">
-        <h3 class="truncate font-headline text-sm font-semibold text-slate-900 dark:text-slate-100">
+        <h3 class="truncate font-headline text-sm font-semibold text-zinc-950 dark:text-slate-100">
           {{ nome }}
         </h3>
         <div class="flex shrink-0 items-center gap-1.5">
@@ -290,7 +290,7 @@ function onSelect() {
           >
             Fechada
           </span>
-          <span class="text-[10px] text-on-surface-variant dark:text-slate-400">{{ horarioExibido }}</span>
+          <span class="text-[10px] text-zinc-600 dark:text-slate-400">{{ horarioExibido }}</span>
         </div>
       </div>
       <div v-if="podeAlterarStatus" class="mb-0.5">
@@ -330,12 +330,12 @@ function onSelect() {
           Sem status
         </button>
       </div>
-      <p class="flex min-w-0 items-center gap-1.5 font-body text-xs text-on-surface-variant dark:text-slate-400">
+      <p class="flex min-w-0 items-center gap-1.5 font-body text-xs text-zinc-800 dark:text-slate-400">
         <span class="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
           <!-- Duplo check (mesmo papel do BalaoMensagens `done_all`) — só se from_me -->
           <svg
             v-if="mostrarDuploCheck"
-            class="h-3.5 w-3.5 shrink-0 text-slate-500 dark:text-slate-400"
+            class="h-3.5 w-3.5 shrink-0 text-zinc-700 dark:text-slate-400"
             viewBox="0 0 16 11"
             fill="none"
             aria-label="Enviada por você"

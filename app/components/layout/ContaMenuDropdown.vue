@@ -8,6 +8,11 @@ defineProps<{
 
 const { isDark, toggle: toggleTheme } = useColorMode()
 
+function onToggleTheme(close: () => void) {
+  toggleTheme()
+  close()
+}
+
 async function handleLogout(close: () => void) {
   close()
   try {
@@ -74,7 +79,7 @@ async function handleLogout(close: () => void) {
         type="button"
         role="menuitem"
         class="mt-0.5 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
-        @click="toggleTheme(); close()"
+        @click.stop.prevent="onToggleTheme(close)"
       >
         <svg
           v-if="!isDark"

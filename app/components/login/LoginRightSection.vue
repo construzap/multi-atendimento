@@ -69,7 +69,7 @@ async function onSignupSubmit() {
   >
     <div class="mx-auto w-full max-w-md">
       <div
-        class="mb-8 flex rounded-xl border border-gray-200 bg-gray-50/80 p-1"
+        class="mb-8 flex rounded-xl border border-outline/40 bg-surface-container-low p-1"
         role="tablist"
         aria-label="Login ou cadastro"
       >
@@ -83,8 +83,8 @@ async function onSignupSubmit() {
           class="flex-1 rounded-lg py-3 text-sm font-semibold transition-all"
           :class="
             activeTab === 'login'
-              ? 'bg-white text-primary-600 shadow-sm'
-              : 'text-gray-600 hover:text-gray-800'
+              ? 'bg-surface-container-lowest text-primary-600 shadow-sm'
+              : 'text-on-surface-variant hover:text-on-surface'
           "
           @click="activeTab = 'login'"
         >
@@ -100,8 +100,8 @@ async function onSignupSubmit() {
           class="flex-1 rounded-lg py-3 text-sm font-semibold transition-all"
           :class="
             activeTab === 'signup'
-              ? 'bg-white text-primary-600 shadow-sm'
-              : 'text-gray-600 hover:text-gray-800'
+              ? 'bg-surface-container-lowest text-primary-600 shadow-sm'
+              : 'text-on-surface-variant hover:text-on-surface'
           "
           @click="activeTab = 'signup'"
         >
@@ -118,11 +118,11 @@ async function onSignupSubmit() {
         class="space-y-5"
       >
         <form id="login-form" class="space-y-5" @submit.prevent="onLoginSubmit">
-          <p v-if="loginError" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p v-if="loginError" class="rounded-lg border border-danger/30 bg-danger-container px-3 py-2 text-sm text-danger-on-container">
             {{ loginError }}
           </p>
           <div>
-            <label class="mb-2 block text-sm font-semibold text-gray-700" for="login-email">Email</label>
+            <label class="mb-2 block text-sm font-semibold text-on-surface" for="login-email">Email</label>
             <BaseInput
               id="login-email"
               v-model="loginEmail"
@@ -144,7 +144,7 @@ async function onSignupSubmit() {
           </div>
 
           <div>
-            <label class="mb-2 block text-sm font-semibold text-gray-700" for="login-password">Senha</label>
+            <label class="mb-2 block text-sm font-semibold text-on-surface" for="login-password">Senha</label>
             <BaseInput
               id="login-password"
               v-model="loginPassword"
@@ -162,7 +162,7 @@ async function onSignupSubmit() {
               <template #trailing>
                 <button
                   type="button"
-                  class="rounded p-1 text-gray-400 hover:text-gray-600"
+                  class="rounded p-1 text-on-surface-variant hover:text-on-surface"
                   :aria-label="showLoginPassword ? 'Ocultar senha' : 'Mostrar senha'"
                   @click="showLoginPassword = !showLoginPassword"
                 >
@@ -185,9 +185,9 @@ async function onSignupSubmit() {
               <input
                 v-model="loginRemember"
                 type="checkbox"
-                class="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500"
+                class="h-4 w-4 rounded border-outline/50 text-primary-500 focus:ring-primary-500"
               />
-              <span class="text-sm text-gray-600">Lembrar-me</span>
+              <span class="text-sm text-on-surface-variant">Lembrar-me</span>
             </label>
             <a href="#" class="text-sm font-semibold text-primary-600 hover:text-primary-700">Esqueceu a senha?</a>
           </div>
@@ -207,11 +207,11 @@ async function onSignupSubmit() {
         class="space-y-5"
       >
         <form id="cadastro-form" class="space-y-5" @submit.prevent="onSignupSubmit">
-          <p v-if="signupError" class="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p v-if="signupError" class="rounded-lg border border-danger/30 bg-danger-container px-3 py-2 text-sm text-danger-on-container">
             {{ signupError }}
           </p>
           <div>
-            <label class="mb-2 block text-sm font-semibold text-gray-700" for="signup-name">Nome Completo</label>
+            <label class="mb-2 block text-sm font-semibold text-on-surface" for="signup-name">Nome Completo</label>
             <BaseInput
               id="signup-name"
               v-model="signupName"
@@ -230,7 +230,7 @@ async function onSignupSubmit() {
           </div>
 
           <div>
-            <label class="mb-2 block text-sm font-semibold text-gray-700" for="signup-email">Email</label>
+            <label class="mb-2 block text-sm font-semibold text-on-surface" for="signup-email">Email</label>
             <BaseInput
               id="signup-email"
               v-model="signupEmail"
@@ -252,7 +252,7 @@ async function onSignupSubmit() {
           </div>
 
           <div>
-            <label class="mb-2 block text-sm font-semibold text-gray-700" for="signup-phone">WhatsApp</label>
+            <label class="mb-2 block text-sm font-semibold text-on-surface" for="signup-phone">WhatsApp</label>
             <BaseInput
               id="signup-phone"
               v-model="signupPhone"
@@ -272,7 +272,7 @@ async function onSignupSubmit() {
           </div>
 
           <div>
-            <label class="mb-2 block text-sm font-semibold text-gray-700" for="signup-password">Senha</label>
+            <label class="mb-2 block text-sm font-semibold text-on-surface" for="signup-password">Senha</label>
             <BaseInput
               id="signup-password"
               v-model="signupPassword"
@@ -290,7 +290,7 @@ async function onSignupSubmit() {
               <template #trailing>
                 <button
                   type="button"
-                  class="rounded p-1 text-gray-400 hover:text-gray-600"
+                  class="rounded p-1 text-on-surface-variant hover:text-on-surface"
                   :aria-label="showSignupPassword ? 'Ocultar senha' : 'Mostrar senha'"
                   @click="showSignupPassword = !showSignupPassword"
                 >
@@ -308,7 +308,7 @@ async function onSignupSubmit() {
           </div>
 
           <div>
-            <label class="mb-2 block text-sm font-semibold text-gray-700" for="signup-confirm">Confirmar Senha</label>
+            <label class="mb-2 block text-sm font-semibold text-on-surface" for="signup-confirm">Confirmar Senha</label>
             <BaseInput
               id="signup-confirm"
               v-model="signupConfirm"
@@ -326,7 +326,7 @@ async function onSignupSubmit() {
               <template #trailing>
                 <button
                   type="button"
-                  class="rounded p-1 text-gray-400 hover:text-gray-600"
+                  class="rounded p-1 text-on-surface-variant hover:text-on-surface"
                   :aria-label="showSignupConfirm ? 'Ocultar senha' : 'Mostrar senha'"
                   @click="showSignupConfirm = !showSignupConfirm"
                 >

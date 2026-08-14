@@ -224,7 +224,7 @@ onBeforeUnmount(() => {
         aria-hidden="true"
       >
         <span
-          class="inline-block rounded-lg bg-[#e1f2dc] px-3 py-1 text-[12px] font-medium text-[#54656f] shadow-sm dark:bg-slate-700 dark:text-slate-200"
+          class="inline-block rounded-lg bg-[#e1f2dc] px-3 py-1 text-[12px] font-medium text-zinc-800 shadow-sm dark:bg-slate-700 dark:text-slate-200"
         >
           {{ stickyDayLabel }}
         </span>
@@ -238,7 +238,7 @@ onBeforeUnmount(() => {
     >
       <div
         v-if="!activeKey"
-        class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+        class="rounded-xl border border-dashed border-slate-200 py-10 text-center text-xs text-zinc-700 dark:border-slate-700 dark:text-slate-400"
       >
         Selecione uma conversa para ver as mensagens.
       </div>
@@ -254,7 +254,7 @@ onBeforeUnmount(() => {
               :data-day-label="item.label"
             >
               <span
-                class="rounded-lg bg-[#e1f2dc] px-3 py-1 text-[12px] font-medium text-[#54656f] shadow-sm dark:bg-slate-700 dark:text-slate-200"
+                class="rounded-lg bg-[#e1f2dc] px-3 py-1 text-[12px] font-medium text-zinc-800 shadow-sm dark:bg-slate-700 dark:text-slate-200"
               >
                 {{ item.label }}
               </span>

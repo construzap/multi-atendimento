@@ -1,3 +1,47 @@
+import { dark, light } from './app/theme/colors.js'
+
+/** Status aninhados a partir da paleta light (hex). */
+function statusFrom(palette) {
+  return {
+    success: {
+      DEFAULT: palette.success,
+      container: palette['success-container'],
+      on: palette['on-success'],
+      'on-container': palette['on-success-container'],
+    },
+    danger: {
+      DEFAULT: palette.danger,
+      container: palette['danger-container'],
+      on: palette['on-danger'],
+      'on-container': palette['on-danger-container'],
+    },
+    warning: {
+      DEFAULT: palette.warning,
+      container: palette['warning-container'],
+      on: palette['on-warning'],
+      'on-container': palette['on-warning-container'],
+    },
+    info: {
+      DEFAULT: palette.info,
+      container: palette['info-container'],
+      on: palette['on-info'],
+      'on-container': palette['on-info-container'],
+    },
+  }
+}
+
+/**
+ * Tokens light em hex fixo + aliases dark-* para `dark:bg-dark-*`.
+ * (CSS vars em theme.css continuam para color-scheme; o toggle usa classe .dark.)
+ */
+const lightFlat = Object.fromEntries(
+  Object.entries(light).filter(
+    ([k]) =>
+      !/^(success|danger|warning|info)(-|$)/.test(k) &&
+      !/^(on-success|on-danger|on-warning|on-info)/.test(k),
+  ),
+)
+
 /** @type {import('tailwindcss').Config} */
 export default {
   darkMode: 'class',
@@ -12,152 +56,65 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Material You — light
-        'on-secondary-fixed-variant': '#315038', //aquifoimodificadocor
-        'on-primary-fixed-variant': '#065b1e', //aquifoimodificadocor
-        background: '#f9f9f9',
-        'surface-tint': '#1a7b2d', //aquifoimodificadocor
-        'on-secondary-container': '#072010', //aquifoimodificadocor
-        'surface-container-high': '#e8e8e8',
-        tertiary: '#00639a',
-        'secondary-container': '#caeecf', //aquifoimodificadocor
-        'on-surface': '#1a1c1c',
-        'surface-dim': '#dadada',
-        'on-tertiary-fixed': '#001d32',
-        'error-container': '#ffdad6',
-        'secondary-fixed': '#caeecf', //aquifoimodificadocor
-        'on-tertiary': '#ffffff',
-        secondary: '#4a6850', //aquifoimodificadocor
-        'primary-fixed-dim': '#8dd994', //aquifoimodificadocor
-        'surface-bright': '#f9f9f9',
-        'on-error': '#ffffff',
-        primary: '#1a7b2d', //aquifoimodificadocor
-        error: '#ba1a1a',
-        'on-error-container': '#93000a',
-        'on-background': '#1a1c1c',
-        'inverse-surface': '#2f3131',
-        'primary-fixed': '#b4f0bc', //aquifoimodificadocor
-        'secondary-fixed-dim': '#aed2b4', //aquifoimodificadocor
-        'on-primary-fixed': '#002108', //aquifoimodificadocor
-        'inverse-primary': '#8dd994', //aquifoimodificadocor
-        'tertiary-fixed': '#cee5ff',
-        'on-secondary-fixed': '#072010', //aquifoimodificadocor
-        'inverse-on-surface': '#f1f1f1',
-        'on-primary': '#ffffff',
-        'surface-variant': '#e2e2e2',
-        'surface-container-low': '#f3f3f3',
-        'surface-container': '#eeeeee',
-        'outline-variant': '#b9d9bc', //aquifoimodificadocor
-        'tertiary-fixed-dim': '#96ccff',
-        'primary-container': '#a8f5b0', //aquifoimodificadocor
-        'surface-container-highest': '#e2e2e2',
-        'surface-container-lowest': '#ffffff',
-        'on-tertiary-container': '#003454',
-        'on-tertiary-fixed-variant': '#004a76',
-        'on-secondary': '#ffffff',
-        surface: '#f9f9f9',
-        'on-primary-container': '#002108', //aquifoimodificadocor
-        'tertiary-container': '#00a0f6',
-        'on-surface-variant': '#405743', //aquifoimodificadocor
-        outline: '#5a7a5d', //aquifoimodificadocor
+        ...lightFlat,
+        ...statusFrom(light),
 
-        // Cores secundárias (acentos / UI)
-        'secondary-accent': '#315038', //aquifoimodificadocor
-        'secondary-muted': '#587963', //aquifoimodificadocor
-        'tertiary-accent': '#0088d4',
-        'tertiary-muted': '#5a9bc4',
+        'dark-background': dark.background,
+        'dark-surface': dark.surface,
+        'dark-surface-dim': dark['surface-dim'],
+        'dark-surface-bright': dark['surface-bright'],
+        'dark-on-surface': dark['on-surface'],
+        'dark-on-background': dark['on-background'],
+        'dark-surface-variant': dark['surface-variant'],
+        'dark-on-surface-variant': dark['on-surface-variant'],
+        'dark-outline': dark.outline,
+        'dark-outline-variant': dark['outline-variant'],
+        'dark-primary': dark.primary,
+        'dark-on-primary': dark['on-primary'],
+        'dark-primary-container': dark['primary-container'],
+        'dark-on-primary-container': dark['on-primary-container'],
+        'dark-primary-fixed': dark['primary-fixed'],
+        'dark-on-primary-fixed': dark['on-primary-fixed'],
+        'dark-inverse-primary': dark['inverse-primary'],
+        'dark-secondary': dark.secondary,
+        'dark-on-secondary': dark['on-secondary'],
+        'dark-secondary-container': dark['secondary-container'],
+        'dark-on-secondary-container': dark['on-secondary-container'],
+        'dark-secondary-fixed': dark['secondary-fixed'],
+        'dark-on-secondary-fixed': dark['on-secondary-fixed'],
+        'dark-tertiary': dark.tertiary,
+        'dark-on-tertiary': dark['on-tertiary'],
+        'dark-tertiary-container': dark['tertiary-container'],
+        'dark-on-tertiary-container': dark['on-tertiary-container'],
+        'dark-error': dark.error,
+        'dark-on-error': dark['on-error'],
+        'dark-error-container': dark['error-container'],
+        'dark-on-error-container': dark['on-error-container'],
+        'dark-inverse-surface': dark['inverse-surface'],
+        'dark-inverse-on-surface': dark['inverse-on-surface'],
+        'dark-surface-container-lowest': dark['surface-container-lowest'],
+        'dark-surface-container-low': dark['surface-container-low'],
+        'dark-surface-container': dark['surface-container'],
+        'dark-surface-container-high': dark['surface-container-high'],
+        'dark-surface-container-highest': dark['surface-container-highest'],
+        'dark-surface-tint': dark['surface-tint'],
 
-        // Escala primary (utilitários primary-500, focus:ring-primary-100, etc.)
-        'primary-50': '#f0fdf4', //aquifoimodificadocor
-        'primary-100': '#d0f5d5', //aquifoimodificadocor
-        'primary-400': '#37bb4a', //aquifoimodificadocor
-        'primary-500': '#1a7b2d', //aquifoimodificadocor
-        'primary-600': '#065b1e', //aquifoimodificadocor
-        'primary-700': '#003d14', //aquifoimodificadocor
-
-        // Ação / semânticas
-        success: {
-          DEFAULT: '#2e7d32',
-          container: '#c8e6c9',
-          on: '#ffffff',
-          'on-container': '#002105',
-        },
-        danger: {
-          DEFAULT: '#ba1a1a',
-          container: '#ffdad6',
-          on: '#ffffff',
-          'on-container': '#93000a',
-        },
-        warning: {
-          DEFAULT: '#e65100',
-          container: '#ffe0b2',
-          on: '#ffffff',
-          'on-container': '#3e2723',
-        },
-        info: {
-          DEFAULT: '#00639a',
-          container: '#cee5ff',
-          on: '#ffffff',
-          'on-container': '#003454',
-        },
-
-        // Dark mode (use com classe .dark no root)
-        'dark-background': '#111414',
-        'dark-surface': '#111414',
-        'dark-surface-dim': '#0c0f0f',
-        'dark-surface-bright': '#1a1d1d',
-        'dark-on-surface': '#e2e4e4',
-        'dark-on-background': '#e2e4e4',
-        'dark-surface-variant': '#2d3e2e', //aquifoimodificadocor
-        'dark-on-surface-variant': '#b8d4bc', //aquifoimodificadocor
-        'dark-outline': '#7a9b7e', //aquifoimodificadocor
-        'dark-outline-variant': '#3b5441', //aquifoimodificadocor
-        'dark-primary': '#8dd994', //aquifoimodificadocor
-        'dark-on-primary': '#003916', //aquifoimodificadocor
-        'dark-primary-container': '#065b1e', //aquifoimodificadocor
-        'dark-on-primary-container': '#b4f0bc', //aquifoimodificadocor
-        'dark-primary-fixed': '#b4f0bc', //aquifoimodificadocor
-        'dark-on-primary-fixed': '#002108', //aquifoimodificadocor
-        'dark-inverse-primary': '#1a7b2d', //aquifoimodificadocor
-        'dark-secondary': '#aed2b4', //aquifoimodificadocor
-        'dark-on-secondary': '#1c3521', //aquifoimodificadocor
-        'dark-secondary-container': '#315038', //aquifoimodificadocor
-        'dark-on-secondary-container': '#caeecf', //aquifoimodificadocor
-        'dark-secondary-fixed': '#caeecf', //aquifoimodificadocor
-        'dark-on-secondary-fixed': '#072010', //aquifoimodificadocor
-        'dark-tertiary': '#96ccff',
-        'dark-on-tertiary': '#003454',
-        'dark-tertiary-container': '#004a76',
-        'dark-on-tertiary-container': '#cee5ff',
-        'dark-error': '#ffb4ab',
-        'dark-on-error': '#690005',
-        'dark-error-container': '#93000a',
-        'dark-on-error-container': '#ffdad6',
-        'dark-inverse-surface': '#e2e4e4',
-        'dark-inverse-on-surface': '#2f3131',
-        'dark-surface-container-lowest': '#0c0f0f',
-        'dark-surface-container-low': '#1a1d1d',
-        'dark-surface-container': '#1e2121',
-        'dark-surface-container-high': '#282b2b',
-        'dark-surface-container-highest': '#333636',
-        'dark-surface-tint': '#8dd994', //aquifoimodificadocor
-
-        'dark-success': '#81c784',
-        'dark-success-container': '#1b5e20',
-        'dark-on-success': '#003300',
-        'dark-on-success-container': '#c8e6c9',
-        'dark-danger': '#ffb4ab',
-        'dark-danger-container': '#93000a',
-        'dark-on-danger': '#690005',
-        'dark-on-danger-container': '#ffdad6',
-        'dark-warning': '#ffb74d',
-        'dark-warning-container': '#e65100',
-        'dark-on-warning': '#3e2723',
-        'dark-on-warning-container': '#ffe0b2',
-        'dark-info': '#96ccff',
-        'dark-info-container': '#004a76',
-        'dark-on-info': '#003454',
-        'dark-on-info-container': '#cee5ff',
+        'dark-success': dark.success,
+        'dark-success-container': dark['success-container'],
+        'dark-on-success': dark['on-success'],
+        'dark-on-success-container': dark['on-success-container'],
+        'dark-danger': dark.danger,
+        'dark-danger-container': dark['danger-container'],
+        'dark-on-danger': dark['on-danger'],
+        'dark-on-danger-container': dark['on-danger-container'],
+        'dark-warning': dark.warning,
+        'dark-warning-container': dark['warning-container'],
+        'dark-on-warning': dark['on-warning'],
+        'dark-on-warning-container': dark['on-warning-container'],
+        'dark-info': dark.info,
+        'dark-info-container': dark['info-container'],
+        'dark-on-info': dark['on-info'],
+        'dark-on-info-container': dark['on-info-container'],
       },
       fontFamily: {
         headline: ['Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif'],
@@ -211,8 +168,8 @@ export default {
         md: '0 4px 16px rgba(0, 0, 0, 0.12)',
         lg: '0 8px 24px rgba(0, 0, 0, 0.16)',
         panel: '2px 0 8px rgba(0, 0, 0, 0.08)',
-        glow: '0 0 24px rgba(55, 187, 74, 0.25)', //aquifoimodificadocor
-        'glow-dark': '0 0 28px rgba(141, 217, 148, 0.2)', //aquifoimodificadocor
+        glow: '0 0 24px rgba(55, 187, 74, 0.25)',
+        'glow-dark': '0 0 28px rgba(141, 217, 148, 0.2)',
       },
       keyframes: {
         fadeIn: {

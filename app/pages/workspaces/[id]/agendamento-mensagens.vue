@@ -197,7 +197,7 @@ function aoAtualizadoAgendamento(row: AgendamentoMensagemRow) {
 </script>
 
 <template>
-  <div class="min-h-full bg-background pb-14 pt-6 transition-colors dark:bg-dark-background md:pt-10">
+  <div class="min-h-full bg-white pb-14 pt-6 transition-colors dark:bg-dark-background md:pt-10">
     <div class="mx-auto max-w-7xl px-4 md:px-6">
       <header class="mb-8 max-w-3xl space-y-3">
         <p class="text-sm font-medium text-on-surface-variant dark:text-dark-on-surface-variant">

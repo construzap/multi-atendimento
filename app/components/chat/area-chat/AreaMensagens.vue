@@ -30,7 +30,7 @@ const { carregandoConversaAtiva } = storeToRefs(mensagensStore)
             >
               progress_activity
             </span>
-            <p class="text-sm font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+            <p class="text-sm font-medium text-zinc-800 dark:text-dark-on-surface-variant">
               Carregando mensagens…
             </p>
           </div>

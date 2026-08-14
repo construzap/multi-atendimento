@@ -30,9 +30,9 @@ const hora = computed(() => formatHora(props.mensagem.created_at))
       <TextoComLinks
         v-if="caption"
         :texto="caption"
-        class="whitespace-pre-wrap break-words px-2 font-body text-sm text-on-surface dark:text-slate-200"
+        class="whitespace-pre-wrap break-words px-2 font-body text-sm text-zinc-950 dark:text-slate-200"
       />
-      <span class="mt-1 block px-2 text-right text-[10px] text-on-surface-variant dark:text-slate-400">
+      <span class="mt-1 block px-2 text-right text-[10px] text-zinc-600 dark:text-slate-400">
         {{ hora }}
       </span>
     </div>

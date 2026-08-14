@@ -38,7 +38,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex min-h-[40vh] items-center justify-center p-6">
+  <div class="flex min-h-[40vh] items-center justify-center bg-white p-6 dark:bg-dark-background">
     <div class="flex flex-col items-center gap-3 text-slate-600 dark:text-dark-on-surface-variant">
       <span
         class="inline-block h-10 w-10 animate-spin rounded-full border-2 border-primary border-t-transparent"

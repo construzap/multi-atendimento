@@ -10,7 +10,7 @@ definePageMeta({
 </script>
 
 <template>
-  <div class="flex min-h-screen flex-col bg-background md:flex-row">
+  <div class="flex min-h-screen flex-col bg-white dark:bg-dark-background md:flex-row">
     <LoginLeftSection />
     <div class="relative flex flex-1 flex-col">
       <NuxtLink

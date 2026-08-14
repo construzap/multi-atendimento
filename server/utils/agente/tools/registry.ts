@@ -6,6 +6,7 @@ import { estoqueTool } from './estoque'
 import { argAny, argStr, ctxStr, type ToolDef } from './helpers'
 import { postToolHttp } from './httpPost'
 import { orcamentoprontoTool } from './orcamentopronto'
+import { transferirAtendimentoTool } from './transferirAtendimento'
 
 const TOOLS: ToolDef[] = [
   {
@@ -175,6 +176,7 @@ const TOOLS: ToolDef[] = [
     }),
   },
   orcamentoprontoTool,
+  transferirAtendimentoTool,
 ]
 
 const byName = new Map(TOOLS.map((t) => [t.name, t]))

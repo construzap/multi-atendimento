@@ -41,9 +41,12 @@ export async function loadCanalAgenteCredenciais(
   })
 
   if (error) {
+    const decryptHint = /Wrong key or corrupt data/i.test(error.message)
+      ? ` (canal_id=${params.canal_id}). Confira NUXT_AGENTE_SENHA_MESTRA_ENCRIPTOGRAFIA_API_KEY e regrave a API key do canal se a senha mestra mudou.`
+      : ''
     throw createError({
       statusCode: 500,
-      statusMessage: `Falha ao carregar credenciais do canal: ${error.message}`,
+      statusMessage: `Falha ao carregar credenciais do canal: ${error.message}${decryptHint}`,
     })
   }
 

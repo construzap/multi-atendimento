@@ -56,7 +56,7 @@ const texto = computed(() => previewTexto(props.mensagem))
     </p>
     <p
       class="truncate text-[11px]"
-      :class="fromMe ? 'text-on-primary-container/80' : 'text-on-surface-variant dark:text-slate-400'"
+      :class="fromMe ? 'text-on-primary-container/80' : 'text-zinc-800 dark:text-slate-400'"
     >
       {{ texto }}
     </p>

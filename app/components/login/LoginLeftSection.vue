@@ -29,7 +29,7 @@
         Multi Atendimento
       </h1>
 
-      <p class="mb-8 text-lg leading-relaxed text-gray-300 md:text-xl">
+      <p class="mb-8 text-lg leading-relaxed text-dark-on-surface-variant md:text-xl">
         Gerencie todas as suas conversas em um único lugar. Atendimento eficiente e organizado para sua equipe.
       </p>
 

@@ -82,19 +82,19 @@ const labelFase = computed(() => {
 <template>
   <section
     v-if="temLogs || syncing"
-    class="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4"
+    class="mt-4 rounded-lg border border-outline/30 bg-surface-container-low p-4"
   >
     <div class="mb-2 flex items-center justify-between gap-2">
-      <h3 class="text-sm font-semibold text-gray-700">Progresso da sincronização</h3>
-      <span class="text-sm font-medium tabular-nums text-gray-600">{{ progressoPct }}%</span>
+      <h3 class="text-sm font-semibold text-on-surface">Progresso da sincronização</h3>
+      <span class="text-sm font-medium tabular-nums text-on-surface-variant">{{ progressoPct }}%</span>
     </div>
 
-    <p v-if="syncing && labelFase" class="mb-2 text-xs font-medium text-blue-700">
+    <p v-if="syncing && labelFase" class="mb-2 text-xs font-medium text-primary-600">
       {{ labelFase }}
     </p>
 
     <div
-      class="h-3 w-full overflow-hidden rounded-full bg-gray-200"
+      class="h-3 w-full overflow-hidden rounded-full bg-surface-container-high"
       role="progressbar"
       :aria-valuenow="progressoPct"
       aria-valuemin="0"
@@ -117,7 +117,7 @@ const labelFase = computed(() => {
       />
     </div>
 
-    <p class="mt-2 text-xs text-gray-500">
+    <p class="mt-2 text-xs text-on-surface-variant">
       <template v-if="syncing">
         Processando {{ processados }} de {{ totalItens }}…
       </template>
@@ -132,7 +132,7 @@ const labelFase = computed(() => {
       </template>
     </p>
 
-    <p v-if="totalRemovidos || totalIndexados || totalIgnorados" class="mt-1 text-xs text-gray-500">
+    <p v-if="totalRemovidos || totalIndexados || totalIgnorados" class="mt-1 text-xs text-on-surface-variant">
       <template v-if="totalRemovidos">{{ totalRemovidos }} removido(s)</template>
       <template v-if="totalRemovidos && (totalIndexados || totalIgnorados)"> · </template>
       <template v-if="totalIndexados">{{ totalIndexados }} indexado(s)</template>
@@ -140,7 +140,7 @@ const labelFase = computed(() => {
       <template v-if="totalIgnorados">{{ totalIgnorados }} ignorado(s)</template>
     </p>
 
-    <ul v-if="erros.length" class="mt-2 max-h-24 space-y-1 overflow-y-auto text-xs text-red-600">
+    <ul v-if="erros.length" class="mt-2 max-h-24 space-y-1 overflow-y-auto text-xs text-danger">
       <li v-for="(err, i) in erros" :key="i">{{ err }}</li>
     </ul>
   </section>

@@ -171,15 +171,15 @@ defineExpose({ syncing })
 </script>
 
 <template>
-  <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-    <h2 class="mb-3 text-sm font-semibold text-gray-700">Sincronizar produtos</h2>
+  <section class="rounded-lg border border-outline/30 bg-surface-container-lowest p-4 shadow-sm">
+    <h2 class="mb-3 text-sm font-semibold text-on-surface">Sincronizar produtos</h2>
 
     <div
       v-if="syncing"
-      class="mb-4 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+      class="mb-4 flex gap-3 rounded-lg border border-warning/30 bg-warning-container/50 px-4 py-3 text-sm text-warning-on-container"
       role="alert"
     >
-      <span class="material-symbols-outlined shrink-0 text-[20px] text-amber-600" aria-hidden="true">
+      <span class="material-symbols-outlined shrink-0 text-[20px] text-warning" aria-hidden="true">
         warning
       </span>
       <p>
@@ -190,7 +190,7 @@ defineExpose({ syncing })
 
     <!-- Opção "Enviar todos os produtos de novo" oculta; force permanece false no script.
     <div class="mb-3">
-      <label class="flex items-start gap-2 text-sm text-gray-700">
+      <label class="flex items-start gap-2 text-sm text-on-surface">
         <input
           v-model="force"
           type="checkbox"
@@ -199,7 +199,7 @@ defineExpose({ syncing })
         />
         <span>
           <span class="font-medium">Enviar todos os produtos de novo</span>
-          <span class="mt-0.5 block text-xs text-gray-500">
+          <span class="mt-0.5 block text-xs text-on-surface-variant">
             Desmarcado: envia só produtos novos ou que você alterou. Marcado: reenvia tudo
             (demora mais e gasta mais créditos da I.A.).
           </span>
@@ -211,7 +211,7 @@ defineExpose({ syncing })
     <div class="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+        class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
         :disabled="syncing"
         @click="sync"
       >
@@ -221,7 +221,7 @@ defineExpose({ syncing })
       <button
         v-if="syncing"
         type="button"
-        class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+        class="rounded-md border border-danger/40 bg-surface-container-lowest px-4 py-2 text-sm font-medium text-danger hover:bg-danger-container/40"
         @click="pararSincronizacao"
       >
         Parar indexação

@@ -123,7 +123,8 @@ async function iniciarCheckoutStripe(pacotes: number) {
 <template>
   <ModalPacotesCheckout v-model:open="modalPacotesOpen" @confirm="iniciarCheckoutStripe" />
 
-  <div class="mx-auto max-w-4xl space-y-6 px-4 py-8 md:px-6">
+  <div class="min-h-full bg-white dark:bg-dark-background">
+    <div class="mx-auto max-w-4xl space-y-6 px-4 py-8 md:px-6">
     <header class="space-y-1">
       <h1 class="font-headline text-2xl font-bold text-on-surface dark:text-dark-on-surface">
         Assinatura
@@ -173,6 +174,7 @@ async function iniciarCheckoutStripe(pacotes: number) {
           {{ checkoutPending ? 'Abrindo…' : textoBotaoCta }}
         </BaseButton>
       </div>
+    </div>
     </div>
   </div>
 </template>
