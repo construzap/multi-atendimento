@@ -56,6 +56,7 @@ const codigoNcm = ref('')
 const codigoBarras = ref('')
 const infosRelevantes = ref('')
 const statusAtivo = ref(true)
+const enviaFoto = ref(true)
 const salvando = ref(false)
 
 function fmtPrecoCampo(n: number | null | undefined): string {
@@ -95,6 +96,7 @@ function popularDoRow(row: ProdutoWorkspaceCampos) {
   codigoBarras.value = row.codigo_barras_ean ?? ''
   infosRelevantes.value = row.infos_relevantes ?? ''
   statusAtivo.value = !!row.status
+  enviaFoto.value = row.envia_foto !== false
   salvando.value = false
 }
 
@@ -116,6 +118,7 @@ function limpar() {
   codigoBarras.value = ''
   infosRelevantes.value = ''
   statusAtivo.value = true
+  enviaFoto.value = true
   salvando.value = false
 }
 
@@ -243,6 +246,7 @@ function montarPatch(): ProdutoWorkspacePatch | null {
     codigo_barras_ean: strOuNull(codigoBarras.value),
     infos_relevantes: strOuNull(infosRelevantes.value),
     status: statusAtivo.value,
+    envia_foto: enviaFoto.value,
     termos_pesquisa_ids: [termoSelecao.value.id],
   }
   return patch
@@ -260,6 +264,7 @@ function patchParaLinhaCriar(patch: ProdutoWorkspacePatch): ProdutoCriarEmMassaL
     peso_kg: patch.peso_kg ?? null,
     infos_relevantes: patch.infos_relevantes ?? null,
     status: patch.status ?? true,
+    envia_foto: patch.envia_foto ?? true,
     codigo_ncm: patch.codigo_ncm ?? null,
     termo_pesquisa: patch.termos_pesquisa_ids?.[0] ?? null,
     codigo_barras_ean: patch.codigo_barras_ean ?? null,
@@ -595,8 +600,8 @@ function fechar() {
             class="rounded-xl px-5 py-2.5 text-sm font-semibold transition-all"
             :class="
               statusAtivo
-                ? 'bg-primary-600 text-white shadow-sm ring-2 ring-primary-600 ring-offset-2 ring-offset-surface-container-lowest dark:ring-offset-dark-surface-container-lowest'
-                : 'border border-outline/50 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high dark:border-dark-outline/50 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high'
+                ? 'bg-primary-600 text-white shadow-sm ring-2 ring-primary-600 ring-offset-2 ring-offset-surface-container-lowest dark:bg-primary-500 dark:ring-primary-500 dark:ring-offset-dark-surface-container-lowest'
+                : 'border border-outline/50 bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:border-dark-outline/50 dark:bg-dark-surface-container-low dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface'
             "
             @click="statusAtivo = true"
           >
@@ -607,12 +612,47 @@ function fechar() {
             class="rounded-xl px-5 py-2.5 text-sm font-semibold transition-all"
             :class="
               !statusAtivo
-                ? 'bg-primary-600 text-white shadow-sm ring-2 ring-primary-600 ring-offset-2 ring-offset-surface-container-lowest dark:ring-offset-dark-surface-container-lowest'
-                : 'border border-outline/50 bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-high dark:border-dark-outline/50 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high'
+                ? 'bg-primary-600 text-white shadow-sm ring-2 ring-primary-600 ring-offset-2 ring-offset-surface-container-lowest dark:bg-primary-500 dark:ring-primary-500 dark:ring-offset-dark-surface-container-lowest'
+                : 'border border-outline/50 bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:border-dark-outline/50 dark:bg-dark-surface-container-low dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface'
             "
             @click="statusAtivo = false"
           >
             Inativo
+          </button>
+        </div>
+      </div>
+
+      <div class="md:col-span-2">
+        <span class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface">
+          Enviar foto na conversa
+        </span>
+        <p class="mb-2 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+          Se ativo, a IA pode enviar a foto deste produto ao cliente.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button
+            type="button"
+            class="rounded-xl px-5 py-2.5 text-sm font-semibold transition-all"
+            :class="
+              enviaFoto
+                ? 'bg-primary-600 text-white shadow-sm ring-2 ring-primary-600 ring-offset-2 ring-offset-surface-container-lowest dark:bg-primary-500 dark:ring-primary-500 dark:ring-offset-dark-surface-container-lowest'
+                : 'border border-outline/50 bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:border-dark-outline/50 dark:bg-dark-surface-container-low dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface'
+            "
+            @click="enviaFoto = true"
+          >
+            Sim
+          </button>
+          <button
+            type="button"
+            class="rounded-xl px-5 py-2.5 text-sm font-semibold transition-all"
+            :class="
+              !enviaFoto
+                ? 'bg-primary-600 text-white shadow-sm ring-2 ring-primary-600 ring-offset-2 ring-offset-surface-container-lowest dark:bg-primary-500 dark:ring-primary-500 dark:ring-offset-dark-surface-container-lowest'
+                : 'border border-outline/50 bg-surface-container-low text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:border-dark-outline/50 dark:bg-dark-surface-container-low dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface'
+            "
+            @click="enviaFoto = false"
+          >
+            Não
           </button>
         </div>
       </div>

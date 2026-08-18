@@ -12,6 +12,8 @@ import {
   normalizeTotalOrcamento,
 } from '#shared/utils/notificacaoIaProdutos'
 import { getAuthUserId } from '../../utils/getAuthUserId'
+import { assertAdminWorkspaceAtivo } from '../../utils/adminPrompt'
+import { isUserAdmin } from '../../utils/checkAdmin'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { fetchCamposPersonalizadosPorConversas } from '../../utils/camposPersonalizadosPorConversas'
 
@@ -80,6 +82,13 @@ function parseBoolOrNull(raw: unknown): boolean | null {
   if (raw === true) return true
   if (raw === false) return false
   return null
+}
+
+function uuidOrNull(raw: unknown): string | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const s = String(raw).trim()
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return null
+  return s
 }
 
 function intOrNull(raw: unknown): number | null {
@@ -415,7 +424,12 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
     throw createError({ statusCode: 400, statusMessage: 'workspace_id inválido.' })
   }
 
-  await checkWorkspace(event, workspaceId, userId)
+  const adminUser = await isUserAdmin(event, userId)
+  if (adminUser) {
+    await assertAdminWorkspaceAtivo(event, workspaceId)
+  } else {
+    await checkWorkspace(event, workspaceId, userId)
+  }
 
   const colunaIdFilter = parseColunaId(q.coluna_id)
   const funilIdFilter = parseFunilIdFilter(q.funil_id)
@@ -459,7 +473,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
 
   const { data: colunasRows, error: colErr } = await admin
     .from('funil_workspace_colunas')
-    .select('id, nome, cor, ordem')
+    .select('id, nome, cor, ordem, id_agendamento_mensagem')
     .eq('funil_id', funilId)
     .is('deleted_at', null)
     .order('ordem', { ascending: true })
@@ -473,6 +487,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
     nome: string
     cor: string | null
     ordem: number
+    id_agendamento_mensagem: string | null
   }>
 
   if (colunaIdFilter != null) {
@@ -521,6 +536,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
       nome: c.nome,
       cor: c.cor,
       ordem: c.ordem,
+      id_agendamento_mensagem: uuidOrNull(c.id_agendamento_mensagem),
       cards: page.cards,
       total_cards: page.total_cards,
       has_more: page.has_more,

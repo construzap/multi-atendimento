@@ -82,6 +82,7 @@ function novoRascunhoCriarEmMassa(): ProdutoWorkspaceItem {
     altura: 0,
     comprimento: 0,
     status: true,
+    envia_foto: true,
     descricao: null,
     parent_id: null,
     tem_variacoes: false,
@@ -114,6 +115,7 @@ function linhaParaPayload(row: ProdutoWorkspaceItem): ProdutoCriarEmMassaLinha {
     imagem_url: row.imagem_url,
     infos_relevantes: row.infos_relevantes,
     status: row.status,
+    envia_foto: row.envia_foto ?? true,
     categoria_id: row.categoria_id,
     codigo_ncm: row.codigo_ncm,
     termo_pesquisa: (row.termos_pesquisa ?? [])[0]?.id ?? null,
@@ -123,6 +125,11 @@ function linhaParaPayload(row: ProdutoWorkspaceItem): ProdutoCriarEmMassaLinha {
     comprimento: row.comprimento,
   }
 }
+
+/** Valor de `pageSize` que carrega todos os produtos (várias páginas de 1000). */
+export const PRODUTOS_PAGE_SIZE_TODOS = 0
+
+const PRODUTOS_BUSCA_CHUNK_SIZE = 1000
 
 export const useProdutosStore = defineStore('produtos', {
   state: () => ({
@@ -173,6 +180,7 @@ export const useProdutosStore = defineStore('produtos', {
   }),
   getters: {
     totalPages(state): number {
+      if (state.pageSize === PRODUTOS_PAGE_SIZE_TODOS) return 1
       if (state.total <= 0) return 1
       return Math.ceil(state.total / state.pageSize)
     },
@@ -193,7 +201,9 @@ export const useProdutosStore = defineStore('produtos', {
   actions: {
     makeSnapshotKey(workspaceId: number, input: { page: number; q: string }): string {
       const q = (input.q ?? '').trim()
-      return [workspaceId, input.page, this.pageSize, q].join('|')
+      const page =
+        this.pageSize === PRODUTOS_PAGE_SIZE_TODOS ? 1 : input.page
+      return [workspaceId, page, this.pageSize, q].join('|')
     },
 
     temSnapshot(workspaceId: number, input: { page: number; q: string }): boolean {
@@ -211,13 +221,47 @@ export const useProdutosStore = defineStore('produtos', {
         return
       }
 
+      const snapshotInput =
+        this.pageSize === PRODUTOS_PAGE_SIZE_TODOS
+          ? { page: 1, q: input.q }
+          : input
+
       // Se já temos exatamente esta página, não refaz a chamada.
-      if (this.temSnapshot(workspaceId, input)) return
+      if (this.temSnapshot(workspaceId, snapshotInput)) return
 
       this.listPending = true
       this.listError = null
 
       try {
+        if (this.pageSize === PRODUTOS_PAGE_SIZE_TODOS) {
+          const allItems: ProdutoWorkspaceItem[] = []
+          let total = 0
+          let page = 1
+          let totalPages = 1
+
+          do {
+            const res = await $fetch<ProdutosBuscaResponse>('/api/produtos/buscar', {
+              method: 'GET',
+              query: {
+                workspace_id: workspaceId,
+                page,
+                page_size: PRODUTOS_BUSCA_CHUNK_SIZE,
+                ...(input.q ? { q: input.q } : {}),
+              },
+            })
+            allItems.push(...(res.data ?? []))
+            total = res.total
+            totalPages = res.total_pages
+            page++
+          } while (page <= totalPages)
+
+          this.items = allItems
+          this.total = total
+          this.page = 1
+          this.ultimoSnapshotKey = this.makeSnapshotKey(workspaceId, snapshotInput)
+          return
+        }
+
         const res = await $fetch<ProdutosBuscaResponse>('/api/produtos/buscar', {
           method: 'GET',
           query: {

@@ -104,6 +104,9 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     fase_teste: strOrNull(body.fase_teste),
     telefone: strOrNull(body.telefone),
     email: strOrNull(body.email),
+    chave_pix_aleatoria: strOrNull(
+      body.chave_pix_aleatoria ?? body.CHAVE_PIX_ALEATORIA,
+    ),
     model: modelOverride || canalCredenciais.model_name || defaultModel,
     max_tool_rounds:
       Number.isFinite(maxRoundsBody) && maxRoundsBody > 0

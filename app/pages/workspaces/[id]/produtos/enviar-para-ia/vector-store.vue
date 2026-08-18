@@ -29,7 +29,7 @@ function atualizarStatusIndexacao() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-white dark:bg-dark-background">
+  <div class="min-h-screen bg-zinc-50 dark:bg-zinc-950">
     <AppHeader title="Vector Store — Produtos" />
 
     <main class="mx-auto max-w-3xl space-y-4 px-6 py-6">

@@ -24,6 +24,21 @@ html.dark ::selection {
   color: #ffffff;
 }
 
+/* Campos nativos (date/time) herdam a cor do input — no dark o texto do WebKit ficava quase igual ao fundo. */
+html.dark input[type='date'],
+html.dark input[type='time'],
+html.dark input[type='datetime-local'] {
+  color-scheme: dark;
+}
+
+input[type='date']::-webkit-datetime-edit,
+input[type='time']::-webkit-datetime-edit,
+input[type='datetime-local']::-webkit-datetime-edit,
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='time']::-webkit-calendar-picker-indicator {
+  color: inherit;
+}
+
 :root {
   --color-on-secondary-fixed-variant: 49 80 56;
   --color-on-primary-fixed-variant: 6 91 30;

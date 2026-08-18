@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import SeletorPrompt from '~/components/admin/prompt/SeletorPrompt.vue'
+import EditorDePrompt from '~/components/admin/prompt/EditorDePrompt.vue'
 
 definePageMeta({
   layout: 'admin-seletor-empresa',
@@ -18,7 +18,7 @@ definePageMeta({
     </header>
 
     <div class="min-h-0 flex-1 overflow-y-auto">
-      <SeletorPrompt />
+      <EditorDePrompt />
     </div>
   </div>
 </template>

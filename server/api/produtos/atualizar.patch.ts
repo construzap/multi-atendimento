@@ -152,6 +152,7 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
     'altura',
     'comprimento',
     'status',
+    'envia_foto',
     'categoria',
     'categoria_id',
   ])
@@ -306,6 +307,14 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
       throw createError({ statusCode: 400, statusMessage: 'Status inválido.' })
     }
     update.status = b
+  }
+
+  if (p.envia_foto !== undefined) {
+    const b = boolFromUnknown(p.envia_foto)
+    if (b === undefined) {
+      throw createError({ statusCode: 400, statusMessage: 'envia_foto inválido.' })
+    }
+    update.envia_foto = b
   }
 
   if (p.categoria_id !== undefined && p.categoria !== undefined) {

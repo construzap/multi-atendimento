@@ -75,7 +75,7 @@ function onInvalid(e: Event) {
   <div :id="wrapperId" class="relative w-full">
     <div
       v-if="$slots.leading"
-      class="pointer-events-none absolute left-4 top-1/2 z-[1] flex -translate-y-1/2 items-center text-on-surface-variant"
+      class="pointer-events-none absolute left-4 top-1/2 z-[1] flex -translate-y-1/2 items-center text-on-surface-variant dark:text-dark-on-surface-variant"
     >
       <slot name="leading" />
     </div>
@@ -93,7 +93,7 @@ function onInvalid(e: Event) {
       :readonly="readonly"
       :placeholder="placeholder"
       :class="[
-        'w-full rounded-xl border border-outline/40 bg-surface-container-low py-3.5 text-sm text-on-surface placeholder:text-on-surface-variant/70 transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:border-outline/40 read-only:bg-surface-container read-only:text-on-surface-variant',
+        'w-full rounded-xl border border-outline/40 bg-surface-container-low py-3.5 text-sm text-on-surface shadow-sm placeholder:text-on-surface-variant/70 transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 read-only:cursor-default read-only:border-outline/40 read-only:bg-surface-container read-only:text-on-surface-variant dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:shadow-none dark:placeholder:text-dark-on-surface-variant/70 dark:focus:border-primary-400 dark:focus:ring-primary-900/40 dark:read-only:border-dark-outline/40 dark:read-only:bg-dark-surface-container dark:read-only:text-dark-on-surface-variant',
         paddingClass,
         inputClass,
       ]"

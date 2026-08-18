@@ -96,6 +96,7 @@ function normalizarLinha(raw: unknown): ProdutoImportarLinha | null {
     imagem_url: strOrNull(o.imagem_url),
     infos_relevantes: strOrNull(o.infos_relevantes),
     status: boolDefault(o.status, true),
+    envia_foto: boolDefault(o.envia_foto, true),
   }
   if (cid != null && cid > 0) {
     linha.categoria_id = cid
@@ -273,6 +274,7 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
       imagem_url: r.imagem_url ?? null,
       infos_relevantes: r.infos_relevantes ?? null,
       status: r.status ?? true,
+      envia_foto: r.envia_foto ?? true,
     }
   })
 

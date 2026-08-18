@@ -83,6 +83,12 @@ export default defineNuxtConfig({
       process.env.NUXT_AGENTE_TOOL_SOLICITA_PAGAMENTO_URL || '',
     agenteToolOrcamentoProntoUrl:
       process.env.NUXT_AGENTE_TOOL_ORCAMENTO_PRONTO_URL || '',
+    /**
+     * Webhook: transferir atendimento para humano.
+     * Override: NUXT_AGENTE_TOOL_TRANSFERIR_ATENDIMENTO
+     */
+    agenteToolTransferirAtendimento:
+      process.env.NUXT_AGENTE_TOOL_TRANSFERIR_ATENDIMENTO || '',
     /** Header opcional comum aos webhooks das tools. */
     agenteToolHttpHeaderName: process.env.NUXT_AGENTE_TOOL_HTTP_HEADER_NAME || '',
     agenteToolHttpHeaderValue:

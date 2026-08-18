@@ -1,5 +1,7 @@
 import { serverSupabaseClient } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
+import { assertAdminWorkspaceAtivo } from '../../utils/adminPrompt'
+import { isUserAdmin } from '../../utils/checkAdmin'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -31,12 +33,9 @@ function parseConversaKey(raw: unknown): string {
   return key
 }
 
-function parsePhone(raw: unknown): string {
+function parsePhoneOpcional(raw: unknown): string | null {
   const phone = String(raw ?? '').trim()
-  if (!phone) {
-    throw createError({ statusCode: 400, statusMessage: 'Informe phone da conversa.' })
-  }
-  return phone
+  return phone || null
 }
 
 /** POST /api/conversas/apagar-memoria-ia — dispara webhook para limpar memória da I.A. do contato. */
@@ -58,20 +57,27 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<Body>(event)
   const workspaceId = parseWorkspaceId(body?.workspace_id)
   const key = parseConversaKey(body?.key)
-  const phone = parsePhone(body?.phone)
+  const phone = parsePhoneOpcional(body?.phone)
 
-  await checkWorkspace(event, workspaceId, userId)
+  const admin = await isUserAdmin(event, userId)
+  if (admin) {
+    await assertAdminWorkspaceAtivo(event, workspaceId)
+  } else {
+    await checkWorkspace(event, workspaceId, userId)
+  }
+
+  const payload: Record<string, unknown> = {
+    workspace_id: workspaceId,
+    key,
+  }
+  if (phone) payload.phone = phone
 
   let res: Response
   try {
     res = await fetch(WEBHOOK_APAGAR_MEMORIA_IA, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        workspace_id: workspaceId,
-        key,
-        phone,
-      }),
+      body: JSON.stringify(payload),
     })
   } catch {
     throw createError({

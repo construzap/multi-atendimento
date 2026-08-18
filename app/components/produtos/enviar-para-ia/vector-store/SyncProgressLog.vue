@@ -82,19 +82,19 @@ const labelFase = computed(() => {
 <template>
   <section
     v-if="temLogs || syncing"
-    class="mt-4 rounded-lg border border-outline/30 bg-surface-container-low p-4"
+    class="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900"
   >
     <div class="mb-2 flex items-center justify-between gap-2">
-      <h3 class="text-sm font-semibold text-on-surface">Progresso da sincronização</h3>
-      <span class="text-sm font-medium tabular-nums text-on-surface-variant">{{ progressoPct }}%</span>
+      <h3 class="text-sm font-semibold text-zinc-900 dark:text-zinc-100">Progresso da sincronização</h3>
+      <span class="text-sm font-medium tabular-nums text-zinc-500 dark:text-zinc-400">{{ progressoPct }}%</span>
     </div>
 
-    <p v-if="syncing && labelFase" class="mb-2 text-xs font-medium text-primary-600">
+    <p v-if="syncing && labelFase" class="mb-2 text-xs font-medium text-primary-600 dark:text-primary-400">
       {{ labelFase }}
     </p>
 
     <div
-      class="h-3 w-full overflow-hidden rounded-full bg-surface-container-high"
+      class="h-3 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"
       role="progressbar"
       :aria-valuenow="progressoPct"
       aria-valuemin="0"
@@ -104,20 +104,20 @@ const labelFase = computed(() => {
         class="h-full rounded-full transition-all duration-300 ease-out"
         :class="
           interrompido
-            ? 'bg-amber-500'
+            ? 'bg-amber-500 dark:bg-amber-400'
             : concluido && !erros.length
-              ? 'bg-green-500'
+              ? 'bg-emerald-500 dark:bg-emerald-400'
               : erros.length
-                ? 'bg-red-500'
+                ? 'bg-red-500 dark:bg-red-400'
                 : phase === 'cleanup'
-                  ? 'bg-orange-500'
-                  : 'bg-blue-600'
+                  ? 'bg-orange-500 dark:bg-orange-400'
+                  : 'bg-blue-600 dark:bg-blue-400'
         "
         :style="{ width: `${progressoPct}%` }"
       />
     </div>
 
-    <p class="mt-2 text-xs text-on-surface-variant">
+    <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
       <template v-if="syncing">
         Processando {{ processados }} de {{ totalItens }}…
       </template>
@@ -132,7 +132,10 @@ const labelFase = computed(() => {
       </template>
     </p>
 
-    <p v-if="totalRemovidos || totalIndexados || totalIgnorados" class="mt-1 text-xs text-on-surface-variant">
+    <p
+      v-if="totalRemovidos || totalIndexados || totalIgnorados"
+      class="mt-1 text-xs text-zinc-500 dark:text-zinc-400"
+    >
       <template v-if="totalRemovidos">{{ totalRemovidos }} removido(s)</template>
       <template v-if="totalRemovidos && (totalIndexados || totalIgnorados)"> · </template>
       <template v-if="totalIndexados">{{ totalIndexados }} indexado(s)</template>
@@ -140,7 +143,10 @@ const labelFase = computed(() => {
       <template v-if="totalIgnorados">{{ totalIgnorados }} ignorado(s)</template>
     </p>
 
-    <ul v-if="erros.length" class="mt-2 max-h-24 space-y-1 overflow-y-auto text-xs text-danger">
+    <ul
+      v-if="erros.length"
+      class="mt-2 max-h-24 space-y-1 overflow-y-auto text-xs text-red-600 dark:text-red-400"
+    >
       <li v-for="(err, i) in erros" :key="i">{{ err }}</li>
     </ul>
   </section>

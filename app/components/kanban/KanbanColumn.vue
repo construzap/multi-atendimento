@@ -8,6 +8,11 @@ import type {
   KanbanCriarContatoBody,
   KanbanCriarContatoResponse,
 } from '#shared/types/kanban'
+import type {
+  AtualizarMensagemProntaResponse,
+  CriarMensagemProntaResponse,
+  MensagemProntaListaItem,
+} from '#shared/types/mensagensProntas'
 import { normalizarTelefoneContatoParaGravacao } from '#shared/utils/normalizeWhatsappBr'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
@@ -16,6 +21,8 @@ import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 import { useProfileStore } from '~/stores/profile'
+import DropdownMensagensProntas from './mensagem_pronta/DropdownMensagensProntas.vue'
+import ModalCriarMensagemPronta from './mensagem_pronta/ModalCriarMensagemPronta.vue'
 import KanbanCard from './KanbanCard.vue'
 
 const props = defineProps<{
@@ -62,6 +69,34 @@ const criandoContato = ref(false)
 const carregandoCanaisModal = ref(false)
 /** Submenu "Mover coluna" dentro do dropdown da engrenagem. */
 const menuMoverAberto = ref(false)
+/** Submenu de mensagens prontas (agendamento) — visível para admin e membro. */
+const menuProntasAberto = ref(false)
+const modalMensagemProntaAberto = ref(false)
+const sequenciaIdModal = ref<string | null>(null)
+const criandoAgendamentoColuna = ref(false)
+
+const temAgendamentoAutomatico = computed(() => {
+  const id = props.column.id_agendamento_mensagem
+  return typeof id === 'string' && id.trim().length > 0
+})
+
+async function onAgendamentoExcluido() {
+  if (!props.workspaceId || props.column.id_agendamento_mensagem == null) return
+  await kanban.vincularAgendamentoColuna({
+    workspaceId: props.workspaceId,
+    colunaId: props.column.id,
+    nome: props.column.nome,
+    cor: props.column.cor,
+    id_agendamento_mensagem: null,
+  })
+}
+
+function uuidOuNulo(raw: unknown): string | null {
+  if (raw == null || raw === '') return null
+  const s = String(raw).trim()
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return null
+  return s
+}
 
 function nomeCanalOpcao(canal: { id: number; nome: string | null }) {
   const n = canal.nome?.trim()
@@ -180,21 +215,72 @@ async function criarContato() {
 function onEditar(close: () => void) {
   close()
   menuMoverAberto.value = false
+  menuProntasAberto.value = false
   emit('columnEdit', props.column)
 }
 
 function onExcluir(close: () => void) {
   close()
   menuMoverAberto.value = false
+  menuProntasAberto.value = false
   emit('columnDelete', props.column)
 }
 
 function abrirMenuMover() {
   menuMoverAberto.value = true
+  menuProntasAberto.value = false
+}
+
+function abrirMenuProntas() {
+  menuProntasAberto.value = true
+  menuMoverAberto.value = false
 }
 
 function voltarMenuPrincipal() {
   menuMoverAberto.value = false
+  menuProntasAberto.value = false
+}
+
+function abrirCriarMensagemPronta(close: () => void) {
+  sequenciaIdModal.value = null
+  modalMensagemProntaAberto.value = true
+  close()
+}
+
+function abrirEditarMensagemPronta(item: MensagemProntaListaItem, close: () => void) {
+  sequenciaIdModal.value = item.id
+  modalMensagemProntaAberto.value = true
+  close()
+}
+
+async function onMensagemProntaSalva(
+  res: CriarMensagemProntaResponse | AtualizarMensagemProntaResponse,
+) {
+  if (!props.workspaceId || criandoAgendamentoColuna.value) return
+
+  const sequenciaId = uuidOuNulo(res.sequencia.id)
+  if (!sequenciaId) {
+    toast.error('Não foi possível vincular o agendamento: id inválido.')
+    return
+  }
+
+  if (props.column.id_agendamento_mensagem === sequenciaId) return
+
+  criandoAgendamentoColuna.value = true
+  try {
+    const ok = await kanban.vincularAgendamentoColuna({
+      workspaceId: props.workspaceId,
+      colunaId: props.column.id,
+      nome: props.column.nome,
+      cor: props.column.cor,
+      id_agendamento_mensagem: sequenciaId,
+    })
+    if (ok) toast.success('Agendamento vinculado à coluna.')
+  } catch (err: unknown) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível vincular o agendamento à coluna.'))
+  } finally {
+    criandoAgendamentoColuna.value = false
+  }
 }
 
 function emitReorder(direcao: 'esquerda' | 'direita', close: () => void) {
@@ -207,7 +293,10 @@ function emitReorder(direcao: 'esquerda' | 'direita', close: () => void) {
 }
 
 function onDropdownOpenChange(aberto: boolean) {
-  if (!aberto) menuMoverAberto.value = false
+  if (!aberto) {
+    menuMoverAberto.value = false
+    menuProntasAberto.value = false
+  }
 }
 
 const dotStyle = computed(() => {
@@ -372,12 +461,25 @@ function onDrop(e: DragEvent) {
             aria-hidden="true"
           />
           <div class="min-w-0 flex-1">
-            <h2
-              class="break-normal font-headline text-sm font-bold leading-snug text-slate-900 dark:text-dark-on-surface"
-              lang="pt-BR"
-            >
-              {{ column.nome }}
-            </h2>
+            <div class="flex items-start gap-1">
+              <h2
+                class="min-w-0 flex-1 break-normal font-headline text-sm font-bold leading-snug text-slate-900 dark:text-dark-on-surface"
+                lang="pt-BR"
+              >
+                {{ column.nome }}
+              </h2>
+              <span
+                v-if="temAgendamentoAutomatico"
+                class="mt-0.5 shrink-0 text-amber-600/80 dark:text-amber-400/80"
+                title="Mensagem automática ativa"
+                role="img"
+                aria-label="Mensagem automática ativa"
+              >
+                <span class="material-symbols-outlined text-[15px] leading-none" aria-hidden="true">
+                  schedule_send
+                </span>
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -403,7 +505,7 @@ function onDrop(e: DragEvent) {
             title="Etapa"
             align="right"
             side="bottom"
-            panel-class="w-56 min-w-[13rem] max-w-[calc(100vw-2rem)]"
+            panel-class="w-72 min-w-[16rem] max-w-[calc(100vw-2rem)]"
             @open-change="onDropdownOpenChange"
           >
             <template #trigger>
@@ -421,59 +523,17 @@ function onDrop(e: DragEvent) {
             </template>
 
             <template #default="{ close }">
-              <template v-if="!menuMoverAberto">
-                <button
-                  type="button"
-                  role="menuitem"
-                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
-                  @click="onEditar(close)"
-                >
-                  <span
-                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
-                    aria-hidden="true"
-                  >
-                    edit
-                  </span>
-                  Editar
-                </button>
+              <DropdownMensagensProntas
+                v-if="menuProntasAberto"
+                :workspace-id="workspaceId"
+                :id-agendamento-mensagem="column.id_agendamento_mensagem"
+                @voltar="voltarMenuPrincipal"
+                @criar="abrirCriarMensagemPronta(close)"
+                @editar="(item) => abrirEditarMensagemPronta(item, close)"
+                @excluido="onAgendamentoExcluido"
+              />
 
-                <button
-                  v-if="isAdmin && (podeMoverEsquerda || podeMoverDireita)"
-                  type="button"
-                  role="menuitem"
-                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
-                  :disabled="reordenando"
-                  @click="abrirMenuMover"
-                >
-                  <span
-                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
-                    aria-hidden="true"
-                  >
-                    swap_horiz
-                  </span>
-                  <span class="min-w-0 flex-1">Mover coluna</span>
-                  <span
-                    class="material-symbols-outlined text-[18px] text-on-surface-variant dark:text-dark-on-surface-variant"
-                    aria-hidden="true"
-                  >
-                    chevron_right
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  role="menuitem"
-                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
-                  @click="onExcluir(close)"
-                >
-                  <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
-                    delete
-                  </span>
-                  Excluir
-                </button>
-              </template>
-
-              <template v-else>
+              <template v-else-if="menuMoverAberto">
                 <button
                   type="button"
                   role="menuitem"
@@ -523,6 +583,81 @@ function onDrop(e: DragEvent) {
                     chevron_right
                   </span>
                   Para a direita
+                </button>
+              </template>
+
+              <template v-else>
+                <button
+                  v-if="isAdmin"
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                  @click="onEditar(close)"
+                >
+                  <span
+                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    edit
+                  </span>
+                  Editar
+                </button>
+
+                <button
+                  v-if="isAdmin && (podeMoverEsquerda || podeMoverDireita)"
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                  :disabled="reordenando"
+                  @click="abrirMenuMover"
+                >
+                  <span
+                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    swap_horiz
+                  </span>
+                  <span class="min-w-0 flex-1">Mover coluna</span>
+                  <span
+                    class="material-symbols-outlined text-[18px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    chevron_right
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
+                  @click="abrirMenuProntas"
+                >
+                  <span
+                    class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    schedule_send
+                  </span>
+                  <span class="min-w-0 flex-1">Agendamento de mensagens</span>
+                  <span
+                    class="material-symbols-outlined text-[18px] text-on-surface-variant dark:text-dark-on-surface-variant"
+                    aria-hidden="true"
+                  >
+                    chevron_right
+                  </span>
+                </button>
+
+                <button
+                  v-if="isAdmin"
+                  type="button"
+                  role="menuitem"
+                  class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                  @click="onExcluir(close)"
+                >
+                  <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
+                    delete
+                  </span>
+                  Excluir
                 </button>
               </template>
             </template>
@@ -688,5 +823,11 @@ function onDrop(e: DragEvent) {
         </BaseButton>
       </template>
     </BaseModal>
+
+    <ModalCriarMensagemPronta
+      v-model:open="modalMensagemProntaAberto"
+      :sequencia-id="sequenciaIdModal"
+      @salvo="onMensagemProntaSalva"
+    />
   </section>
 </template>

@@ -142,6 +142,41 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
       await run
     },
 
+    /** Busca uma sequência específica (ex.: agendamento vinculado à coluna do kanban). */
+    async fetchSequenciaPorId(
+      workspaceId: number,
+      sequenciaId: string | number,
+    ): Promise<MensagemProntaComPassos | null> {
+      if (!Number.isFinite(workspaceId) || workspaceId < 1) return null
+      const id = String(sequenciaId).trim()
+      if (!id) return null
+
+      this.workspaceId = workspaceId
+
+      try {
+        const res = await $fetch<ListarMensagensProntasResponse>('/api/mensagens_prontas', {
+          query: { workspace_id: workspaceId, sequencia_id: id },
+        })
+        const item = (res.items ?? []).map(normalizeItem)[0] ?? null
+        if (item) {
+          const atual = this.porWorkspace[workspaceId]
+          if (atual === undefined) {
+            this.porWorkspace[workspaceId] = [item]
+          } else if (!atual.some((i) => i.sequencia.id === item.sequencia.id)) {
+            this.porWorkspace[workspaceId] = [item, ...atual]
+          } else {
+            this.porWorkspace[workspaceId] = atual.map((i) =>
+              i.sequencia.id === item.sequencia.id ? item : i,
+            )
+          }
+        }
+        return item
+      } catch (err: unknown) {
+        this.error = mensagemErroFetch(err, 'Não foi possível carregar a mensagem pronta.')
+        throw err
+      }
+    },
+
     /** Força novo GET (ex.: pull-to-refresh futuro). */
     async refreshLista(workspaceId: number) {
       if (!Number.isFinite(workspaceId) || workspaceId < 1) return
@@ -254,6 +289,27 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
     },
 
     /**
+     * Garante a sequência no cache Pinia: usa o que já tem; se faltar, GET /api/mensagens_prontas.
+     */
+    async garantirSequenciaNoCache(
+      workspaceId: number,
+      sequenciaId: string | number,
+    ): Promise<MensagemProntaComPassos | null> {
+      const id = String(sequenciaId).trim()
+      if (!id || !Number.isFinite(workspaceId) || workspaceId < 1) return null
+
+      this.workspaceId = workspaceId
+      const cached = this.getById(id)
+      if (cached) return cached
+
+      await this.ensureLista(workspaceId)
+      const fromLista = this.getById(id)
+      if (fromLista) return fromLista
+
+      return await this.fetchSequenciaPorId(workspaceId, id)
+    },
+
+    /**
      * Dispara POST /api/mensagens_prontas/webhookN8nPost com a sequência completa.
      * Passos de texto já saem com `{primeiro-nome}` e `{saudacao}` resolvidos.
      */
@@ -265,9 +321,9 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
       name: string | null
       sequenciaId: string
     }) {
-      const raw = this.getById(input.sequenciaId)
+      const raw = await this.garantirSequenciaNoCache(input.workspaceId, input.sequenciaId)
       if (!raw) {
-        throw new Error('Mensagem pronta não encontrada no cache. Abra a lista novamente.')
+        throw new Error('Mensagem pronta não encontrada.')
       }
 
       // Clone para não mutar o cache Pinia e garantir strings plain.

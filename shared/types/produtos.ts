@@ -76,6 +76,8 @@ export type ProdutoWorkspaceCampos = {
   altura: number
   comprimento: number
   status: boolean
+  /** Se a IA/agente pode enviar foto deste produto ao cliente (default true). */
+  envia_foto: boolean
   parent_id: number | null
   atributos: Record<string, unknown> | null
   imagens: ProdutoImagemItem[]
@@ -119,6 +121,7 @@ export type ProdutoWorkspacePatch = {
   altura?: number
   comprimento?: number
   status?: boolean
+  envia_foto?: boolean
   /** Nome da categoria (resolve para `categoria_id`); vazio remove a categoria. */
   categoria?: string | null
   categoria_id?: number | null
@@ -127,6 +130,12 @@ export type ProdutoWorkspacePatch = {
 /** Resposta de `PATCH /api/produtos/atualizar`. */
 export type ProdutoAtualizarResponse = {
   data: ProdutoWorkspaceItem
+}
+
+/** Resposta de `PATCH /api/produtos/atualizar-em-massa`. */
+export type ProdutosAtualizarEmMassaResponse = {
+  atualizados: number
+  ids: number[]
 }
 
 /** Resposta paginada de `GET /api/produtos/buscar`. */
@@ -206,6 +215,7 @@ export type ProdutoCriarEmMassaLinha = {
   imagem_url?: string | null
   infos_relevantes?: string | null
   status?: boolean
+  envia_foto?: boolean
   categoria_id?: number | null
   codigo_ncm?: string | null
   termo_pesquisa?: number | null
@@ -300,6 +310,7 @@ export type ProdutoImportarLinha = {
   imagem_url?: string | null
   infos_relevantes?: string | null
   status?: boolean
+  envia_foto?: boolean
   /** Texto integral da célula (um termo por produto); servidor cria no catálogo e salva o ID. */
   termos_pesquisa?: string | null
 }

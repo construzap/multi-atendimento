@@ -30,19 +30,21 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-    <h2 class="mb-3 text-sm font-semibold text-gray-700">Workspace</h2>
+  <section
+    class="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+  >
+    <h2 class="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100">Workspace</h2>
 
-    <p v-if="pending" class="text-sm text-gray-500">Carregando workspace…</p>
-    <p v-else-if="error" class="text-sm text-red-600">{{ error }}</p>
-    <p v-else-if="workspaceId == null" class="text-sm text-gray-500">
+    <p v-if="pending" class="text-sm text-zinc-500 dark:text-zinc-400">Carregando workspace…</p>
+    <p v-else-if="error" class="text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+    <p v-else-if="workspaceId == null" class="text-sm text-zinc-500 dark:text-zinc-400">
       Nenhum workspace selecionado.
     </p>
-    <div v-else class="text-sm text-gray-700">
-      <p class="font-medium text-gray-900">
+    <div v-else class="text-sm text-zinc-700 dark:text-zinc-300">
+      <p class="font-medium text-zinc-900 dark:text-zinc-100">
         {{ workspaceAtual?.nome ?? `Workspace ${workspaceId}` }}
       </p>
-      <p class="mt-0.5 text-xs text-gray-500">ID {{ workspaceId }}</p>
+      <p class="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">ID {{ workspaceId }}</p>
     </div>
   </section>
 </template>

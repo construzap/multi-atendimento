@@ -11,6 +11,7 @@ import { mensagemErroFetch } from '~/stores/canais'
 import { useCamposPersonalizadosStore } from '~/stores/camposPersonalizados'
 import { useConversasStore } from '~/stores/conversas'
 import { useMensagensStore } from '~/stores/mensagens'
+import { useMensagensProntasStore } from '~/stores/mensagensProntas'
 import { toRaw } from 'vue'
 
 function cloneColumns(cols: KanbanColumn[]): KanbanColumn[] {
@@ -71,9 +72,17 @@ function hidratarCamposPersonalizadosNoPinia(workspaceId: number, cards: KanbanC
   camposStore.hidratarValoresDoKanban(workspaceId, cards)
 }
 
+function parseIdAgendamento(raw: unknown): string | null {
+  if (raw == null || raw === '') return null
+  const s = String(raw).trim()
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return null
+  return s
+}
+
 function normalizeKanbanColumn(col: KanbanColumn): KanbanColumn {
   return {
     ...col,
+    id_agendamento_mensagem: parseIdAgendamento(col.id_agendamento_mensagem),
     total_cards: col.total_cards ?? col.cards.length,
     has_more: col.has_more ?? false,
     cards: (col.cards ?? []).map(normalizeKanbanCard),
@@ -428,6 +437,11 @@ export const useKanbanStore = defineStore('kanban', {
             conversa_key: key,
             coluna_id: toColunaId,
           },
+        })
+        await this.dispararAgendamentoDaColunaSeHouver({
+          workspaceId,
+          colunaId: toColunaId,
+          conversaKey: key,
         })
         return true
       } catch (err: unknown) {
@@ -1190,6 +1204,8 @@ export const useKanbanStore = defineStore('kanban', {
       }
       this.movingKeys[conversaKey] = true
       let snapshot: KanbanColumn[] | null = null
+      let cardMovido: KanbanCard | null = null
+      let moveuOk = false
       try {
         snapshot = cloneColumns(this.columns)
 
@@ -1207,6 +1223,7 @@ export const useKanbanStore = defineStore('kanban', {
 
         const [card] = fromCol.cards.splice(idx, 1)
         card.coluna_id = toId
+        cardMovido = card
         toCol.cards.unshift(card)
         fromCol.total_cards = Math.max(0, (fromCol.total_cards ?? fromCol.cards.length + 1) - 1)
         toCol.total_cards = (toCol.total_cards ?? toCol.cards.length - 1) + 1
@@ -1220,6 +1237,7 @@ export const useKanbanStore = defineStore('kanban', {
             coluna_id: toId,
           },
         })
+        moveuOk = true
       } catch (err: unknown) {
         if (snapshot) this.columns = snapshot
         const msg = mensagemErroFetch(err, 'Não foi possível mover o card.')
@@ -1227,12 +1245,71 @@ export const useKanbanStore = defineStore('kanban', {
       } finally {
         delete this.movingKeys[conversaKey]
       }
+
+      if (moveuOk) {
+        await this.dispararAgendamentoDaColunaSeHouver({
+          workspaceId,
+          colunaId: toId,
+          conversaKey,
+          card: cardMovido,
+        })
+      }
     },
 
     /**
-     * Cria coluna em `funil_workspace_colunas` (ordem calculada no servidor).
-     * Usa `funilId` carregado pelo último `fetchBoard`.
+     * Se a coluna destino tiver `id_agendamento_mensagem`, dispara o webhook N8N
+     * da mensagem pronta. Sem valor na coluna, não faz nada.
      */
+    async dispararAgendamentoDaColunaSeHouver(input: {
+      workspaceId: number
+      colunaId: number
+      conversaKey: string
+      card?: KanbanCard | null
+      exibirToast?: boolean
+    }): Promise<boolean> {
+      const coluna = this.columns.find((c) => c.id === input.colunaId)
+      const sequenciaId = coluna?.id_agendamento_mensagem?.trim() || ''
+      if (!sequenciaId) return false
+
+      const key = input.conversaKey.trim()
+      const card =
+        input.card
+        ?? this.columns.flatMap((c) => c.cards).find((c) => c.conversa_key === key)
+        ?? null
+      if (!card) {
+        toast.error('Não foi possível enviar a mensagem automática: conversa não encontrada.')
+        return false
+      }
+
+      const canalId = card.id_canal
+      if (canalId == null || canalId < 1) {
+        toast.error('Não foi possível enviar a mensagem automática: canal não identificado.')
+        return false
+      }
+
+      const phone = card.phone?.trim() || card.lid?.trim() || null
+      const name = card.name?.trim() || card.name_group?.trim() || null
+      const prontas = useMensagensProntasStore()
+
+      try {
+        await prontas.dispararWebhookN8n({
+          workspaceId: input.workspaceId,
+          canalId,
+          conversaKey: key,
+          phone,
+          name,
+          sequenciaId,
+        })
+        if (input.exibirToast !== false) {
+          toast.success('Mensagem automática enviada.')
+        }
+        return true
+      } catch (err: unknown) {
+        toast.error(mensagemErroFetch(err, 'Não foi possível enviar a mensagem automática.'))
+        return false
+      }
+    },
+
     /** Retorna `true` se criou e recarregou o board com sucesso. */
     async createColumn(payload: { workspaceId: number; nome: string; cor: string | null }): Promise<boolean> {
       const fid = this.funilId
@@ -1266,17 +1343,22 @@ export const useKanbanStore = defineStore('kanban', {
       colunaId: number
       nome: string
       cor: string | null
+      id_agendamento_mensagem?: string | null
     }): Promise<boolean> {
       if (!payload.workspaceId || !payload.colunaId) return false
       try {
+        const body: Record<string, unknown> = {
+          workspace_id: payload.workspaceId,
+          coluna_id: payload.colunaId,
+          nome: payload.nome.trim(),
+          cor: payload.cor?.trim() || null,
+        }
+        if (payload.id_agendamento_mensagem !== undefined) {
+          body.id_agendamento_mensagem = payload.id_agendamento_mensagem
+        }
         await $fetch('/api/kanban/coluna', {
           method: 'PATCH',
-          body: {
-            workspace_id: payload.workspaceId,
-            coluna_id: payload.colunaId,
-            nome: payload.nome.trim(),
-            cor: payload.cor?.trim() || null,
-          },
+          body,
         })
         await this.refetchCurrentBoard(payload.workspaceId)
         return true
@@ -1285,6 +1367,17 @@ export const useKanbanStore = defineStore('kanban', {
         toast.error(msg, { duration: 8000 })
         return false
       }
+    },
+
+    /** Atualiza só o vínculo de agendamento automático da coluna (sem alterar nome/cor). */
+    async vincularAgendamentoColuna(payload: {
+      workspaceId: number
+      colunaId: number
+      nome: string
+      cor: string | null
+      id_agendamento_mensagem: string | null
+    }): Promise<boolean> {
+      return this.updateColumn(payload)
     },
 
     async reorderColumnAdjacent(payload: {

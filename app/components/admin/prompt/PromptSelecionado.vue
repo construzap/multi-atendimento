@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
-import ModalEditor_prompt from '~/components/admin/prompt/ModalEditor_prompt.vue'
+import ExpandirPrompt from '~/components/admin/prompt/ExpandirPrompt.vue'
 import { PROMPT_TIPOS_OPCOES, PROMPT_WORKSPACE_TIPO_DEFAULT } from '~/components/admin/prompt/types'
 import type { PromptWorkspaceTipoOpcao } from '#shared/types/adminPrompt'
 
@@ -33,7 +33,7 @@ const titulo = ref('')
 const conteudo = ref('')
 const tipo = ref(PROMPT_WORKSPACE_TIPO_DEFAULT)
 const principal = ref(false)
-const modalConteudoAberto = ref(false)
+const expandido = ref(false)
 
 const tipoOpcoes = computed((): PromptWorkspaceTipoOpcao[] => {
   const opcoes: PromptWorkspaceTipoOpcao[] = [...PROMPT_TIPOS_OPCOES]
@@ -52,13 +52,13 @@ watch(
     conteudo.value = p.conteudo
     tipo.value = p.tipo || PROMPT_WORKSPACE_TIPO_DEFAULT
     principal.value = p.principal
-    modalConteudoAberto.value = false
+    expandido.value = false
   },
   { immediate: true },
 )
 
 function fechar() {
-  modalConteudoAberto.value = false
+  expandido.value = false
   emit('close')
 }
 
@@ -77,9 +77,13 @@ function excluir() {
   emit('delete')
 }
 
-function abrirModalConteudo() {
+function abrirExpandir() {
   if (props.salvando) return
-  modalConteudoAberto.value = true
+  expandido.value = true
+}
+
+function recolherExpandir() {
+  expandido.value = false
 }
 </script>
 
@@ -173,11 +177,12 @@ function abrirModalConteudo() {
             Conteúdo do prompt
           </label>
           <button
+            v-if="!expandido"
             type="button"
             class="inline-flex items-center gap-1.5 rounded-lg border border-outline/40 bg-surface-container-high px-2.5 py-1.5 text-xs font-semibold text-on-surface-variant transition-colors hover:border-primary-300 hover:text-primary-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-dark-outline/40 dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant dark:hover:border-primary-700 dark:hover:text-dark-primary"
             :disabled="salvando"
-            title="Expandir editor"
-            @click="abrirModalConteudo"
+            title="Expandir prompt"
+            @click="abrirExpandir"
           >
             <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" stroke-linecap="round" stroke-linejoin="round" />
@@ -185,17 +190,25 @@ function abrirModalConteudo() {
             Expandir
           </button>
         </div>
-        <textarea
-          id="prompt-selecionado-conteudo"
-          v-model="conteudo"
+        <ExpandirPrompt
+          v-if="expandido"
+          v-model:conteudo="conteudo"
           :disabled="salvando"
-          placeholder="Descreva como a IA deve se comportar, regras, tom de voz, contexto do negócio..."
-          class="min-h-[14rem] w-full flex-1 resize-y overflow-y-auto rounded-xl border border-outline/40 bg-surface-container-high px-4 py-3 font-mono text-sm leading-relaxed text-on-surface placeholder:text-on-surface-variant/70 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-outline/40 dark:bg-dark-surface-container-high dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant/60 dark:focus:ring-primary-900/40 sm:min-h-[18rem] sm:max-h-[min(55vh,32rem)]"
-          rows="14"
+          @recolher="recolherExpandir"
         />
-        <p class="shrink-0 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
-          {{ conteudo.length }} caracteres
-        </p>
+        <template v-else>
+          <textarea
+            id="prompt-selecionado-conteudo"
+            v-model="conteudo"
+            :disabled="salvando"
+            placeholder="Descreva como a IA deve se comportar, regras, tom de voz, contexto do negócio..."
+            class="min-h-[14rem] w-full flex-1 resize-y overflow-y-auto rounded-xl border border-outline/40 bg-surface-container-high px-4 py-3 font-mono text-sm leading-relaxed text-on-surface placeholder:text-on-surface-variant/70 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-dark-outline/40 dark:bg-dark-surface-container-high dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant/60 dark:focus:ring-primary-900/40 sm:min-h-[18rem] sm:max-h-[min(55vh,32rem)]"
+            rows="14"
+          />
+          <p class="shrink-0 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+            {{ conteudo.length }} caracteres
+          </p>
+        </template>
       </div>
 
       <label
@@ -253,10 +266,5 @@ function abrirModalConteudo() {
       </BaseButton>
     </footer>
 
-    <ModalEditor_prompt
-      v-model:open="modalConteudoAberto"
-      v-model:conteudo="conteudo"
-      :disabled="salvando"
-    />
   </section>
 </template>

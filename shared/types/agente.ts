@@ -34,6 +34,8 @@ export type AgenteResponderBody = {
   /** telefone remoto (orcamentopronto) */
   telefone?: string | null
   email?: string | null
+  /** Chave Pix aleatória do workspace (pode ser null). */
+  chave_pix_aleatoria?: string | null
   model?: string | null
   max_tool_rounds?: number | null
 }
@@ -87,6 +89,8 @@ export type AgenteContext = {
   fase_teste: string | null
   telefone: string | null
   email: string | null
+  /** Chave Pix aleatória; null se o workspace não tiver. */
+  chave_pix_aleatoria: string | null
   model: string
   max_tool_rounds: number
   context_window: number

@@ -13,6 +13,8 @@ export type DocumentMetadata = {
   content_hash: string
   /** URLs de `produto_imagens` (view `imagens`), ordenadas por `ordem`. */
   imagens_urls: string[]
+  /** Se o agente pode enviar foto deste produto na conversa (default true). */
+  envia_foto: boolean
 }
 
 export type ProdutoEmbeddingPayload = {

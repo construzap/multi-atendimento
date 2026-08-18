@@ -41,13 +41,26 @@ export default defineEventHandler(async (event): Promise<ListarMensagensProntasR
 
   await checkWorkspace(event, workspaceId, userId)
 
+  const rawSequenciaId = q.sequencia_id
+  const sequenciaIdFilter =
+    rawSequenciaId != null && String(rawSequenciaId).trim() !== ''
+      ? String(rawSequenciaId).trim()
+      : null
+
   const admin = serverSupabaseServiceRole<any>(event)
 
-  const { data: sequencias, error: seqErr } = await admin
+  let seqQuery = admin
     .from('mensagens_prontas_sequencias')
     .select('id, nome, workspace_id, user_id, created_at, coluna_destino_id')
     .eq('workspace_id', workspaceId)
-    .order('created_at', { ascending: false })
+
+  if (sequenciaIdFilter) {
+    seqQuery = seqQuery.eq('id', sequenciaIdFilter)
+  }
+
+  const { data: sequencias, error: seqErr } = await seqQuery.order('created_at', {
+    ascending: false,
+  })
 
   if (seqErr) {
     throw createError({ statusCode: 500, statusMessage: seqErr.message })

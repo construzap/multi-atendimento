@@ -3,7 +3,19 @@ import { argAny, argStr, ctxStr, type ToolDef } from './helpers'
 export const orcamentoprontoTool: ToolDef = {
   name: 'orcamentopronto',
   description:
-    'Use essa ferramenta para informar um atendente que o cliente finalizou o orçamento.\n\nPROTOCOLO OBRIGATÓRIO ANTES DE CHAMAR:\n1) Com o orçamento completo (todos os produtos e quantidades definidos), chame primeiro a ferramenta <estoque> para CADA produto do orçamento (um por vez).\n2) Guarde o id retornado pela <estoque> de cada produto.\n3) Só então chame <orcamentopronto>, enviando em produtos um array de objetos {id, nome, quantidade} — sem preço unitário.\nProibido: chamar orcamentopronto sem ter obtido os ids via <estoque>. Proibido: enviar preço unitário no array de produtos.',
+    'Use essa ferramenta para informar um atendente que o cliente finalizou o orçamento.\n\n' +
+    'PROTOCOLO OBRIGATÓRIO ANTES DE CHAMAR:\n' +
+    '1) Com o orçamento completo (todos os produtos e quantidades definidos), chame primeiro a ferramenta <estoque> para CADA produto do orçamento (um por vez).\n' +
+    '2) Guarde o id retornado pela <estoque> de cada produto.\n' +
+    '3) Só então chame <orcamentopronto>, enviando em produtos um array de objetos {id, nome, quantidade} — usando exatamente o id da <estoque>, o nome do produto e a quantidade escolhida, sem preço unitário.\n\n' +
+    'CAMPOS OBRIGATÓRIOS NA CHAMADA:\n' +
+    '- produtos, total_do_orcamento, forma_pagamento, entrega_ou_retirada, observacao\n' +
+    '- Se for ENTREGA: o campo endereco é OBRIGATÓRIO (não coloque o endereço em observacao).\n' +
+    '- Se o cliente informou CPF ou CNPJ: preencha documento com o valor informado.\n' +
+    '- Se a forma de pagamento for DINHEIRO: o campo troco é OBRIGATÓRIO (quanto de troco o cliente vai precisar).\n\n' +
+    'Proibido: chamar <orcamentopronto> sem ter obtido os ids via <estoque>.\n' +
+    'Proibido: inventar id, enviar array vazio ou incluir preço unitário no array de produtos.\n' +
+    'Proibido: colocar endereço, forma de pagamento, troco ou "entrega/retirada" dentro de observacao.',
   parameters: {
     type: 'object',
     properties: {
@@ -37,16 +49,27 @@ export const orcamentoprontoTool: ToolDef = {
       observacao: {
         type: 'string',
         description:
-          'Caso o usuário opte por retirada, marque e preencha como "retirada0" caso seja entrega coloque como "entrega" e adicione o endereço coletado E A FORMA DE PAGAMENTO QUE O CLIENTE ESCOLHEU no atendimento.\n\nfaça um resumo da conversa',
+          'SOMENTE um resumo objetivo da conversa (o que o cliente pediu e o que foi combinado). Não inclua endereço, documento, forma de pagamento, troco nem entrega/retirada neste campo.',
       },
       forma_pagamento: {
         type: 'string',
-        description: 'forma de pagamento escolhida pelo cliente',
+        description:
+          'Forma de pagamento escolhida pelo cliente (ex.: Pix, cartão, dinheiro). Se for dinheiro, preencha também o campo troco.',
+      },
+      troco: {
+        type: 'string',
+        description:
+          'OBRIGATÓRIO quando forma_pagamento for dinheiro.\n' +
+          'Informe quanto de troco o cliente vai precisar.\n' +
+          'Se ele disse com quanto vai pagar (ex.: "vou pagar com 100" e o total é 80), calcule o troco (20) e envie o valor.\n' +
+          'Se ele disse que não precisa de troco, envie "sem troco".\n' +
+          'Se a forma de pagamento NÃO for dinheiro, envie string vazia "".\n' +
+          'Nunca coloque o troco em observacao.',
       },
       entrega_ou_retirada: {
         type: 'string',
         description:
-          'Se for entrega coloque o endereço enviado pelo cliente ou se ele enviou a localização dele! Se for retirada, avise que ele escolheu retirada',
+          'Apenas "entrega" ou "retirada". NÃO coloque o endereço aqui — endereço vai no campo endereco.',
       },
       Orcamento_confirmado: {
         type: 'string',
@@ -56,8 +79,31 @@ export const orcamentoprontoTool: ToolDef = {
         type: 'string',
         description: 'email do cliente que ele informou',
       },
+      documento: {
+        type: 'string',
+        description:
+          'CPF ou CNPJ informado pelo cliente. Se ele informou, envie o valor aqui. Não invente. Se não informou, envie string vazia "".',
+      },
+      endereco: {
+        type: 'string',
+        description:
+          'OBRIGATÓRIO quando entrega_ou_retirada for "entrega".\n' +
+          'Formato: "Endereço: {endereço completo do cliente}".\n' +
+          'Se ele enviou a localização no mapa: "Endereço: cliente enviou a localização".\n' +
+          'Se for retirada: envie string vazia "".\n' +
+          'Nunca coloque o endereço em observacao.',
+      },
     },
-    required: ['produtos', 'total_do_orcamento', 'forma_pagamento', 'entrega_ou_retirada'],
+    required: [
+      'produtos',
+      'total_do_orcamento',
+      'forma_pagamento',
+      'entrega_ou_retirada',
+      'observacao',
+      'endereco',
+      'documento',
+      'troco',
+    ],
   },
   urlConfigKey: 'agenteToolOrcamentoProntoUrl',
   buildBody: (args, ctx) => ({
@@ -76,11 +122,15 @@ export const orcamentoprontoTool: ToolDef = {
     tempo_resposta: ctxStr(ctx.tempo_resposta),
     ai_assinatura_enabled: ctxStr(ctx.ai_assinatura_enabled),
     forma_pagamento: argStr(args, 'forma_pagamento'),
+    troco: argStr(args, 'troco'),
     'entrega ou retirada': argStr(args, 'entrega_ou_retirada'),
     workspace_id: String(ctx.workspace_id),
     canal_id: String(ctx.canal_id),
     'Orçamento confirmado': argStr(args, 'Orcamento_confirmado', 'Or_amento_confirmado'),
     'nome da empresa': ctxStr(ctx.name_cliente_empresa),
     email: argStr(args, 'email') || ctxStr(ctx.email),
+    documento: argStr(args, 'documento'),
+    endereco: argStr(args, 'endereco', 'endereço'),
+    CHAVE_PIX_ALEATORIA: ctx.chave_pix_aleatoria,
   }),
 }

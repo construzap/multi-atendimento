@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-type ButtonVariant = 'primary' | 'secondary' | 'info' | 'success'
+type ButtonVariant = 'primary' | 'secondary' | 'info' | 'success' | 'danger'
 type ButtonSize = 'md' | 'sm'
 
 const props = withDefaults(
@@ -42,7 +42,9 @@ const variantClass = computed(() => {
     return [
       'border border-outline/50 bg-transparent text-on-surface-variant shadow-sm',
       'hover:bg-surface-container-high hover:text-on-surface hover:shadow-md',
-      'disabled:hover:bg-transparent',
+      'dark:border-dark-outline/50 dark:text-dark-on-surface-variant',
+      'dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface',
+      'disabled:hover:bg-transparent dark:disabled:hover:bg-transparent',
     ].join(' ')
   }
 
@@ -50,6 +52,8 @@ const variantClass = computed(() => {
     return [
       'bg-info text-info-on shadow-sm',
       'hover:brightness-110 hover:shadow-md',
+      'dark:bg-dark-info dark:text-dark-on-info',
+      'dark:hover:brightness-110',
     ].join(' ')
   }
 
@@ -57,12 +61,25 @@ const variantClass = computed(() => {
     return [
       'bg-success text-success-on shadow-sm',
       'hover:brightness-110 hover:shadow-md',
+      'dark:bg-dark-success dark:text-dark-on-success',
+      'dark:hover:brightness-110',
+    ].join(' ')
+  }
+
+  if (props.variant === 'danger') {
+    return [
+      'border border-red-400/80 bg-red-50 text-red-900 shadow-sm',
+      'hover:bg-red-100 hover:shadow-md',
+      'dark:border-red-700/70 dark:bg-red-950/45 dark:text-red-100',
+      'dark:hover:bg-red-950/65',
     ].join(' ')
   }
 
   return [
     'bg-primary-600 text-on-primary shadow-sm',
     'hover:bg-primary-700 hover:shadow-md',
+    'dark:bg-primary-500 dark:text-white',
+    'dark:hover:bg-primary-400',
   ].join(' ')
 })
 </script>

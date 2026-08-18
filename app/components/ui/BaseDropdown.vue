@@ -173,7 +173,7 @@ onUnmounted(() => {
 })
 
 const panelBodyClass =
-  'rounded-2xl border border-outline/40 bg-surface-container-lowest py-2 shadow-lg ring-1 ring-black/5 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:ring-white/10'
+  'rounded-2xl border border-outline/40 bg-surface-container-lowest py-2 shadow-lg ring-1 ring-black/5 dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:ring-white/10'
 </script>
 
 <template>

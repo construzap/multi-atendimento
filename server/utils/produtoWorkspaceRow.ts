@@ -20,7 +20,7 @@ import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCate
 
 export const SELECT_PRODUTO_WORKSPACE_EMBED =
 
-  'id, codigo, nome, categoria_id, sku, unidade_venda, marca, preco, preco_custo, preco_promocional, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, codigo_ncm, termo_pesquisa, codigo_barras_ean, largura, altura, comprimento, status, produto_categorias(nome)'
+  'id, codigo, nome, categoria_id, sku, unidade_venda, marca, preco, preco_custo, preco_promocional, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, codigo_ncm, termo_pesquisa, codigo_barras_ean, largura, altura, comprimento, status, envia_foto, produto_categorias(nome)'
 
 
 
@@ -28,7 +28,7 @@ export const SELECT_PRODUTO_WORKSPACE_EMBED =
 
 export const SELECT_VIEW_PRODUTOS_COM_VARIACOES =
 
-  'id, workspace_id, nome, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, imagem_url, infos_relevantes, status, created_at, updated_at, codigo, categoria_id, descricao, codigo_ncm, termos_pesquisa, termos_pesquisa_busca, preco_custo, preco_promocional, codigo_barras_ean, largura, altura, comprimento, parent_id, tem_variacoes, atributos, categoria, imagens, variacoes'
+  'id, workspace_id, nome, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, imagem_url, infos_relevantes, status, envia_foto, created_at, updated_at, codigo, categoria_id, descricao, codigo_ncm, termos_pesquisa, termos_pesquisa_busca, preco_custo, preco_promocional, codigo_barras_ean, largura, altura, comprimento, parent_id, tem_variacoes, atributos, categoria, imagens, variacoes'
 
 
 
@@ -293,6 +293,8 @@ function mapCamposProduto(r: Record<string, unknown>): ProdutoWorkspaceCampos {
     comprimento: parseNum(r.comprimento, 0),
 
     status: Boolean(r.status),
+
+    envia_foto: r.envia_foto === undefined || r.envia_foto === null ? true : Boolean(r.envia_foto),
 
     parent_id: parent_id != null && parent_id >= 1 ? parent_id : null,
 

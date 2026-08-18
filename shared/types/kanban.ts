@@ -108,6 +108,8 @@ export type KanbanColumn = {
   nome: string
   cor: string | null
   ordem: number
+  /** FK para `mensagens_prontas_sequencias.id` (uuid). */
+  id_agendamento_mensagem: string | null
   cards: KanbanCard[]
   /** Total de cards na coluna (independente da paginação). */
   total_cards: number

@@ -9,9 +9,12 @@ import type {
   ProdutoWorkspaceItem,
   ProdutoWorkspacePatch,
   ProdutosExcluirResponse,
+  ProdutosAtualizarEmMassaResponse,
 } from '#shared/types/produtos'
 import ItemTabela from '~/components/produtos/ItemTabela.vue'
+import BaseButton from '~/components/BaseButton.vue'
 import ProdutosModalEditarProduto from '~/components/produtos/ProdutosModalEditarProduto.vue'
+import ProdutosModalEdicaoMassa from '~/components/produtos/ProdutosModalEdicaoMassa.vue'
 import ProdutosModalImagens from '~/components/produtos/ProdutosModalImagens.vue'
 import ProdutosModalNovaVariacao from '~/components/produtos/ProdutosModalNovaVariacao.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
@@ -19,7 +22,7 @@ import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useProdutoCategoriasStore } from '~/stores/produtoCategorias'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
-import { useProdutosStore } from '~/stores/produtos'
+import { useProdutosStore, PRODUTOS_PAGE_SIZE_TODOS } from '~/stores/produtos'
 import { parseDecimalPtBr } from '~/utils/mapearLinhasImportacaoProduto'
 
 const produtosStore = useProdutosStore()
@@ -32,6 +35,7 @@ const itemsExibicao = computed(() =>
 
 const LS_LARGURAS = 'produtos-tabela-larguras-colunas-v6'
 const CHUNK_EXCLUIR_PRODUTOS = 100
+const CHUNK_ATUALIZAR_PRODUTOS = 50
 
 const columns = [
   { id: 'sel' as const, label: '' },
@@ -290,6 +294,15 @@ const progressoExclusaoErro = ref<string | null>(null)
 const rotulosExclusao = ref<string[]>([])
 let abortExclusao: AbortController | null = null
 
+const editandoMassa = ref(false)
+const modalEdicaoMassaAberto = ref(false)
+const progressoEdicaoMassaAberto = ref(false)
+const progressoEdicaoMassaTotal = ref(0)
+const progressoEdicaoMassaProcessados = ref(0)
+const progressoEdicaoMassaErro = ref<string | null>(null)
+const rotulosEdicaoMassa = ref<string[]>([])
+let abortEdicaoMassa: AbortController | null = null
+
 type EstadoCelulaSalvamento = 'pending' | 'error'
 /** `${produtoId}:${campo}` — permite editar outras linhas enquanto uma célula grava. */
 const celulaSalvamento = ref<Record<string, EstadoCelulaSalvamento>>({})
@@ -495,6 +508,165 @@ function cancelarExclusao() {
   abortExclusao?.abort()
 }
 
+function encontrarRowPorId(id: number): ProdutoWorkspaceCampos | null {
+  for (const pai of itemsPinia.value) {
+    if (pai.id === id) return pai
+    for (const v of pai.variacoes ?? []) {
+      if (v.id === id) return v
+    }
+  }
+  return null
+}
+
+function cancelarEdicaoMassa() {
+  abortEdicaoMassa?.abort()
+}
+
+function reverterPatchLocal(
+  id: number,
+  antes: ProdutoWorkspaceCampos,
+  campos: string[],
+) {
+  const row = encontrarRowPorId(id)
+  if (!row) return
+  const revert: Record<string, unknown> = {}
+  const snapshot = antes as Record<string, unknown>
+  for (const c of campos) {
+    if (c in snapshot) revert[c] = snapshot[c]
+  }
+  emitLinhaLocal(row, revert as ProdutoWorkspacePatch)
+  flashErroCelulas(id, campos)
+}
+
+async function aplicarEdicaoMassa(patch: ProdutoWorkspacePatch) {
+  if (props.modo === 'rascunho') return
+  const wid = props.workspaceId
+  if (wid == null || wid < 1) return
+  const ids = [...new Set(selecionadosIds.value)]
+  if (!ids.length) return
+
+  modalEdicaoMassaAberto.value = false
+
+  progressoEdicaoMassaTotal.value = ids.length
+  progressoEdicaoMassaProcessados.value = 0
+  progressoEdicaoMassaErro.value = null
+  rotulosEdicaoMassa.value = rotulosDosIds(ids)
+  progressoEdicaoMassaAberto.value = true
+  editandoMassa.value = true
+  abortEdicaoMassa = new AbortController()
+  const signal = abortEdicaoMassa.signal
+  const campos = camposDoPatch(patch)
+
+  const snapshots = new Map<number, ProdutoWorkspaceCampos>()
+  for (const id of ids) {
+    const row = encontrarRowPorId(id)
+    if (!row) continue
+    snapshots.set(id, clonarLinhaParaSalvar(row))
+    emitLinhaLocal(row, patch)
+  }
+
+  let sucesso = 0
+  let erros = 0
+  let cancelado = false
+  const confirmados = new Set<number>()
+
+  try {
+    for (let i = 0; i < ids.length; i += CHUNK_ATUALIZAR_PRODUTOS) {
+      if (signal.aborted) {
+        cancelado = true
+        break
+      }
+
+      const chunk = ids.slice(i, i + CHUNK_ATUALIZAR_PRODUTOS)
+      const chunkComSnapshot = chunk.filter((id) => snapshots.has(id))
+      if (!chunkComSnapshot.length) {
+        progressoEdicaoMassaProcessados.value = Math.min(i + chunk.length, ids.length)
+        continue
+      }
+
+      try {
+        const res = await $fetch<ProdutosAtualizarEmMassaResponse>(
+          '/api/produtos/atualizar-em-massa',
+          {
+            method: 'PATCH',
+            body: { workspace_id: wid, ids: chunkComSnapshot, patch },
+            signal,
+          },
+        )
+
+        const okSet = new Set(res.ids ?? [])
+        sucesso += res.atualizados ?? 0
+
+        for (const id of chunkComSnapshot) {
+          if (okSet.has(id)) {
+            confirmados.add(id)
+            continue
+          }
+          erros++
+          const antes = snapshots.get(id)
+          if (antes) reverterPatchLocal(id, antes, campos)
+        }
+      } catch (err: unknown) {
+        const e = err as { name?: string }
+        if (e?.name === 'AbortError') {
+          cancelado = true
+          for (const id of chunkComSnapshot) {
+            if (confirmados.has(id)) continue
+            const antes = snapshots.get(id)
+            if (antes) reverterPatchLocal(id, antes, campos)
+          }
+          break
+        }
+        erros += chunkComSnapshot.length
+        for (const id of chunkComSnapshot) {
+          const antes = snapshots.get(id)
+          if (antes) reverterPatchLocal(id, antes, campos)
+        }
+        if (!progressoEdicaoMassaErro.value) {
+          progressoEdicaoMassaErro.value = mensagemErroFetch(
+            err,
+            'Não foi possível atualizar todos os produtos.',
+          )
+        }
+      } finally {
+        progressoEdicaoMassaProcessados.value = Math.min(i + chunk.length, ids.length)
+      }
+    }
+
+    if (cancelado) {
+      for (const id of ids) {
+        if (confirmados.has(id)) continue
+        const antes = snapshots.get(id)
+        if (antes) reverterPatchLocal(id, antes, campos)
+      }
+      toast.info('Atualização cancelada.')
+      progressoEdicaoMassaAberto.value = false
+    } else if (erros === 0) {
+      progressoEdicaoMassaAberto.value = false
+      selecionadosIds.value = []
+      if (sucesso === 1) toast.success('1 produto atualizado.')
+      else if (sucesso > 1) toast.success(`${sucesso} produtos atualizados.`)
+    } else if (sucesso > 0) {
+      toast.warning(`${sucesso} atualizado(s), ${erros} com erro.`)
+    } else {
+      progressoEdicaoMassaAberto.value = false
+      toast.error('Não foi possível atualizar os produtos selecionados.')
+    }
+  } finally {
+    editandoMassa.value = false
+    abortEdicaoMassa = null
+  }
+}
+
+function fecharModalEdicaoMassa() {
+  if (editandoMassa.value) {
+    cancelarEdicaoMassa()
+    return
+  }
+  progressoEdicaoMassaAberto.value = false
+  progressoEdicaoMassaErro.value = null
+}
+
 async function excluirSelecionados() {
   if (props.modo === 'rascunho') return
   const wid = props.workspaceId
@@ -604,7 +776,7 @@ const alturaMaxScrollCardsPx = LINHAS_VIEWPORT_SCROLL * ALTURA_LINHA_CARD_PX
 function onMudarPageSize(ev: Event) {
   const raw = (ev.target as HTMLSelectElement).value
   const n = Number.parseInt(String(raw), 10)
-  if (!Number.isFinite(n) || n < 1) return
+  if (!Number.isFinite(n) || (n < 1 && n !== PRODUTOS_PAGE_SIZE_TODOS)) return
   emit('page-size-changed', n)
 }
 
@@ -1166,7 +1338,7 @@ async function confirmarApagar() {
 
 function rowDesabilitada(row: ProdutoWorkspaceCampos): boolean {
   if (props.modo === 'rascunho') return false
-  return !podeGravar() || excluindo.value || apagandoUm.value
+  return !podeGravar() || excluindo.value || editandoMassa.value || apagandoUm.value
 }
 
 onUnmounted(() => {
@@ -1203,6 +1375,7 @@ onUnmounted(() => {
           @change="onMudarPageSize"
         >
           <option v-for="n in opcoesPageSize" :key="n" :value="n">{{ n }}</option>
+          <option :value="PRODUTOS_PAGE_SIZE_TODOS">Todos</option>
         </select>
       </div>
     </div>
@@ -1234,7 +1407,7 @@ onUnmounted(() => {
           <label
             class="group/check flex cursor-pointer items-center gap-2"
             :class="
-              pending || !itemsExibicao.length || excluindo
+              pending || !itemsExibicao.length || excluindo || editandoMassa
                 ? 'cursor-not-allowed opacity-40'
                 : ''
             "
@@ -1281,7 +1454,7 @@ onUnmounted(() => {
               class="sr-only"
               :checked="todosDaPaginaSelecionados"
               :indeterminate="indeterminadoCabecalhoPagina"
-              :disabled="pending || !itemsExibicao.length || excluindo"
+              :disabled="pending || !itemsExibicao.length || excluindo || editandoMassa"
               aria-label="Selecionar todos os produtos desta página"
               @change="alternarSelecionarTodosNaPagina(($event.target as HTMLInputElement).checked)"
             />
@@ -1295,16 +1468,33 @@ onUnmounted(() => {
             </span>
           </label>
         </div>
-        <button
-          v-if="mostrarExclusao && selecionadosIds.length > 0"
-          type="button"
-          class="inline-flex items-center gap-2 rounded-xl border border-red-400/80 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-900 shadow-sm transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-55 dark:border-red-700/70 dark:bg-red-950/45 dark:text-red-100 dark:hover:bg-red-950/65"
-          :disabled="excluindo"
-          @click="excluirSelecionados"
-        >
-          <span class="material-symbols-outlined text-[20px]" aria-hidden="true">delete</span>
-          {{ excluindo ? 'A eliminar…' : 'Excluir selecionados' }}
-        </button>
+        <div v-if="selecionadosIds.length > 0" class="flex flex-wrap items-center gap-2">
+          <BaseButton
+            type="button"
+            variant="primary"
+            size="sm"
+            :block="false"
+            class="gap-2"
+            :disabled="editandoMassa || excluindo"
+            @click="modalEdicaoMassaAberto = true"
+          >
+            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">edit_square</span>
+            {{ editandoMassa ? 'A atualizar…' : 'Alterar em massa' }}
+          </BaseButton>
+          <BaseButton
+            v-if="mostrarExclusao"
+            type="button"
+            variant="danger"
+            size="sm"
+            :block="false"
+            class="gap-2"
+            :disabled="excluindo || editandoMassa"
+            @click="excluirSelecionados"
+          >
+            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">delete</span>
+            {{ excluindo ? 'A eliminar…' : 'Excluir selecionados' }}
+          </BaseButton>
+        </div>
       </div>
 
       <!-- Lista em cards (listagem API e rascunho criar em massa) -->
@@ -1312,7 +1502,7 @@ onUnmounted(() => {
         ref="tabelaScrollRef"
         class="w-full min-w-0 max-w-full overflow-auto"
         :style="{ maxHeight: `${alturaMaxScrollCardsPx}px` }"
-        :class="{ 'pointer-events-none opacity-50': excluindo }"
+        :class="{ 'pointer-events-none opacity-50': excluindo || editandoMassa }"
       >
         <div
           v-if="pending"
@@ -1359,6 +1549,13 @@ onUnmounted(() => {
       :salvando="salvandoVariacao"
       @salvar="confirmarNovaVariacao"
     />
+    <ProdutosModalEdicaoMassa
+      v-model:open="modalEdicaoMassaAberto"
+      :workspace-id="workspaceId"
+      :quantidade="selecionadosIds.length"
+      @aplicar="aplicarEdicaoMassa"
+    />
+
     <ProdutosModalEditarProduto
       v-model:open="modalEdicaoAberto"
       :workspace-id="workspaceId"
@@ -1399,6 +1596,35 @@ onUnmounted(() => {
             <li
               v-for="(nome, idx) in rotulosExclusao"
               :key="idx + '-' + nome"
+              class="truncate text-on-surface dark:text-dark-on-surface"
+            >
+              {{ nome }}
+            </li>
+          </ul>
+        </div>
+      </template>
+    </ModalEnvioProdutos>
+
+    <ModalEnvioProdutos
+      v-model:open="progressoEdicaoMassaAberto"
+      title="A atualizar produtos selecionados…"
+      :total="progressoEdicaoMassaTotal"
+      :enviados="progressoEdicaoMassaProcessados"
+      :erro="progressoEdicaoMassaErro"
+      :pode-cancelar="editandoMassa"
+      @cancelar="fecharModalEdicaoMassa"
+    >
+      <template #extra>
+        <div class="space-y-2">
+          <p class="text-xs font-medium uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+            Selecionados ({{ rotulosEdicaoMassa.length }})
+          </p>
+          <ul
+            class="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-outline/20 bg-surface-container-lowest/80 p-2 text-sm dark:border-dark-outline/20 dark:bg-dark-surface-container-lowest/50"
+          >
+            <li
+              v-for="(nome, idx) in rotulosEdicaoMassa"
+              :key="idx"
               class="truncate text-on-surface dark:text-dark-on-surface"
             >
               {{ nome }}

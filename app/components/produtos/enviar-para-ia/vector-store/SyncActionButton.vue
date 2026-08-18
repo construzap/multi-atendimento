@@ -171,15 +171,20 @@ defineExpose({ syncing })
 </script>
 
 <template>
-  <section class="rounded-lg border border-outline/30 bg-surface-container-lowest p-4 shadow-sm">
-    <h2 class="mb-3 text-sm font-semibold text-on-surface">Sincronizar produtos</h2>
+  <section
+    class="rounded-lg border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+  >
+    <h2 class="mb-3 text-sm font-semibold text-zinc-900 dark:text-zinc-100">Sincronizar produtos</h2>
 
     <div
       v-if="syncing"
-      class="mb-4 flex gap-3 rounded-lg border border-warning/30 bg-warning-container/50 px-4 py-3 text-sm text-warning-on-container"
+      class="mb-4 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100"
       role="alert"
     >
-      <span class="material-symbols-outlined shrink-0 text-[20px] text-warning" aria-hidden="true">
+      <span
+        class="material-symbols-outlined shrink-0 text-[20px] text-amber-600 dark:text-amber-400"
+        aria-hidden="true"
+      >
         warning
       </span>
       <p>
@@ -190,16 +195,16 @@ defineExpose({ syncing })
 
     <!-- Opção "Enviar todos os produtos de novo" oculta; force permanece false no script.
     <div class="mb-3">
-      <label class="flex items-start gap-2 text-sm text-on-surface">
+      <label class="flex items-start gap-2 text-sm text-zinc-900 dark:text-zinc-100">
         <input
           v-model="force"
           type="checkbox"
-          class="mt-0.5 rounded"
+          class="mt-0.5 rounded border-zinc-300 dark:border-zinc-600 dark:bg-zinc-900"
           :disabled="syncing"
         />
         <span>
           <span class="font-medium">Enviar todos os produtos de novo</span>
-          <span class="mt-0.5 block text-xs text-on-surface-variant">
+          <span class="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
             Desmarcado: envia só produtos novos ou que você alterou. Marcado: reenvia tudo
             (demora mais e gasta mais créditos da I.A.).
           </span>
@@ -211,7 +216,7 @@ defineExpose({ syncing })
     <div class="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-on-primary hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+        class="rounded-md bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-primary-500 dark:text-zinc-950 dark:hover:bg-primary-400"
         :disabled="syncing"
         @click="sync"
       >
@@ -221,7 +226,7 @@ defineExpose({ syncing })
       <button
         v-if="syncing"
         type="button"
-        class="rounded-md border border-danger/40 bg-surface-container-lowest px-4 py-2 text-sm font-medium text-danger hover:bg-danger-container/40"
+        class="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 dark:border-red-900/50 dark:bg-zinc-950 dark:text-red-400 dark:hover:bg-red-950/30"
         @click="pararSincronizacao"
       >
         Parar indexação

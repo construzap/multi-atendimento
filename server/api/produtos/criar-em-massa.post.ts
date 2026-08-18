@@ -109,6 +109,7 @@ function normalizarLinha(raw: unknown): ProdutoCriarEmMassaLinha | null {
     imagem_url: strOrNull(o.imagem_url),
     infos_relevantes: strOrNull(o.infos_relevantes),
     status: boolDefault(o.status, true),
+    envia_foto: boolDefault(o.envia_foto, true),
     categoria_id: (() => {
       const v = intOrNull(o.categoria_id)
       return v != null && v > 0 ? v : null
@@ -223,6 +224,7 @@ export default defineEventHandler(async (event): Promise<ProdutosCriarEmMassaRes
       imagem_url: r.imagem_url ?? null,
       infos_relevantes: r.infos_relevantes ?? null,
       status: r.status ?? true,
+      envia_foto: r.envia_foto ?? true,
       categoria_id: r.categoria_id ?? null,
       codigo_ncm: r.codigo_ncm ?? null,
       termo_pesquisa: r.termo_pesquisa ?? null,

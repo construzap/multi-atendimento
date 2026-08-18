@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DocumentMetadata, ProdutoEmbeddingPayload } from '#shared/types/vectorStore'
 
 const SELECT_VIEW =
-  'id, workspace_id, nome, codigo, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, imagens, status, descricao, termos_pesquisa, termos_pesquisa_busca, preco_custo, preco_promocional, codigo_barras_ean, parent_id, tem_variacoes, atributos, categoria, variacoes'
+  'id, workspace_id, nome, codigo, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, imagens, status, envia_foto, descricao, termos_pesquisa, termos_pesquisa_busca, preco_custo, preco_promocional, codigo_barras_ean, parent_id, tem_variacoes, atributos, categoria, variacoes'
 
 export { SELECT_VIEW as SELECT_VIEW_PRODUTOS_EMBEDDING }
 
@@ -71,18 +71,28 @@ export function extrairImagensUrls(row: Record<string, unknown>): string[] {
   return []
 }
 
+/** Default true, alinhado ao banco (`envia_foto boolean not null default true`). */
+export function parseEnviaFoto(raw: unknown): boolean {
+  if (raw === undefined || raw === null) return true
+  if (raw === true || raw === 1 || raw === 'true' || raw === '1') return true
+  if (raw === false || raw === 0 || raw === 'false' || raw === '0') return false
+  return Boolean(raw)
+}
+
 /** Entrada do SHA-256: content + campos de metadata que disparam reindexação no sync. */
 function buildContentHashInput(
   content: string,
   workspaceId: number,
   termosPesquisa: string | null,
   imagensUrls: string[],
+  enviaFoto: boolean,
 ): string {
   return [
     content,
     `termos_pesquisa:${termosPesquisa ?? ''}`,
     `workspace_id:${String(workspaceId)}`,
     `imagens_urls:${imagensUrls.join('|')}`,
+    `envia_foto:${enviaFoto ? '1' : '0'}`,
   ].join('\n')
 }
 
@@ -112,8 +122,11 @@ export function buildProdutoEmbeddingPayload(
   ].join('  |  ')
 
   const imagensUrls = extrairImagensUrls(row)
+  const enviaFoto = parseEnviaFoto(row.envia_foto)
   const contentHash = createHash('sha256')
-    .update(buildContentHashInput(content, workspaceId, termoPesquisa, imagensUrls))
+    .update(
+      buildContentHashInput(content, workspaceId, termoPesquisa, imagensUrls, enviaFoto),
+    )
     .digest('hex')
 
   const metadata: DocumentMetadata = {
@@ -129,6 +142,7 @@ export function buildProdutoEmbeddingPayload(
     workspace_id: String(workspaceId),
     content_hash: contentHash,
     imagens_urls: imagensUrls,
+    envia_foto: enviaFoto,
   }
 
   return {

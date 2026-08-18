@@ -7,7 +7,7 @@ import AlertaOportunidadesDeVendas from '~/components/produtos/oportunidades-de-
 import FerramentaImportarProduto from '~/components/produtos/FerramentaImportarProduto.vue'
 import ProdutosModalEditarProduto from '~/components/produtos/ProdutosModalEditarProduto.vue'
 import ProdutosTabela from '~/components/produtos/ProdutosTabela.vue'
-import { useProdutosStore } from '~/stores/produtos'
+import { useProdutosStore, PRODUTOS_PAGE_SIZE_TODOS } from '~/stores/produtos'
 import { useWorkspacesStore } from '~/stores/workspaces'
 
 definePageMeta({
@@ -18,7 +18,7 @@ const route = useRoute()
 const produtosStore = useProdutosStore()
 const workspacesStore = useWorkspacesStore()
 
-const { listPending, listError, page, totalPages, total } = storeToRefs(produtosStore)
+const { listPending, listError, page, totalPages, total, pageSize } = storeToRefs(produtosStore)
 const { items: workspaces } = storeToRefs(workspacesStore)
 
 onMounted(() => {
@@ -139,6 +139,8 @@ async function aposOportunidadesSincronizar() {
   })
 }
 
+const exibindoTodos = computed(() => pageSize.value === PRODUTOS_PAGE_SIZE_TODOS)
+
 function onPageSizeChanged(n: number) {
   produtosStore.pageSize = n
   produtosStore.page = 1
@@ -196,7 +198,7 @@ function aposImportacao() {
     />
 
     <div
-      v-if="!listError && total > 0"
+      v-if="!listError && total > 0 && !exibindoTodos"
       class="flex flex-col items-center justify-between gap-3 border-t border-outline/20 pt-4 text-sm text-on-surface-variant dark:border-dark-outline/20 dark:text-dark-on-surface-variant sm:flex-row"
     >
       <p>

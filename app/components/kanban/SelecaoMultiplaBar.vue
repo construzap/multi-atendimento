@@ -124,6 +124,7 @@ async function confirmarAlterarStatus() {
   progressoAberto.value = true
 
   let falhas = 0
+  let autoEnviadas = 0
 
   for (const conversaKey of keys) {
     if (cancelarSolicitado.value) break
@@ -138,6 +139,13 @@ async function confirmarAlterarStatus() {
         },
       })
       espelharColunaNoPinia(conversaKey, colunaId)
+      const enviou = await kanban.dispararAgendamentoDaColunaSeHouver({
+        workspaceId: props.workspaceId,
+        colunaId,
+        conversaKey,
+        exibirToast: keys.length === 1,
+      })
+      if (enviou) autoEnviadas += 1
     } catch (err: unknown) {
       falhas += 1
       if (!progressoErro.value) {
@@ -167,6 +175,13 @@ async function confirmarAlterarStatus() {
         ? 'Status alterado com sucesso.'
         : `Status alterado em ${keys.length} conversas.`,
     )
+    if (autoEnviadas > 0 && keys.length > 1) {
+      toast.success(
+        autoEnviadas === 1
+          ? 'Mensagem automática enviada.'
+          : `Mensagem automática enviada em ${autoEnviadas} conversas.`,
+      )
+    }
     emit('concluido')
     return
   }

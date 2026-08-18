@@ -333,7 +333,7 @@ watch(mostrarPainel, (aberto) => {
   if (aberto) {
     void nextTick(async () => {
       updatePanelPos()
-      if (isCelula.value) attachScrollListeners()
+      attachScrollListeners()
       attachFecharFora()
       await focarInputPainel()
     })
@@ -645,7 +645,7 @@ const itemSugestaoClass = (idx: number) =>
       <span v-else class="text-[13px] text-zinc-400 dark:text-zinc-500">{{ config.placeholderCelula }}</span>
     </div>
 
-    <Teleport v-if="isCelula" to="body">
+    <Teleport to="body">
       <div v-if="mostrarPainel && !disabled" ref="painelDropdownRef" role="listbox" :class="painelDropdownRootClass" :style="panelStyle">
         <ProdutosSelecaoUnicaPainel
           ref="painelComponentRef"
@@ -663,6 +663,7 @@ const itemSugestaoClass = (idx: number) =>
           :inp-filtro-class="inpFiltroClass"
           :icon-acao-class="iconAcaoClass"
           :painel-header-class="painelHeaderClass"
+          :mostrar-filtro="isCelula"
           @fechar="fecharPainel"
           @enter-filtro="mostrarOpcaoCriar ? criarDigitado() : aoEnterPainel()"
           @escolher="escolherItem"
@@ -673,37 +674,6 @@ const itemSugestaoClass = (idx: number) =>
         />
       </div>
     </Teleport>
-
-    <div
-      v-else-if="isForm && mostrarPainel && !disabled"
-      ref="painelDropdownRef"
-      role="listbox"
-      :class="['absolute z-50 mt-1 w-full max-w-[280px]', painelDropdownRootClass]"
-    >
-      <ProdutosSelecaoUnicaPainel
-        v-model:filtro="filtro"
-        v-model:lista-sugestoes-ref="listaSugestoesRef"
-        :config="config"
-        :buscando="buscando"
-        :sugestoes="sugestoes"
-        :mostrar-opcao-criar="mostrarOpcaoCriar"
-        :criando="criando"
-        :eliminando-id="eliminandoId"
-        :disabled="disabled"
-        :indice-destaque="indiceDestaque"
-        :item-sugestao-class="itemSugestaoClass"
-        :inp-filtro-class="inpFiltroClass"
-        :icon-acao-class="iconAcaoClass"
-        :painel-header-class="painelHeaderClass"
-        :mostrar-filtro="false"
-        @fechar="fecharPainel"
-        @escolher="escolherItem"
-        @iniciar-edicao="iniciarEdicao"
-        @eliminar="pedirEliminar"
-        @criar="criarDigitado"
-        @hover-destaque="hoverDestaque"
-      />
-    </div>
   </div>
 
   <BaseModal

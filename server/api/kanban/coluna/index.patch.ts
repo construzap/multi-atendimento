@@ -8,13 +8,15 @@ type Body = {
   coluna_id?: unknown
   nome?: unknown
   cor?: unknown
+  id_agendamento_mensagem?: unknown
 }
 
 const HEX6 = /^#[0-9A-Fa-f]{6}$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * PATCH /api/kanban/coluna
- * Body: `{ workspace_id, coluna_id, nome, cor? }`
+ * Body: `{ workspace_id, coluna_id, nome?, cor?, id_agendamento_mensagem? }`
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'PATCH')
@@ -51,31 +53,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'coluna_id inválido.' })
   }
 
-  const nome =
-    typeof body.nome === 'string' ? body.nome.trim() : ''
-  if (!nome) {
-    throw createError({ statusCode: 400, statusMessage: 'Informe o nome da coluna.' })
-  }
-
-  let cor: string | null = null
-  if (body.cor !== undefined && body.cor !== null && body.cor !== '') {
-    const c = typeof body.cor === 'string' ? body.cor.trim() : ''
-    if (c && !HEX6.test(c)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Cor deve ser um hex de 6 dígitos (ex.: #38BDF8).',
-      })
-    }
-    cor = c || null
-  }
-
   await checkWorkspace(event, workspaceId, userId)
 
   const admin = serverSupabaseServiceRole<any>(event)
 
   const { data: coluna, error: colErr } = await admin
     .from('funil_workspace_colunas')
-    .select('id, funil_id')
+    .select('id, funil_id, nome, cor')
     .eq('id', colunaId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -110,15 +94,60 @@ export default defineEventHandler(async (event) => {
     })
   }
 
+  const nomeBody = typeof body.nome === 'string' ? body.nome.trim() : ''
+  const nomeExistente =
+    typeof coluna.nome === 'string' ? coluna.nome.trim() : String(coluna.nome ?? '').trim()
+  const nome = nomeBody || nomeExistente
+  if (!nome) {
+    throw createError({ statusCode: 400, statusMessage: 'Informe o nome da coluna.' })
+  }
+
+  let cor: string | null = null
+  if (body.cor !== undefined && body.cor !== null && body.cor !== '') {
+    const c = typeof body.cor === 'string' ? body.cor.trim() : ''
+    if (c && !HEX6.test(c)) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Cor deve ser um hex de 6 dígitos (ex.: #38BDF8).',
+      })
+    }
+    cor = c || null
+  } else if (body.cor === undefined) {
+    const corExistente =
+      typeof coluna.cor === 'string' ? coluna.cor.trim() : coluna.cor != null ? String(coluna.cor) : ''
+    cor = corExistente || null
+  }
+
+  let idAgendamentoMensagem: string | null | undefined = undefined
+  if (body.id_agendamento_mensagem !== undefined) {
+    if (body.id_agendamento_mensagem === null || body.id_agendamento_mensagem === '') {
+      idAgendamentoMensagem = null
+    } else {
+      const raw = String(body.id_agendamento_mensagem).trim()
+      if (!UUID_RE.test(raw)) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'id_agendamento_mensagem inválido.',
+        })
+      }
+      idAgendamentoMensagem = raw
+    }
+  }
+
   const nowIso = new Date().toISOString()
+
+  const updatePayload: Record<string, unknown> = {
+    nome,
+    cor,
+    updated_at: nowIso,
+  }
+  if (idAgendamentoMensagem !== undefined) {
+    updatePayload.id_agendamento_mensagem = idAgendamentoMensagem
+  }
 
   const { error: upErr } = await admin
     .from('funil_workspace_colunas')
-    .update({
-      nome,
-      cor,
-      updated_at: nowIso,
-    })
+    .update(updatePayload)
     .eq('id', colunaId)
 
   if (upErr) {
