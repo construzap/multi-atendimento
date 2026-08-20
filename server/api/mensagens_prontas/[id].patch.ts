@@ -12,6 +12,8 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 import {
   assertColunaDestinoDoWorkspace,
   mapColunaDestinoId,
+  mapIaLigada,
+  parseIaLigadaBody,
   parseOptionalColunaDestinoId,
 } from '../../utils/mensagensProntasColunaDestino'
 import { parsePositiveInt } from '../../utils/parsePositiveInt'
@@ -21,9 +23,17 @@ type Body = {
   nome?: unknown
   passos?: unknown
   coluna_destino_id?: unknown
+  ia_ligada?: unknown
 }
 
-const TIPOS: MensagemProntaTipo[] = ['texto', 'audio', 'imagem', 'video', 'documento']
+const TIPOS: MensagemProntaTipo[] = [
+  'texto',
+  'audio',
+  'imagem',
+  'video',
+  'documento',
+  'figurinha',
+]
 
 function strRequired(raw: unknown, label: string): string {
   const s = typeof raw === 'string' ? raw.trim() : String(raw ?? '').trim()
@@ -95,7 +105,7 @@ function parsePassos(raw: unknown): MensagemProntaPassoInput[] {
 
 /**
  * PATCH /api/mensagens_prontas/:id
- * Body: `{ workspace_id, nome, passos[], coluna_destino_id? }`
+ * Body: `{ workspace_id, nome, passos[], coluna_destino_id?, ia_ligada? }`
  * Atualiza a capa e substitui todos os passos da sequência.
  */
 export default defineEventHandler(async (event): Promise<AtualizarMensagemProntaResponse> => {
@@ -123,6 +133,7 @@ export default defineEventHandler(async (event): Promise<AtualizarMensagemPronta
   const nome = strRequired(body.nome, 'Nome')
   const passos = parsePassos(body.passos)
   const colunaDestinoId = parseOptionalColunaDestinoId(body.coluna_destino_id)
+  const iaLigada = parseIaLigadaBody(body.ia_ligada)
 
   await checkWorkspace(event, workspaceId, userId)
 
@@ -148,10 +159,10 @@ export default defineEventHandler(async (event): Promise<AtualizarMensagemPronta
 
   const { data: sequencia, error: updErr } = await admin
     .from('mensagens_prontas_sequencias')
-    .update({ nome, coluna_destino_id: colunaDestinoId })
+    .update({ nome, coluna_destino_id: colunaDestinoId, ia_ligada: iaLigada })
     .eq('id', sequenciaId)
     .eq('workspace_id', workspaceId)
-    .select('id, nome, workspace_id, user_id, created_at, coluna_destino_id')
+    .select('id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada')
     .maybeSingle()
 
   if (updErr) {
@@ -198,6 +209,7 @@ export default defineEventHandler(async (event): Promise<AtualizarMensagemPronta
     user_id: String(sequencia.user_id ?? existente.user_id ?? userId),
     created_at: String(sequencia.created_at ?? existente.created_at ?? new Date().toISOString()),
     coluna_destino_id: mapColunaDestinoId(sequencia.coluna_destino_id),
+    ia_ligada: mapIaLigada(sequencia.ia_ligada),
   }
 
   const passosOut: MensagemProntaPasso[] = (passosCriados ?? []).map((row: Record<string, unknown>) => ({

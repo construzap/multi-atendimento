@@ -6,6 +6,9 @@ export const MENSAGEM_PRONTAS_B2_BUCKET_PADRAO = 'mensagemprontas'
 
 const MIMES_IMAGEM = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
+/** Stickers WhatsApp: preferencialmente WebP; PNG também aceito. */
+const MIMES_FIGURINHA = new Set(['image/webp', 'image/png'])
+
 const MIMES_AUDIO = new Set([
   'audio/mpeg',
   'audio/mp3',
@@ -37,7 +40,12 @@ const MIMES_DOCUMENTO = new Set([
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 ])
 
-export type MensagemProntaMidiaTipoUpload = 'imagem' | 'audio' | 'video' | 'documento'
+export type MensagemProntaMidiaTipoUpload =
+  | 'imagem'
+  | 'audio'
+  | 'video'
+  | 'documento'
+  | 'figurinha'
 
 export function resolverBucketMensagemProntas(b2MensagemProntasBucketName: string | undefined): string {
   const t = String(b2MensagemProntasBucketName ?? '').trim()
@@ -60,6 +68,12 @@ export function validarMimeMensagemPronta(
     throw createError({
       statusCode: 400,
       statusMessage: 'MIME não permitido para imagem (use jpeg, png, webp ou gif).',
+    })
+  }
+  if (tipo === 'figurinha' && !MIMES_FIGURINHA.has(m)) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'MIME não permitido para figurinha (use webp ou png).',
     })
   }
   if (tipo === 'audio' && !MIMES_AUDIO.has(m)) {
@@ -85,6 +99,7 @@ export function validarMimeMensagemPronta(
 
 function pastaPorTipo(tipo: MensagemProntaMidiaTipoUpload): string {
   if (tipo === 'imagem') return 'imagens'
+  if (tipo === 'figurinha') return 'figurinhas'
   if (tipo === 'audio') return 'audios'
   if (tipo === 'video') return 'videos'
   return 'documentos'

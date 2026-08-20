@@ -63,6 +63,8 @@ const passoAtivoIdx = ref(0)
 const moverContato = ref(false)
 const funilDestinoId = ref<number | null>(null)
 const colunaDestinoId = ref<number | null>(null)
+/** I.A. ligada após o envio da sequência (default true, igual ao DB). */
+const iaLigada = ref(true)
 
 /** Qual passo está gravando áudio (só um por vez). */
 const gravandoPassoKey = ref<string | null>(null)
@@ -86,6 +88,12 @@ const tiposOpcao: { id: MensagemProntaTipo; label: string; icon: string }[] = [
   { id: 'imagem', label: 'Imagem', icon: 'image' },
   { id: 'audio', label: 'Áudio', icon: 'mic' },
   { id: 'video', label: 'Vídeo', icon: 'movie' },
+  { id: 'figurinha', label: 'Figurinha', icon: 'mood' },
+]
+
+const iaOpcoes: { value: boolean; label: string; icon: string }[] = [
+  { value: true, label: 'I.A. ligada', icon: 'smart_toy' },
+  { value: false, label: 'I.A. desligada', icon: 'psychology_alt' },
 ]
 
 const editando = computed(() => Boolean(props.sequenciaId?.trim()))
@@ -155,6 +163,15 @@ function labelTipo(tipo: MensagemProntaTipo): string {
     ?? (tipo === 'documento' ? 'Documento' : 'Texto')
 }
 
+function classeSegmentoIa(ativo: boolean): string {
+  return [
+    'inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-semibold transition disabled:opacity-50',
+    ativo
+      ? 'border-primary bg-primary/10 text-primary'
+      : 'border-outline/35 bg-surface-container-lowest text-on-surface-variant hover:border-outline/60 dark:border-dark-outline/35 dark:bg-dark-surface-container-low dark:text-dark-on-surface-variant',
+  ].join(' ')
+}
+
 function resumoPasso(passo: PassoForm): string {
   if (passo.tipo === 'texto') {
     const t = passo.conteudo.trim()
@@ -197,6 +214,7 @@ function resetForm() {
   moverContato.value = false
   funilDestinoId.value = null
   colunaDestinoId.value = null
+  iaLigada.value = true
   pending.value = false
 }
 
@@ -268,6 +286,7 @@ async function hidratarEdicao(sequenciaId: string) {
     return
   }
   nome.value = item.sequencia.nome
+  iaLigada.value = item.sequencia.ia_ligada !== false
   const ordenados = [...item.passos].sort((a, b) => a.ordem - b.ordem)
   passos.value =
     ordenados.length > 0
@@ -310,9 +329,22 @@ watch(funilDestinoId, () => {
 })
 
 onUnmounted(() => {
+  document.removeEventListener('paste', onPasteMidia)
   if (isRecording.value) cancelRecording()
   for (const p of passos.value) revokePreview(p)
 })
+
+watch(
+  () => props.open,
+  (aberto) => {
+    if (aberto) {
+      document.addEventListener('paste', onPasteMidia)
+      return
+    }
+    document.removeEventListener('paste', onPasteMidia)
+  },
+  { immediate: true },
+)
 
 function fechar() {
   if (isRecording.value) cancelRecording()
@@ -405,6 +437,7 @@ function onTipoChange(passo: PassoForm) {
 
 function acceptParaTipo(tipo: MensagemProntaTipo): string {
   if (tipo === 'imagem') return 'image/jpeg,image/png,image/webp,image/gif'
+  if (tipo === 'figurinha') return 'image/webp,image/png'
   if (tipo === 'audio') return 'audio/*'
   if (tipo === 'video') return 'video/mp4,video/quicktime,video/webm'
   return ''
@@ -424,13 +457,76 @@ function onArquivoChange(passo: PassoForm, ev: Event) {
   const input = ev.target as HTMLInputElement
   const file = input.files?.[0] ?? null
   if (!file) return
+  aplicarArquivoNoPasso(passo, file)
+}
 
+function mimePermitidoParaTipo(tipo: MensagemProntaTipo, mime: string): boolean {
+  const m = (mime.split(';')[0] ?? '').trim().toLowerCase()
+  if (!m.startsWith('image/')) return false
+  if (tipo === 'imagem') {
+    return m === 'image/jpeg' || m === 'image/png' || m === 'image/webp' || m === 'image/gif'
+  }
+  if (tipo === 'figurinha') {
+    return m === 'image/webp' || m === 'image/png'
+  }
+  return false
+}
+
+function aplicarArquivoNoPasso(passo: PassoForm, file: File) {
   limparArquivoPasso(passo)
   passo.arquivo = file
   passo.nomeArquivo = file.name
-  if (passo.tipo === 'imagem' || passo.tipo === 'video' || passo.tipo === 'audio') {
+  if (
+    passo.tipo === 'imagem' ||
+    passo.tipo === 'figurinha' ||
+    passo.tipo === 'video' ||
+    passo.tipo === 'audio'
+  ) {
     passo.previewUrl = globalThis.URL.createObjectURL(file)
   }
+}
+
+function arquivoImagemDoClipboard(items: DataTransferItemList | null | undefined): File | null {
+  if (!items) return null
+  for (const item of items) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (file) return file
+  }
+  return null
+}
+
+function onPasteMidia(ev: ClipboardEvent) {
+  if (!props.open || pending.value) return
+
+  const passo = passoAtivo.value
+  if (!passo || (passo.tipo !== 'imagem' && passo.tipo !== 'figurinha')) return
+
+  const target = ev.target as HTMLElement | null
+  if (target) {
+    const tag = target.tagName?.toLowerCase()
+    if (tag === 'textarea' || (tag === 'input' && (target as HTMLInputElement).type === 'text')) {
+      // Não intercepta colagem de texto no nome da sequência.
+      return
+    }
+  }
+
+  const file = arquivoImagemDoClipboard(ev.clipboardData?.items)
+  if (!file) return
+
+  if (!mimePermitidoParaTipo(passo.tipo, file.type)) {
+    toast.error(
+      passo.tipo === 'figurinha'
+        ? 'Figurinha precisa ser WebP ou PNG.'
+        : 'Formato de imagem não suportado (use jpeg, png, webp ou gif).',
+    )
+    ev.preventDefault()
+    return
+  }
+
+  ev.preventDefault()
+  aplicarArquivoNoPasso(passo, file)
+  toast.success(passo.tipo === 'figurinha' ? 'Figurinha colada.' : 'Imagem colada.')
 }
 
 async function iniciarGravacao(passo: PassoForm) {
@@ -577,6 +673,7 @@ async function salvar() {
         nome: nomeTrim,
         passos: passosBody,
         coluna_destino_id: colunaDestino,
+        ia_ligada: iaLigada.value,
       })
       toast.success('Mensagem pronta atualizada.')
     } else {
@@ -585,6 +682,7 @@ async function salvar() {
         nome: nomeTrim,
         passos: passosBody,
         coluna_destino_id: colunaDestino,
+        ia_ligada: iaLigada.value,
       })
       toast.success('Mensagem pronta criada.')
     }
@@ -729,7 +827,7 @@ async function salvar() {
             <span class="text-[11px] font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
               Tipo
             </span>
-            <div class="grid grid-cols-4 gap-1.5">
+            <div class="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
               <button
                 v-for="t in tiposOpcao"
                 :key="t.id"
@@ -812,10 +910,19 @@ async function salvar() {
             </p>
           </div>
 
-          <!-- Imagem / vídeo -->
-          <div v-else-if="passoAtivo.tipo === 'imagem' || passoAtivo.tipo === 'video'" class="space-y-2">
+          <!-- Imagem / figurinha / vídeo -->
+          <div
+            v-else-if="passoAtivo.tipo === 'imagem' || passoAtivo.tipo === 'figurinha' || passoAtivo.tipo === 'video'"
+            class="space-y-2"
+          >
             <span class="text-[11px] font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
-              {{ passoAtivo.tipo === 'imagem' ? 'Imagem' : 'Vídeo' }}
+              {{
+                passoAtivo.tipo === 'imagem'
+                  ? 'Imagem'
+                  : passoAtivo.tipo === 'figurinha'
+                    ? 'Figurinha'
+                    : 'Vídeo'
+              }}
             </span>
             <input
               :ref="(el) => setFileInputRef(passoAtivo.key, el)"
@@ -841,10 +948,11 @@ async function salvar() {
                 </button>
               </div>
               <img
-                v-if="passoAtivo.tipo === 'imagem' && midiaSrc(passoAtivo)"
+                v-if="(passoAtivo.tipo === 'imagem' || passoAtivo.tipo === 'figurinha') && midiaSrc(passoAtivo)"
                 :src="midiaSrc(passoAtivo)!"
                 alt="Prévia"
                 class="max-h-36 rounded-md object-contain"
+                :class="passoAtivo.tipo === 'figurinha' ? 'mx-auto' : ''"
               />
               <video
                 v-else-if="passoAtivo.tipo === 'video' && midiaSrc(passoAtivo)"
@@ -857,13 +965,37 @@ async function salvar() {
             <button
               v-else
               type="button"
-              class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-outline/50 bg-surface-container-lowest px-3 py-5 text-sm font-medium text-on-surface-variant transition hover:border-primary hover:text-primary dark:border-dark-outline/50 dark:bg-dark-surface-container-low"
+              class="inline-flex w-full flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-outline/50 bg-surface-container-lowest px-3 py-5 text-sm font-medium text-on-surface-variant transition hover:border-primary hover:text-primary dark:border-dark-outline/50 dark:bg-dark-surface-container-low"
               :disabled="pending"
               @click="abrirSeletorArquivo(passoAtivo)"
             >
-              <span class="material-symbols-outlined text-[20px]" aria-hidden="true">upload_file</span>
-              Enviar do dispositivo
+              <span class="inline-flex items-center gap-2">
+                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">upload_file</span>
+                {{
+                  passoAtivo.tipo === 'figurinha'
+                    ? 'Enviar figurinha (WebP ou PNG)'
+                    : 'Enviar do dispositivo'
+                }}
+              </span>
+              <span
+                v-if="passoAtivo.tipo === 'imagem' || passoAtivo.tipo === 'figurinha'"
+                class="text-[11px] font-normal text-on-surface-variant/80 dark:text-dark-on-surface-variant/80"
+              >
+                ou cole com Ctrl+V
+              </span>
             </button>
+            <p
+              v-if="passoAtivo.tipo === 'figurinha'"
+              class="text-[10px] text-on-surface-variant dark:text-dark-on-surface-variant"
+            >
+              Preferencialmente WebP (formato de sticker do WhatsApp). Também dá para colar com Ctrl+V.
+            </p>
+            <p
+              v-else-if="passoAtivo.tipo === 'imagem' && (passoAtivo.arquivo || midiaSrc(passoAtivo))"
+              class="text-[10px] text-on-surface-variant dark:text-dark-on-surface-variant"
+            >
+              Cole outra imagem com Ctrl+V para substituir.
+            </p>
           </div>
 
           <!-- Áudio -->
@@ -994,9 +1126,32 @@ async function salvar() {
         </div>
       </div>
 
-      <!-- Após os passos: mover contato no kanban -->
+      <!-- Após os passos: I.A. + mover contato no kanban -->
       <div class="space-y-3 rounded-xl border border-outline/35 bg-surface-container-low/70 p-3 dark:border-dark-outline/35 dark:bg-dark-surface-container/50">
-        <label class="flex cursor-pointer items-start gap-2.5">
+        <div class="space-y-2">
+          <div>
+            <p class="text-sm font-semibold">I.A. após o envio</p>
+            <p class="mt-0.5 text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+              Define se o atendimento automático fica ligado ou desligado nesta conversa após a sequência.
+            </p>
+          </div>
+          <div class="flex flex-wrap gap-2" role="group" aria-label="I.A. após o envio">
+            <button
+              v-for="opc in iaOpcoes"
+              :key="String(opc.value)"
+              type="button"
+              :class="classeSegmentoIa(iaLigada === opc.value)"
+              :aria-pressed="iaLigada === opc.value"
+              :disabled="pending"
+              @click="iaLigada = opc.value"
+            >
+              <span class="material-symbols-outlined text-[18px]" aria-hidden="true">{{ opc.icon }}</span>
+              {{ opc.label }}
+            </button>
+          </div>
+        </div>
+
+        <label class="flex cursor-pointer items-start gap-2.5 border-t border-outline/25 pt-3 dark:border-dark-outline/25">
           <input
             v-model="moverContato"
             type="checkbox"

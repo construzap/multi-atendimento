@@ -14,7 +14,14 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 const WEBHOOK_MENSAGEM_PRONTA_N8N =
   'https://nwebhook.construzap.com/webhook/muster-septum-cuddly0-magnesium'
 
-const TIPOS: MensagemProntaTipo[] = ['texto', 'audio', 'imagem', 'video', 'documento']
+const TIPOS: MensagemProntaTipo[] = [
+  'texto',
+  'audio',
+  'imagem',
+  'video',
+  'documento',
+  'figurinha',
+]
 
 type Body = {
   workspace_id?: unknown
@@ -25,6 +32,7 @@ type Body = {
   mensagem_pronta?: unknown
   coluna_destino_id?: unknown
   mover_contato?: unknown
+  ia_ligada?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -81,6 +89,7 @@ function parseMensagemPronta(raw: unknown): MensagemProntaComPassos {
       s.coluna_destino_id == null || String(s.coluna_destino_id).trim() === ''
         ? null
         : parsePositiveInt(s.coluna_destino_id, 'mensagem_pronta.sequencia.coluna_destino_id'),
+    ia_ligada: !(s.ia_ligada === false || s.ia_ligada === 'false' || s.ia_ligada === 0 || s.ia_ligada === '0'),
   }
 
   if (!Array.isArray(o.passos) || o.passos.length === 0) {
@@ -166,6 +175,18 @@ export default defineEventHandler(async (event): Promise<WebhookN8nMensagemPront
   mensagem_pronta.sequencia.coluna_destino_id = coluna_destino_id
   const mover_contato = coluna_destino_id != null
 
+  // Preferência: top-level do body → sequencia; default true.
+  let ia_ligada = mensagem_pronta.sequencia.ia_ligada
+  if (body.ia_ligada !== undefined && body.ia_ligada !== null && String(body.ia_ligada).trim() !== '') {
+    ia_ligada = !(
+      body.ia_ligada === false ||
+      body.ia_ligada === 'false' ||
+      body.ia_ligada === 0 ||
+      body.ia_ligada === '0'
+    )
+  }
+  mensagem_pronta.sequencia.ia_ligada = ia_ligada
+
   await checkWorkspace(event, workspace_id, userId)
 
   const payload = {
@@ -177,6 +198,7 @@ export default defineEventHandler(async (event): Promise<WebhookN8nMensagemPront
     mensagem_pronta,
     coluna_destino_id,
     mover_contato,
+    ia_ligada,
   }
 
   let res: Response

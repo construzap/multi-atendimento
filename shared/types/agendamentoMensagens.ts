@@ -105,7 +105,7 @@ export type AgendamentoMensagemEliminarResponse = {
 
 /** Campos mínimos de `conversas` para escolha de destinatário no agendamento. */
 export type AgendamentoDestinatarioConversa = {
-  connect_phone: string | null
+  phone: string | null
   id_canal: number | null
   lid: string | null
   name: string | null

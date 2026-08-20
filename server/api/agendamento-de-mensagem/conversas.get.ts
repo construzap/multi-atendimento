@@ -7,7 +7,7 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 
 const PER_PAGE = 20
 
-const SELECT = 'connect_phone, id_canal, lid, name'
+const SELECT = 'phone, id_canal, lid, name'
 
 function escapeIlike(term: string): string {
   return term.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
@@ -27,7 +27,7 @@ function parsePositiveInt(raw: unknown, field: string): number {
 /**
  * GET /api/agendamento-de-mensagem/conversas?workspace_id=&id_canal=&page=&q=
  * Lista conversas do workspace/canal para escolha de destinatário no agendamento.
- * Paginação de 20 em 20; busca opcional por `name`, `connect_phone` ou `phone`.
+ * Paginação de 20 em 20; busca opcional por `name` ou `phone`.
  */
 export default defineEventHandler(async (event): Promise<AgendamentoDestinatariosListResponse> => {
   const client = await serverSupabaseClient(event)
@@ -91,7 +91,7 @@ export default defineEventHandler(async (event): Promise<AgendamentoDestinatario
   if (searchTerm) {
     const escaped = escapeIlike(searchTerm)
     const pattern = `%${escaped}%`
-    query = query.or(`name.ilike.${pattern},connect_phone.ilike.${pattern},phone.ilike.${pattern}`)
+    query = query.or(`name.ilike.${pattern},phone.ilike.${pattern}`)
   }
 
   const { data, error, count } = await query

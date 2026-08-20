@@ -42,9 +42,9 @@ export function destinatariosCacheKey(workspaceId: number, idCanal: number, q: s
 
 function destinatarioConversaParaUi(c: AgendamentoDestinatarioConversa): ContatoDestinoUi {
   return {
-    key: `${c.id_canal ?? 0}:${c.lid ?? ''}:${c.connect_phone ?? ''}:${c.name ?? ''}`,
+    key: `${c.id_canal ?? 0}:${c.lid ?? ''}:${c.phone ?? ''}:${c.name ?? ''}`,
     nomecliente: c.name,
-    telefone: c.connect_phone ?? c.lid,
+    telefone: c.phone ?? c.lid,
   }
 }
 

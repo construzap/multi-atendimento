@@ -14,6 +14,20 @@ export function mapColunaDestinoId(raw: unknown): number | null {
   return n
 }
 
+/** Default `true` (coluna DB `ia_ligada boolean not null default true`). */
+export function mapIaLigada(raw: unknown): boolean {
+  if (raw === false || raw === 'false' || raw === 0 || raw === '0') return false
+  return true
+}
+
+/** Body: se omitido, default `true`. */
+export function parseIaLigadaBody(raw: unknown): boolean {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return true
+  if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true
+  if (raw === false || raw === 'false' || raw === 0 || raw === '0') return false
+  throw createError({ statusCode: 400, statusMessage: 'ia_ligada inválido (true ou false).' })
+}
+
 /**
  * Garante que a coluna existe, não está soft-deleted e pertence ao workspace.
  */

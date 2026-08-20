@@ -1,4 +1,10 @@
-export type MensagemProntaTipo = 'texto' | 'audio' | 'imagem' | 'video' | 'documento'
+export type MensagemProntaTipo =
+  | 'texto'
+  | 'audio'
+  | 'imagem'
+  | 'video'
+  | 'documento'
+  | 'figurinha'
 
 export type MensagemProntaPassoInput = {
   ordem: number
@@ -18,6 +24,8 @@ export type MensagemProntaSequenciaResumo = {
    * `null` = não movimentar.
    */
   coluna_destino_id: number | null
+  /** Se a I.A. deve ficar ligada após o envio da sequência. Default `true`. */
+  ia_ligada: boolean
 }
 
 export type MensagemProntaPasso = {
@@ -43,6 +51,7 @@ export type CriarMensagemProntaBody = {
   nome: string
   passos: MensagemProntaPassoInput[]
   coluna_destino_id?: number | null
+  ia_ligada?: boolean
 }
 
 export type CriarMensagemProntaResponse = {
@@ -77,6 +86,8 @@ export type WebhookN8nMensagemProntaBody = {
   coluna_destino_id: number | null
   /** Espelha se haverá movimentação (`coluna_destino_id != null`). */
   mover_contato: boolean
+  /** Espelha `mensagem_pronta.sequencia.ia_ligada`. */
+  ia_ligada: boolean
 }
 
 export type WebhookN8nMensagemProntaResponse = {
@@ -88,6 +99,7 @@ export type AtualizarMensagemProntaBody = {
   nome: string
   passos: MensagemProntaPassoInput[]
   coluna_destino_id?: number | null
+  ia_ligada?: boolean
 }
 
 export type AtualizarMensagemProntaResponse = {

@@ -9,7 +9,7 @@ import type {
 } from '#shared/types/mensagensProntas'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
-import { mapColunaDestinoId } from '../../utils/mensagensProntasColunaDestino'
+import { mapColunaDestinoId, mapIaLigada } from '../../utils/mensagensProntasColunaDestino'
 
 /**
  * GET /api/mensagens_prontas?workspace_id=
@@ -51,7 +51,7 @@ export default defineEventHandler(async (event): Promise<ListarMensagensProntasR
 
   let seqQuery = admin
     .from('mensagens_prontas_sequencias')
-    .select('id, nome, workspace_id, user_id, created_at, coluna_destino_id')
+    .select('id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada')
     .eq('workspace_id', workspaceId)
 
   if (sequenciaIdFilter) {
@@ -109,6 +109,7 @@ export default defineEventHandler(async (event): Promise<ListarMensagensProntasR
       user_id: String(row.user_id ?? ''),
       created_at: String(row.created_at ?? new Date().toISOString()),
       coluna_destino_id: mapColunaDestinoId(row.coluna_destino_id),
+      ia_ligada: mapIaLigada(row.ia_ligada),
     }
     return {
       sequencia,

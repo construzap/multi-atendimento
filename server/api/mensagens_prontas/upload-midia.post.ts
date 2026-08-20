@@ -18,7 +18,13 @@ type Body = {
   filename?: unknown
 }
 
-const TIPOS_MIDIA: MensagemProntaMidiaTipoUpload[] = ['imagem', 'audio', 'video', 'documento']
+const TIPOS_MIDIA: MensagemProntaMidiaTipoUpload[] = [
+  'imagem',
+  'audio',
+  'video',
+  'documento',
+  'figurinha',
+]
 
 function parseWorkspaceId(raw: unknown): number {
   const n =

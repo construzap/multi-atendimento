@@ -12,10 +12,10 @@ export const orcamentoprontoTool: ToolDef = {
     '- produtos, total_do_orcamento, forma_pagamento, entrega_ou_retirada, observacao\n' +
     '- Se for ENTREGA: o campo endereco é OBRIGATÓRIO (não coloque o endereço em observacao).\n' +
     '- Se o cliente informou CPF ou CNPJ: preencha documento com o valor informado.\n' +
-    '- Se a forma de pagamento for DINHEIRO: o campo troco é OBRIGATÓRIO (quanto de troco o cliente vai precisar).\n\n' +
+    '- Se a forma de pagamento for DINHEIRO: o campo troco_para é OBRIGATÓRIO (valor com que o cliente vai pagar).\n\n' +
     'Proibido: chamar <orcamentopronto> sem ter obtido os ids via <estoque>.\n' +
     'Proibido: inventar id, enviar array vazio ou incluir preço unitário no array de produtos.\n' +
-    'Proibido: colocar endereço, forma de pagamento, troco ou "entrega/retirada" dentro de observacao.',
+    'Proibido: colocar endereço, forma de pagamento, troco_para ou "entrega/retirada" dentro de observacao.',
   parameters: {
     type: 'object',
     properties: {
@@ -49,22 +49,22 @@ export const orcamentoprontoTool: ToolDef = {
       observacao: {
         type: 'string',
         description:
-          'SOMENTE um resumo objetivo da conversa (o que o cliente pediu e o que foi combinado). Não inclua endereço, documento, forma de pagamento, troco nem entrega/retirada neste campo.',
+          'SOMENTE um resumo objetivo da conversa (o que o cliente pediu e o que foi combinado). Não inclua endereço, documento, forma de pagamento, troco_para nem entrega/retirada neste campo.',
       },
       forma_pagamento: {
         type: 'string',
         description:
-          'Forma de pagamento escolhida pelo cliente (ex.: Pix, cartão, dinheiro). Se for dinheiro, preencha também o campo troco.',
+          'Forma de pagamento escolhida pelo cliente (ex.: Pix, cartão, dinheiro). Se for dinheiro, preencha também o campo troco_para.',
       },
-      troco: {
+      troco_para: {
         type: 'string',
         description:
           'OBRIGATÓRIO quando forma_pagamento for dinheiro.\n' +
-          'Informe quanto de troco o cliente vai precisar.\n' +
-          'Se ele disse com quanto vai pagar (ex.: "vou pagar com 100" e o total é 80), calcule o troco (20) e envie o valor.\n' +
-          'Se ele disse que não precisa de troco, envie "sem troco".\n' +
+          'Informe o valor COM QUE o cliente vai pagar (não calcule o troco).\n' +
+          'Ex.: pedido de R$ 40 e cliente disse "vou pagar com 80" → envie "80".\n' +
+          'Se ele disse que vai pagar exatamente o valor do pedido ou não precisa de troco, envie o valor total informado por ele.\n' +
           'Se a forma de pagamento NÃO for dinheiro, envie string vazia "".\n' +
-          'Nunca coloque o troco em observacao.',
+          'Nunca coloque este valor em observacao.',
       },
       entrega_ou_retirada: {
         type: 'string',
@@ -102,7 +102,7 @@ export const orcamentoprontoTool: ToolDef = {
       'observacao',
       'endereco',
       'documento',
-      'troco',
+      'troco_para',
     ],
   },
   urlConfigKey: 'agenteToolOrcamentoProntoUrl',
@@ -122,7 +122,7 @@ export const orcamentoprontoTool: ToolDef = {
     tempo_resposta: ctxStr(ctx.tempo_resposta),
     ai_assinatura_enabled: ctxStr(ctx.ai_assinatura_enabled),
     forma_pagamento: argStr(args, 'forma_pagamento'),
-    troco: argStr(args, 'troco'),
+    troco_para: argStr(args, 'troco_para'),
     'entrega ou retirada': argStr(args, 'entrega_ou_retirada'),
     workspace_id: String(ctx.workspace_id),
     canal_id: String(ctx.canal_id),

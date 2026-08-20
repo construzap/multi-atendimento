@@ -31,11 +31,17 @@ function mapColunaDestinoId(raw: unknown): number | null {
   return n
 }
 
+function mapIaLigada(raw: unknown): boolean {
+  if (raw === false || raw === 'false' || raw === 0 || raw === '0') return false
+  return true
+}
+
 function normalizeItem(item: MensagemProntaComPassos): MensagemProntaComPassos {
   return {
     sequencia: {
       ...item.sequencia,
       coluna_destino_id: mapColunaDestinoId(item.sequencia.coluna_destino_id),
+      ia_ligada: mapIaLigada(item.sequencia.ia_ligada),
     },
     passos: item.passos ?? [],
   }
@@ -54,6 +60,7 @@ function previewTexto(passos: MensagemProntaPasso[], fallbackNome: string): stri
     audio: 'Áudio',
     video: 'Vídeo',
     documento: 'Documento',
+    figurinha: 'Figurinha',
   }
   return labelTipo[primeiro.tipo] ?? fallbackNome
 }
@@ -239,6 +246,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
       nome: string
       passos: MensagemProntaPassoInput[]
       coluna_destino_id?: number | null
+      ia_ligada?: boolean
     }) {
       const res = await $fetch<CriarMensagemProntaResponse>('/api/mensagens_prontas', {
         method: 'POST',
@@ -247,6 +255,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
           nome: input.nome,
           passos: input.passos,
           coluna_destino_id: input.coluna_destino_id ?? null,
+          ia_ligada: input.ia_ligada ?? true,
         },
       })
       this.adicionarDoCreate(input.workspaceId, res)
@@ -259,6 +268,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
       nome: string
       passos: MensagemProntaPassoInput[]
       coluna_destino_id?: number | null
+      ia_ligada?: boolean
     }) {
       const res = await $fetch<AtualizarMensagemProntaResponse>(
         `/api/mensagens_prontas/${encodeURIComponent(input.sequenciaId)}`,
@@ -269,6 +279,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
             nome: input.nome,
             passos: input.passos,
             coluna_destino_id: input.coluna_destino_id ?? null,
+            ia_ligada: input.ia_ligada ?? true,
           },
         },
       )
@@ -330,6 +341,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
       const cloned = JSON.parse(JSON.stringify(raw)) as MensagemProntaComPassos
       const mensagem_pronta = resolverMensagemProntaParaEnvio(cloned, input.name)
       const coluna_destino_id = mensagem_pronta.sequencia.coluna_destino_id ?? null
+      const ia_ligada = mensagem_pronta.sequencia.ia_ligada !== false
 
       const body: WebhookN8nMensagemProntaBody = {
         workspace_id: input.workspaceId,
@@ -340,6 +352,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
         mensagem_pronta,
         coluna_destino_id,
         mover_contato: coluna_destino_id != null,
+        ia_ligada,
       }
 
       return await $fetch<WebhookN8nMensagemProntaResponse>(
