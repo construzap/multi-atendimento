@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, getQuery } from 'h3'
-import type { Canal } from '#shared/types/canal'
+import type { Canal, CanalHorarios } from '#shared/types/canal'
+import { ordenarCanalHorarios } from '#shared/types/canal'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 
@@ -9,6 +10,7 @@ const CANAL_SELECT =
 
 type CanalRow = Record<string, unknown> & {
   api_key_encrypted?: unknown
+  horarios?: unknown
 }
 
 function mapCanalPublico(row: CanalRow): Canal {
@@ -16,8 +18,15 @@ function mapCanalPublico(row: CanalRow): Canal {
   const temApiKey =
     api_key_encrypted != null && String(api_key_encrypted).trim().length > 0
 
+  const horariosRaw = row.horarios
+  const horarios =
+    horariosRaw && typeof horariosRaw === 'object'
+      ? ordenarCanalHorarios(horariosRaw as CanalHorarios)
+      : (horariosRaw as Canal['horarios'])
+
   return {
-    ...(rest as Omit<Canal, 'tem_api_key' | 'tem_inteligencia_artificial'>),
+    ...(rest as Omit<Canal, 'tem_api_key' | 'tem_inteligencia_artificial' | 'horarios'>),
+    horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
     url: typeof row.url === 'string' ? row.url : null,
     model_name: typeof row.model_name === 'string' ? row.model_name : null,

@@ -1,5 +1,6 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
-import type { Canal } from '#shared/types/canal'
+import type { Canal, CanalHorarios } from '#shared/types/canal'
+import { ordenarCanalHorarios } from '#shared/types/canal'
 import {
   parseCanalHorariosOpcional,
   parseEndereco,
@@ -33,15 +34,25 @@ type EditarCanalBody = {
 const CANAL_SELECT =
   'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted'
 
-type CanalRow = Record<string, unknown> & { api_key_encrypted?: unknown }
+type CanalRow = Record<string, unknown> & {
+  api_key_encrypted?: unknown
+  horarios?: unknown
+}
 
 function mapCanalPublico(row: CanalRow): Canal {
   const { api_key_encrypted, ...rest } = row
   const temApiKey =
     api_key_encrypted != null && String(api_key_encrypted).trim().length > 0
 
+  const horariosRaw = row.horarios
+  const horarios =
+    horariosRaw && typeof horariosRaw === 'object'
+      ? ordenarCanalHorarios(horariosRaw as CanalHorarios)
+      : (horariosRaw as Canal['horarios'])
+
   return {
-    ...(rest as Omit<Canal, 'tem_api_key' | 'tem_inteligencia_artificial'>),
+    ...(rest as Omit<Canal, 'tem_api_key' | 'tem_inteligencia_artificial' | 'horarios'>),
+    horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
     url: typeof row.url === 'string' ? row.url : null,
     model_name: typeof row.model_name === 'string' ? row.model_name : null,

@@ -65,6 +65,8 @@ const funilDestinoId = ref<number | null>(null)
 const colunaDestinoId = ref<number | null>(null)
 /** I.A. ligada após o envio da sequência (default true, igual ao DB). */
 const iaLigada = ref(true)
+/** Fechar pedidos da I.A. em aberto após o envio (default false). */
+const fecharPedidoEmAberto = ref(false)
 
 /** Qual passo está gravando áudio (só um por vez). */
 const gravandoPassoKey = ref<string | null>(null)
@@ -165,7 +167,7 @@ function labelTipo(tipo: MensagemProntaTipo): string {
 
 function classeSegmentoIa(ativo: boolean): string {
   return [
-    'inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-semibold transition disabled:opacity-50',
+    'inline-flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-xs font-semibold transition disabled:opacity-50 sm:w-auto sm:flex-1',
     ativo
       ? 'border-primary bg-primary/10 text-primary'
       : 'border-outline/35 bg-surface-container-lowest text-on-surface-variant hover:border-outline/60 dark:border-dark-outline/35 dark:bg-dark-surface-container-low dark:text-dark-on-surface-variant',
@@ -215,6 +217,7 @@ function resetForm() {
   funilDestinoId.value = null
   colunaDestinoId.value = null
   iaLigada.value = true
+  fecharPedidoEmAberto.value = false
   pending.value = false
 }
 
@@ -287,6 +290,7 @@ async function hidratarEdicao(sequenciaId: string) {
   }
   nome.value = item.sequencia.nome
   iaLigada.value = item.sequencia.ia_ligada !== false
+  fecharPedidoEmAberto.value = item.sequencia.fechar_pedido_em_aberto === true
   const ordenados = [...item.passos].sort((a, b) => a.ordem - b.ordem)
   passos.value =
     ordenados.length > 0
@@ -674,6 +678,7 @@ async function salvar() {
         passos: passosBody,
         coluna_destino_id: colunaDestino,
         ia_ligada: iaLigada.value,
+        fechar_pedido_em_aberto: fecharPedidoEmAberto.value,
       })
       toast.success('Mensagem pronta atualizada.')
     } else {
@@ -683,6 +688,7 @@ async function salvar() {
         passos: passosBody,
         coluna_destino_id: colunaDestino,
         ia_ligada: iaLigada.value,
+        fechar_pedido_em_aberto: fecharPedidoEmAberto.value,
       })
       toast.success('Mensagem pronta criada.')
     }
@@ -708,12 +714,12 @@ async function salvar() {
   <BaseModal
     :open="open"
     :title="tituloModal"
-    panel-class="w-full max-w-[720px]"
-    body-class="!overflow-hidden"
+    panel-class="w-full max-w-[720px] max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100vh-2rem)]"
+    body-class="!p-3 sm:!p-5"
     @update:open="emit('update:open', $event)"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-4 font-body text-on-surface dark:text-dark-on-surface">
+    <div class="flex flex-col gap-3 font-body text-on-surface sm:gap-4 dark:text-dark-on-surface">
       <label class="block space-y-1.5">
         <span class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
           Nome da sequência
@@ -727,7 +733,7 @@ async function salvar() {
         />
       </label>
 
-      <div class="flex min-h-0 flex-col gap-3 sm:flex-row sm:items-stretch">
+      <div class="flex min-h-0 flex-col gap-3 sm:flex-row sm:items-start">
         <!-- Lista compacta de passos -->
         <aside
           class="flex shrink-0 flex-col gap-2 sm:w-[200px] sm:border-r sm:border-outline/25 sm:pr-3 dark:sm:border-dark-outline/25"
@@ -749,7 +755,7 @@ async function salvar() {
             </button>
           </div>
 
-          <div class="flex max-h-28 gap-1.5 overflow-x-auto pb-1 sm:max-h-[320px] sm:flex-col sm:overflow-y-auto sm:overflow-x-hidden sm:pb-0">
+          <div class="flex max-h-24 gap-1.5 overflow-x-auto pb-1 sm:max-h-[min(36vh,260px)] sm:flex-col sm:overflow-y-auto sm:overflow-x-hidden sm:pb-0">
             <button
               v-for="(passo, idx) in passos"
               :key="passo.key"
@@ -832,7 +838,7 @@ async function salvar() {
                 v-for="t in tiposOpcao"
                 :key="t.id"
                 type="button"
-                class="flex flex-col items-center gap-1 rounded-xl border px-1 py-2 text-[11px] font-semibold transition disabled:opacity-50"
+                class="flex flex-col items-center gap-0.5 rounded-xl border px-1 py-1.5 text-[10px] font-semibold transition disabled:opacity-50 sm:gap-1 sm:py-2 sm:text-[11px]"
                 :class="
                   passoAtivo.tipo === t.id
                     ? 'border-primary bg-primary/10 text-primary'
@@ -841,7 +847,7 @@ async function salvar() {
                 :disabled="pending || estaGravandoPasso(passoAtivo)"
                 @click="setTipoPasso(passoAtivo, t.id)"
               >
-                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">{{ t.icon }}</span>
+                <span class="material-symbols-outlined text-[18px] sm:text-[20px]" aria-hidden="true">{{ t.icon }}</span>
                 {{ t.label }}
               </button>
             </div>
@@ -1127,7 +1133,7 @@ async function salvar() {
       </div>
 
       <!-- Após os passos: I.A. + mover contato no kanban -->
-      <div class="space-y-3 rounded-xl border border-outline/35 bg-surface-container-low/70 p-3 dark:border-dark-outline/35 dark:bg-dark-surface-container/50">
+      <div class="space-y-2.5 rounded-xl border border-outline/35 bg-surface-container-low/70 p-2.5 sm:space-y-3 sm:p-3 dark:border-dark-outline/35 dark:bg-dark-surface-container/50">
         <div class="space-y-2">
           <div>
             <p class="text-sm font-semibold">I.A. após o envio</p>
@@ -1135,7 +1141,7 @@ async function salvar() {
               Define se o atendimento automático fica ligado ou desligado nesta conversa após a sequência.
             </p>
           </div>
-          <div class="flex flex-wrap gap-2" role="group" aria-label="I.A. após o envio">
+          <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap" role="group" aria-label="I.A. após o envio">
             <button
               v-for="opc in iaOpcoes"
               :key="String(opc.value)"
@@ -1150,6 +1156,21 @@ async function salvar() {
             </button>
           </div>
         </div>
+
+        <label class="flex cursor-pointer items-start gap-2.5 border-t border-outline/25 pt-3 dark:border-dark-outline/25">
+          <input
+            v-model="fecharPedidoEmAberto"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 rounded border-outline/50 text-primary focus:ring-primary/30"
+            :disabled="pending"
+          />
+          <span class="min-w-0">
+            <span class="block text-sm font-semibold">Fechar pedidos da I.A. em aberto</span>
+            <span class="mt-0.5 block text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+              Encerra pedidos/orçamentos da I.A. que ainda estiverem abertos para este contato após a sequência.
+            </span>
+          </span>
+        </label>
 
         <label class="flex cursor-pointer items-start gap-2.5 border-t border-outline/25 pt-3 dark:border-dark-outline/25">
           <input

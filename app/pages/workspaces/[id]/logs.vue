@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
-import AdminAcessoNegado from '~/components/admin/AdminAcessoNegado.vue'
+import AdminAcessoNegado from '~/components/admin/pagina_inicial/AdminAcessoNegado.vue'
 import LogsWebhookDetalheModal from '~/components/logs/LogsWebhookDetalheModal.vue'
 import LogsWebhookFiltros from '~/components/logs/LogsWebhookFiltros.vue'
 import LogsWebhookHeader from '~/components/logs/LogsWebhookHeader.vue'

@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 
-type AdminPagina = 'prompt' | 'produtos' | 'ia' | 'bloqueio-pagina' | 'custos-da-ia'
+type AdminPagina =
+  | 'prompt'
+  | 'produtos'
+  | 'ia'
+  | 'bloqueio-pagina'
+  | 'custos-da-ia'
+  | 'gerenciar-assinaturas'
 
 const emit = defineEmits<{
   select: [pagina: AdminPagina]
@@ -50,6 +56,14 @@ const opcoes = [
     gradient: 'bg-gradient-to-br from-emerald-500 to-teal-700 shadow-[0_10px_30px_rgba(16,185,129,0.25)]',
     icon: 'custos',
   },
+  {
+    id: 'gerenciar-assinaturas' as const,
+    titulo: 'Gerenciar Assinaturas',
+    descricao: 'Visualize e gerencie assinaturas, planos e cobranças dos workspaces.',
+    detalhe: 'Planos, status de assinatura e pagamentos',
+    gradient: 'bg-gradient-to-br from-sky-500 to-blue-700 shadow-[0_10px_30px_rgba(14,165,233,0.25)]',
+    icon: 'assinaturas',
+  },
 ] as const
 
 async function selecionar(pagina: AdminPagina) {
@@ -66,6 +80,8 @@ async function selecionar(pagina: AdminPagina) {
     await navigateTo('/admin/bloqueio-pagina')
   } else if (pagina === 'custos-da-ia') {
     await navigateTo('/admin/custos-da-ia')
+  } else if (pagina === 'gerenciar-assinaturas') {
+    await navigateTo('/admin/gerenciar-assinaturas')
   }
 }
 </script>
@@ -155,6 +171,18 @@ async function selecionar(pagina: AdminPagina) {
                   stroke-linecap="round"
                   stroke-linejoin="round"
                 />
+              </svg>
+              <svg
+                v-else-if="opcao.icon === 'assinaturas'"
+                class="h-7 w-7"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <rect x="2" y="5" width="20" height="14" rx="2" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M2 10h20" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M6 15h4" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
               <svg
                 v-else

@@ -142,6 +142,10 @@ function parseNotificacoesIa(raw: unknown): KanbanNotificacaoIa[] {
       updated_at: o.updated_at != null ? String(o.updated_at) : '',
       entrega_ou_retirada: o.entrega_ou_retirada != null ? String(o.entrega_ou_retirada) : null,
       concluido: o.concluido === true,
+      endereco: (() => {
+        const t = o.endereco != null ? String(o.endereco).trim() : ''
+        return t || null
+      })(),
     })
   }
   return out

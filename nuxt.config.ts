@@ -79,8 +79,9 @@ export default defineNuxtConfig({
     agenteToolEnviaLocalizacaoUrl:
       process.env.NUXT_AGENTE_TOOL_ENVIA_LOCALIZACAO_URL || '',
     agenteToolFreteUrl: process.env.NUXT_AGENTE_TOOL_FRETE_URL || '',
-    agenteToolSolicitaPagamentoUrl:
-      process.env.NUXT_AGENTE_TOOL_SOLICITA_PAGAMENTO_URL || '',
+    agenteToolGravarInfoClienteUrl:
+      process.env.NUXT_AGENTE_TOOL_GRAVAR_INFO_CLIENTE_URL ||
+      'https://nwebhook.construzap.com/webhook/be57b60b-1d5f-4e22-a377-e3f9e36e05f0',
     agenteToolOrcamentoProntoUrl:
       process.env.NUXT_AGENTE_TOOL_ORCAMENTO_PRONTO_URL || '',
     /**
@@ -95,6 +96,8 @@ export default defineNuxtConfig({
       process.env.NUXT_AGENTE_TOOL_HTTP_HEADER_VALUE || '',
 
     public: {
+      /** Nome na aba do navegador. Override: NUXT_PUBLIC_APP_NAME */
+      appName: process.env.NUXT_PUBLIC_APP_NAME || '',
       // --- Pusher — browser + SSR (override: NUXT_PUBLIC_PUSHER_*) ---
       pusherAppId: '',
       pusherKey: '',
@@ -135,6 +138,11 @@ export default defineNuxtConfig({
   app: {
     head: {
       link: [
+        {
+          rel: 'icon',
+          type: 'image/svg+xml',
+          href: '/favicon.svg',
+        },
         {
           rel: 'stylesheet',
           href: 'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap'

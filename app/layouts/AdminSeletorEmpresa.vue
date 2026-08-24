@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed } from 'vue'
 import { NuxtLink } from '#components'
-import AdminAcessoNegado from '~/components/admin/AdminAcessoNegado.vue'
-import AdminEmpresaSeletor from '~/components/admin/AdminEmpresaSeletor.vue'
+import AdminAcessoNegado from '~/components/admin/pagina_inicial/AdminAcessoNegado.vue'
+import LayoutSeletorEmpresaAdmin from '~/components/admin/pagina_inicial/LayoutSeletorEmpresaAdmin.vue'
 import SeletorCanaisIa from '~/components/admin/ia/SeletorCanaisIa.vue'
-import type { AdminEmpresaRow } from '#shared/types/admin'
 
 const adminStore = useAdminStore()
 const route = useRoute()
@@ -14,46 +13,9 @@ const isPaginaIa = computed(() => route.path.startsWith('/admin/ia'))
 
 const { pending: verificarPending, isAdmin, erroTexto: verificarErroTexto } = useAdminGate()
 
-watch(
-  isAdmin,
-  (admin) => {
-    if (admin) {
-      adminStore.fetchWorkspacesSeNecessario().catch(() => {})
-    }
-  },
-  { immediate: true },
-)
+const carregandoInicial = computed(() => verificarPending.value)
 
-watch(
-  () => adminStore.selectedWorkspaceId,
-  (id) => {
-    if (id) {
-      adminStore.fetchPromptsSeNecessario(id).catch(() => {})
-      if (isPaginaIa.value) {
-        useAdminIaStore().fetchCanaisSeNecessario(id).catch(() => {})
-      }
-    }
-  },
-  { immediate: true },
-)
-
-watch(isPaginaIa, (paginaIa) => {
-  const id = adminStore.selectedWorkspaceId
-  if (paginaIa && id) {
-    useAdminIaStore().fetchCanaisSeNecessario(id).catch(() => {})
-  }
-})
-
-const companies = computed<AdminEmpresaRow[]>(() => adminStore.workspaceSeletorRows)
-
-const carregandoInicial = computed(
-  () =>
-    verificarPending.value ||
-    (isAdmin.value && adminStore.workspacesPending && !adminStore.workspacesLoaded),
-)
-
-function onSelectCompany(company: AdminEmpresaRow) {
-  adminStore.setSelectedWorkspaceId(company.id)
+function onSelectCompany() {
   mobileSidebarOpen.value = false
 }
 
@@ -139,12 +101,7 @@ function closeMobileSidebar() {
           </button>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto">
-          <AdminEmpresaSeletor
-            :companies="companies"
-            :selected-company-id="adminStore.selectedWorkspaceId"
-            :loading="adminStore.workspacesPending && !adminStore.workspacesLoaded"
-            @select="onSelectCompany"
-          />
+          <LayoutSeletorEmpresaAdmin @select="onSelectCompany" />
           <div
             v-if="isPaginaIa"
             class="border-t border-outline/40 dark:border-dark-outline/40"
@@ -179,12 +136,7 @@ function closeMobileSidebar() {
       </div>
 
       <div class="min-h-0 flex-1">
-        <AdminEmpresaSeletor
-          :companies="companies"
-          :selected-company-id="adminStore.selectedWorkspaceId"
-          :loading="adminStore.workspacesPending && !adminStore.workspacesLoaded"
-          @select="onSelectCompany"
-        />
+        <LayoutSeletorEmpresaAdmin @select="onSelectCompany" />
       </div>
     </aside>
 

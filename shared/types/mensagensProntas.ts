@@ -26,6 +26,8 @@ export type MensagemProntaSequenciaResumo = {
   coluna_destino_id: number | null
   /** Se a I.A. deve ficar ligada após o envio da sequência. Default `true`. */
   ia_ligada: boolean
+  /** Se deve fechar pedidos da I.A. em aberto após o envio. Default `false`. */
+  fechar_pedido_em_aberto: boolean
 }
 
 export type MensagemProntaPasso = {
@@ -52,6 +54,7 @@ export type CriarMensagemProntaBody = {
   passos: MensagemProntaPassoInput[]
   coluna_destino_id?: number | null
   ia_ligada?: boolean
+  fechar_pedido_em_aberto?: boolean
 }
 
 export type CriarMensagemProntaResponse = {
@@ -88,6 +91,8 @@ export type WebhookN8nMensagemProntaBody = {
   mover_contato: boolean
   /** Espelha `mensagem_pronta.sequencia.ia_ligada`. */
   ia_ligada: boolean
+  /** Espelha `mensagem_pronta.sequencia.fechar_pedido_em_aberto`. */
+  fechar_pedido_em_aberto: boolean
 }
 
 export type WebhookN8nMensagemProntaResponse = {
@@ -100,6 +105,7 @@ export type AtualizarMensagemProntaBody = {
   passos: MensagemProntaPassoInput[]
   coluna_destino_id?: number | null
   ia_ligada?: boolean
+  fechar_pedido_em_aberto?: boolean
 }
 
 export type AtualizarMensagemProntaResponse = {

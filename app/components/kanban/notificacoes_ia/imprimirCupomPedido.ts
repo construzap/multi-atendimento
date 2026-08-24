@@ -82,8 +82,9 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
   const totalResolvido = resolveTotalOrcamento(item.total_orcamento, item.forma_pagamento)
   const total = totalResolvido != null ? totalResolvido : soma
   const entrega = item.entrega_ou_retirada?.trim() || ''
-  const obs = item.observacoes?.trim() || ''
+  const endereco = item.endereco?.trim() || ''
   const pagamento = item.forma_pagamento?.trim() || '—'
+  const concluido = item.concluido === true
   const cliente = input.clienteNome?.trim() || '—'
   const telefone = input.clienteTelefone?.trim() || ''
   const canal = input.canalNome?.trim() || ''
@@ -236,12 +237,13 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
 
     <div class="linha"><span>Pagamento:</span><span class="bold">${esc(pagamento)}</span></div>
     ${entrega ? `<div class="linha"><span>Entrega/retirada:</span><span class="bold">${esc(entrega)}</span></div>` : ''}
+    ${concluido ? `<div class="linha"><span>Status:</span><span class="bold">Concluído</span></div>` : ''}
 
     <hr class="sep" />
 
     <div><span class="bold">Cliente:</span> ${esc(cliente)}</div>
     ${telefone ? `<div><span class="bold">Telefone:</span> ${esc(telefone)}</div>` : ''}
-    ${obs ? `<div style="margin-top:6px"><span class="bold">Observações:</span><br/>${esc(obs)}</div>` : ''}
+    ${endereco ? `<div style="margin-top:6px"><span class="bold">Endereço:</span><br/>${esc(endereco)}</div>` : ''}
 
     <hr class="sep" />
 

@@ -71,7 +71,7 @@ onUnmounted(() => {
     >
       <div
         v-if="open"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+        class="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm sm:items-center sm:p-4"
         role="dialog"
         aria-modal="true"
         :aria-label="title"
@@ -86,7 +86,7 @@ onUnmounted(() => {
           leave-to-class="opacity-0 translate-y-2 scale-95"
         >
           <div
-            class="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest shadow-xl dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:shadow-2xl dark:ring-1 dark:ring-white/5"
+            class="flex max-h-[calc(100dvh-2rem)] min-h-0 w-full flex-col overflow-hidden rounded-2xl border border-outline/40 bg-surface-container-lowest shadow-xl dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:shadow-2xl dark:ring-1 dark:ring-white/5"
             :class="panelClass"
           >
             <header class="flex shrink-0 items-start justify-between gap-4 border-b border-outline/30 p-5 dark:border-dark-outline/30">

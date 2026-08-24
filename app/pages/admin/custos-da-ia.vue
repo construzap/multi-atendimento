@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AdminAcessoNegado from '~/components/admin/AdminAcessoNegado.vue'
+import AdminAcessoNegado from '~/components/admin/pagina_inicial/AdminAcessoNegado.vue'
 import ListaCustosIa from '~/components/admin/custos_ia/ListaCustosIa.vue'
 
 definePageMeta({

@@ -26,7 +26,7 @@ export type AgenteResponderBody = {
   evoURL?: string | null
   url_uazapi?: string | null
   phone_PARA_NOTIFICAR?: string | null
-  name_cliente_empresa?: string | null
+  name_canal_cliente?: string | null
   tempo_pausa?: string | number | null
   tempo_resposta?: string | number | null
   ai_assinatura_enabled?: boolean | string | null
@@ -36,6 +36,12 @@ export type AgenteResponderBody = {
   email?: string | null
   /** Chave Pix aleatória do workspace (pode ser null). */
   chave_pix_aleatoria?: string | null
+  /** Provedor de pagamento do canal (ex.: pagar.me, asaas). */
+  provedor_pagamentos?: string | null
+  /** Credenciais de pagamento criptografadas (coluna canais.credenciais_encrypted). */
+  credenciais_encrypted?: string | null
+  /** Taxas de cartão do canal (objeto tipo { "1x": 0, "2x": 4.5, ... }). */
+  taxas_cartao?: Record<string, number> | string | null
   model?: string | null
   max_tool_rounds?: number | null
 }
@@ -82,7 +88,7 @@ export type AgenteContext = {
   evoURL: string | null
   url_uazapi: string | null
   phone_PARA_NOTIFICAR: string | null
-  name_cliente_empresa: string | null
+  name_canal_cliente: string | null
   tempo_pausa: string | null
   tempo_resposta: string | null
   ai_assinatura_enabled: string | null
@@ -91,6 +97,9 @@ export type AgenteContext = {
   email: string | null
   /** Chave Pix aleatória; null se o workspace não tiver. */
   chave_pix_aleatoria: string | null
+  provedor_pagamentos: string | null
+  credenciais_encrypted: string | null
+  taxas_cartao: Record<string, number> | string | null
   model: string
   max_tool_rounds: number
   context_window: number

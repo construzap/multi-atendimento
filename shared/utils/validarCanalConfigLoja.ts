@@ -1,6 +1,19 @@
-import type { CanalHorarioDia, CanalHorarios } from '#shared/types/canal'
+import type {
+  CanalHorarioDia,
+  CanalHorarioDiaKey,
+  CanalHorarios,
+} from '#shared/types/canal'
+import { CANAL_HORARIO_DIAS, ordenarCanalHorarios } from '#shared/types/canal'
 
-const DIAS: (keyof CanalHorarios)[] = ['semana', 'sabado', 'domingo']
+const DIA_LABEL: Record<CanalHorarioDiaKey, string> = {
+  segunda: 'segunda-feira',
+  terca: 'terça-feira',
+  quarta: 'quarta-feira',
+  quinta: 'quinta-feira',
+  sexta: 'sexta-feira',
+  sabado: 'sábado',
+  domingo: 'domingo',
+}
 
 function horarioValido(valor: unknown): boolean {
   return typeof valor === 'string' && /^\d{2}:\d{2}$/.test(valor.trim())
@@ -44,13 +57,13 @@ export function parseCanalHorarios(raw: unknown): CanalHorarios | string {
   const o = raw as Record<string, unknown>
   const result = {} as CanalHorarios
 
-  for (const dia of DIAS) {
-    const parsed = parseHorarioDia(o[dia], dia)
+  for (const dia of CANAL_HORARIO_DIAS) {
+    const parsed = parseHorarioDia(o[dia], DIA_LABEL[dia])
     if (typeof parsed === 'string') return parsed
     result[dia] = parsed
   }
 
-  return result
+  return ordenarCanalHorarios(result)
 }
 
 export function parseEndereco(raw: unknown): string | null {

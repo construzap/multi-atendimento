@@ -21,7 +21,8 @@ WITH
           'created_at', n_1.created_at,
           'updated_at', n_1.updated_at,
           'entrega_ou_retirada', n_1.entrega_ou_retirada,
-          'concluido', n_1.concluido
+          'concluido', COALESCE(n_1.concluido, false),
+          'endereco', n_1.endereco
         )
         ORDER BY n_1.created_at DESC
       ) AS lista_notificacoes

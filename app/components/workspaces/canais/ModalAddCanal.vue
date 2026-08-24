@@ -7,16 +7,19 @@ import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import type { CanalCriado } from '~/stores/canais'
-import type { Canal, CanalHorarioDia, CanalHorarios } from '#shared/types/canal'
-
-type DiaHorarioKey = keyof CanalHorarios
+import type { Canal, CanalHorarioDia, CanalHorarioDiaKey, CanalHorarios } from '#shared/types/canal'
+import { CANAL_HORARIO_DIAS, ordenarCanalHorarios } from '#shared/types/canal'
 
 type HorarioDia = CanalHorarioDia
 
-const DIAS_HORARIO: { key: DiaHorarioKey; label: string }[] = [
-  { key: 'semana', label: 'Segunda a sexta' },
-  { key: 'sabado', label: 'Sábado' },
+const DIAS_HORARIO: { key: CanalHorarioDiaKey; label: string }[] = [
   { key: 'domingo', label: 'Domingo' },
+  { key: 'segunda', label: 'Segunda-feira' },
+  { key: 'terca', label: 'Terça-feira' },
+  { key: 'quarta', label: 'Quarta-feira' },
+  { key: 'quinta', label: 'Quinta-feira' },
+  { key: 'sexta', label: 'Sexta-feira' },
+  { key: 'sabado', label: 'Sábado' },
 ]
 
 function horarioDiaPadrao(partial?: Partial<HorarioDia>): HorarioDia {
@@ -29,26 +32,36 @@ function horarioDiaPadrao(partial?: Partial<HorarioDia>): HorarioDia {
   }
 }
 
-function horariosPadrao(): Record<DiaHorarioKey, HorarioDia> {
-  return {
-    semana: horarioDiaPadrao({
-      aberto: true,
-      inicio: '07:30',
-      inicioAlmoco: '12:00',
-      fimAlmoco: '13:30',
-      fim: '17:30',
-    }),
-    sabado: horarioDiaPadrao({
-      aberto: true,
-      inicio: '08:00',
-      fim: '13:00',
-    }),
-    domingo: horarioDiaPadrao({
-      aberto: false,
-      inicio: '08:00',
-      fim: '12:00',
-    }),
+function diaUtilPadrao(): HorarioDia {
+  return horarioDiaPadrao({
+    aberto: true,
+    inicio: '07:30',
+    inicioAlmoco: '12:00',
+    fimAlmoco: '13:30',
+    fim: '17:30',
+  })
+}
+
+function horariosPadrao(): CanalHorarios {
+  const out = {} as CanalHorarios
+  for (const dia of CANAL_HORARIO_DIAS) {
+    if (dia === 'domingo') {
+      out[dia] = horarioDiaPadrao({
+        aberto: false,
+        inicio: '08:00',
+        fim: '12:00',
+      })
+    } else if (dia === 'sabado') {
+      out[dia] = horarioDiaPadrao({
+        aberto: true,
+        inicio: '08:00',
+        fim: '13:00',
+      })
+    } else {
+      out[dia] = diaUtilPadrao()
+    }
   }
+  return out
 }
 
 function normalizarHorarioParaInput(valor: unknown): string {
@@ -56,7 +69,7 @@ function normalizarHorarioParaInput(valor: unknown): string {
   const t = valor.trim()
   if (!t) return ''
   const match = /^(\d{2}:\d{2})/.exec(t)
-  return match ? match[1] : t
+  return match?.[1] ?? t
 }
 
 function normalizarBooleano(valor: unknown, fallback: boolean): boolean {
@@ -66,7 +79,11 @@ function normalizarBooleano(valor: unknown, fallback: boolean): boolean {
   return fallback
 }
 
-function horariosFromCanal(raw: CanalHorarios | null | undefined): Record<DiaHorarioKey, HorarioDia> {
+function clonarHorarios(raw: CanalHorarios): CanalHorarios {
+  return ordenarCanalHorarios(JSON.parse(JSON.stringify(raw)) as CanalHorarios)
+}
+
+function horariosFromCanal(raw: CanalHorarios | null | undefined): CanalHorarios {
   const padrao = horariosPadrao()
   if (!raw) return padrao
 
@@ -78,11 +95,28 @@ function horariosFromCanal(raw: CanalHorarios | null | undefined): Record<DiaHor
     fim: normalizarHorarioParaInput(dia?.fim) || fallback.fim,
   })
 
-  return {
-    semana: cloneDia(raw.semana, padrao.semana),
-    sabado: cloneDia(raw.sabado, padrao.sabado),
-    domingo: cloneDia(raw.domingo, padrao.domingo),
+  // Legado: { semana, sabado, domingo } → expande semana em seg–sex
+  const rawObj = raw as Record<string, CanalHorarioDia | undefined> & {
+    semana?: CanalHorarioDia
   }
+  if (rawObj.semana && rawObj.segunda == null) {
+    const semana = cloneDia(rawObj.semana, padrao.segunda)
+    return ordenarCanalHorarios({
+      domingo: cloneDia(rawObj.domingo, padrao.domingo),
+      segunda: { ...semana },
+      terca: { ...semana },
+      quarta: { ...semana },
+      quinta: { ...semana },
+      sexta: { ...semana },
+      sabado: cloneDia(rawObj.sabado, padrao.sabado),
+    })
+  }
+
+  const out = {} as CanalHorarios
+  for (const dia of CANAL_HORARIO_DIAS) {
+    out[dia] = cloneDia(rawObj[dia], padrao[dia])
+  }
+  return out
 }
 
 function formatarCoordenada(valor: number | null | undefined): string {
@@ -154,6 +188,17 @@ const longitude = ref('')
 const tempoAvisoMinutos = ref('30')
 const horarios = ref(horariosPadrao())
 
+/** Snapshot do canal no Pinia ao abrir o modal (restauração no cancelar/fechar). */
+const snapshotCanal = ref<Canal | null>(null)
+/** true após salvar com sucesso — não restaura o snapshot ao fechar. */
+const edicaoCommitada = ref(false)
+/** Evita loop ao preencher o form a partir do Pinia. */
+let preenchendoDoPinia = false
+
+function clonarCanal(canal: Canal): Canal {
+  return JSON.parse(JSON.stringify(canal)) as Canal
+}
+
 function normalizarCoordenadaTexto(valor: string): string {
   return valor.trim().replace(',', '.').replace('−', '-')
 }
@@ -164,8 +209,36 @@ function parseCoordenadaFormulario(valor: string, min: number, max: number): num
   return n
 }
 
+function montarHorariosDoFormulario(): CanalHorarios {
+  return clonarHorarios(horarios.value)
+}
+
+function idCanalEmEdicao(): number | null {
+  const raw = props.canalEdicaoId ?? snapshotCanal.value?.id ?? null
+  if (raw == null) return null
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw), 10)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function canalNoPinia(): Canal | null {
+  const id = idCanalEmEdicao()
+  if (id == null) return null
+  return canaisStore.items.find((c) => c.id === id) ?? null
+}
+
+/** Alterna o dia com replace imutável (garante reatividade + sync no Pinia). */
+function toggleDiaAberto(key: CanalHorarioDiaKey) {
+  const dia = horarios.value[key]
+  horarios.value = {
+    ...horarios.value,
+    [key]: { ...dia, aberto: !dia.aberto },
+  }
+}
+
 function buildConfigPayload():
   | {
+      nome?: string
+      descricao?: string | null
       endereco: string | null
       latitude: number | null
       longitude: number | null
@@ -186,12 +259,45 @@ function buildConfigPayload():
     latitude: latRaw ? parseCoordenadaFormulario(latitude.value, -90, 90) : null,
     longitude: lngRaw ? parseCoordenadaFormulario(longitude.value, -180, 180) : null,
     tempo_aviso_minutos: aviso,
-    horarios: {
-      semana: { ...horarios.value.semana },
-      sabado: { ...horarios.value.sabado },
-      domingo: { ...horarios.value.domingo },
-    },
+    // Clone puro do que está na tela — fonte da verdade no save
+    horarios: montarHorariosDoFormulario(),
   }
+}
+
+/** Espelha o formulário no item do Pinia enquanto o modal de edição está aberto. */
+function sincronizarFormularioNoPinia() {
+  if (!isEdit.value || preenchendoDoPinia) return
+  const id = idCanalEmEdicao()
+  if (id == null) return
+  const idx = canaisStore.items.findIndex((c) => c.id === id)
+  if (idx === -1) return
+
+  const atual = canaisStore.items[idx]
+  if (!atual) return
+
+  const latRaw = latitude.value.trim()
+  const lngRaw = longitude.value.trim()
+  const avisoRaw = tempoAvisoMinutos.value.trim()
+  const aviso = avisoRaw ? Number.parseInt(avisoRaw, 10) : 30
+
+  canaisStore.items[idx] = {
+    ...atual,
+    nome: nome.value.trim() || null,
+    descricao: descricao.value.trim() || null,
+    endereco: endereco.value.trim() || null,
+    latitude: latRaw ? parseCoordenadaFormulario(latitude.value, -90, 90) : null,
+    longitude: lngRaw ? parseCoordenadaFormulario(longitude.value, -180, 180) : null,
+    tempo_aviso_minutos: Number.isFinite(aviso) ? aviso : atual.tempo_aviso_minutos,
+    horarios: montarHorariosDoFormulario(),
+  }
+}
+
+function restaurarSnapshotNoPinia() {
+  const snap = snapshotCanal.value
+  if (!snap) return
+  const idx = canaisStore.items.findIndex((c) => c.id === snap.id)
+  if (idx === -1) return
+  canaisStore.items[idx] = clonarCanal(snap)
 }
 
 function resetarCamposExtras() {
@@ -203,26 +309,34 @@ function resetarCamposExtras() {
 }
 
 function preencherDoPinia() {
-  if (!isEdit.value) {
-    nome.value = ''
-    descricao.value = ''
-    resetarCamposExtras()
-    return
-  }
+  preenchendoDoPinia = true
+  try {
+    if (!isEdit.value) {
+      nome.value = ''
+      descricao.value = ''
+      resetarCamposExtras()
+      return
+    }
 
-  const canal = canalPinia.value
-  if (!canal) {
-    limparFormulario()
-    return
-  }
+    const canal = canalNoPinia() ?? snapshotCanal.value
+    if (!canal) {
+      limparFormulario()
+      return
+    }
 
-  nome.value = canal.nome?.trim() ?? ''
-  descricao.value = canal.descricao?.trim() ?? ''
-  endereco.value = canal.endereco?.trim() ?? ''
-  latitude.value = formatarCoordenada(canal.latitude)
-  longitude.value = formatarCoordenada(canal.longitude)
-  tempoAvisoMinutos.value = String(canal.tempo_aviso_minutos ?? 30)
-  horarios.value = horariosFromCanal(canal.horarios)
+    nome.value = canal.nome?.trim() ?? ''
+    descricao.value = canal.descricao?.trim() ?? ''
+    endereco.value = canal.endereco?.trim() ?? ''
+    latitude.value = formatarCoordenada(canal.latitude)
+    longitude.value = formatarCoordenada(canal.longitude)
+    tempoAvisoMinutos.value = String(canal.tempo_aviso_minutos ?? 30)
+    horarios.value = horariosFromCanal(canal.horarios)
+  } finally {
+    // nextTick seria melhor, mas microtask evita sync com form ainda “velho”
+    queueMicrotask(() => {
+      preenchendoDoPinia = false
+    })
+  }
 }
 
 function limparFormulario() {
@@ -231,20 +345,55 @@ function limparFormulario() {
   resetarCamposExtras()
 }
 
-watch(isOpen, (aberto) => {
-  if (aberto) {
-    preencherDoPinia()
-  } else {
-    limparFormulario()
+function abrirModal() {
+  edicaoCommitada.value = false
+  snapshotCanal.value = null
+
+  if (isEdit.value && idCanalEmEdicao() != null) {
+    const canal = canalNoPinia()
+    if (canal) {
+      // Snapshot do estado ORIGINAL (antes de qualquer draft)
+      snapshotCanal.value = clonarCanal(canal)
+    }
   }
+
+  preencherDoPinia()
+  // Garante Pinia = formulário logo ao abrir
+  queueMicrotask(() => {
+    if (isOpen.value && isEdit.value) sincronizarFormularioNoPinia()
+  })
+}
+
+function fecharModal() {
+  if (isEdit.value && snapshotCanal.value && !edicaoCommitada.value) {
+    restaurarSnapshotNoPinia()
+  }
+  snapshotCanal.value = null
+  edicaoCommitada.value = false
+  limparFormulario()
+}
+
+watch(isOpen, (aberto) => {
+  if (aberto) abrirModal()
+  else fecharModal()
 })
 
 watch(
-  () => [props.mode, props.canalEdicaoId, canalPinia.value] as const,
-  () => {
-    if (isOpen.value) preencherDoPinia()
+  () => props.canalEdicaoId,
+  (id, prev) => {
+    if (!isOpen.value || !isEdit.value) return
+    if (id == null || id === prev) return
+    abrirModal()
   },
-  { deep: true }
+)
+
+watch(
+  [nome, descricao, endereco, latitude, longitude, tempoAvisoMinutos, horarios],
+  () => {
+    if (!isOpen.value || !isEdit.value) return
+    sincronizarFormularioNoPinia()
+  },
+  { deep: true },
 )
 
 function horarioValido(valor: string): boolean {
@@ -255,7 +404,7 @@ function coordenadaValida(valor: string, min: number, max: number): boolean {
   return parseCoordenadaFormulario(valor, min, max) != null
 }
 
-/** Valida só o que estiver preenchido (campos de loja são opcionais). */
+/** Valida o que está na tela (formulário). */
 function validarCamposExtras(): string | null {
   if (latitude.value.trim() && !coordenadaValida(latitude.value, -90, 90)) {
     return 'Latitude inválida (entre -90 e 90).'
@@ -334,7 +483,7 @@ async function onCreate() {
   }
 
   if (isEdit.value) {
-    const idCanal = props.canalEdicaoId ?? canalPinia.value?.id
+    const idCanal = idCanalEmEdicao()
     if (!idCanal) {
       toast.error('Canal inválido para edição.')
       return
@@ -344,6 +493,9 @@ async function onCreate() {
       toast.error('Workspace inválido.')
       return
     }
+
+    // Último sync tela → Pinia, depois envia o clone da tela
+    sincronizarFormularioNoPinia()
 
     try {
       await canaisStore.updateCanal({
@@ -357,6 +509,8 @@ async function onCreate() {
         tempo_aviso_minutos: payload.tempo_aviso_minutos,
         horarios: payload.horarios,
       })
+      edicaoCommitada.value = true
+      snapshotCanal.value = null
       toast.success('Canal atualizado com sucesso.')
       close()
     } catch (err: unknown) {
@@ -392,10 +546,15 @@ async function onCreate() {
     })
   }
 }
+
 </script>
 
 <template>
-  <BaseModal v-model:open="isOpen" :title="isEdit ? 'Editar canal' : 'Criar canal'">
+  <BaseModal
+    v-model:open="isOpen"
+    :title="isEdit ? 'Editar canal' : 'Criar canal'"
+    panel-class="w-full max-w-3xl"
+  >
     <template #icon>
       <FontAwesomeIcon :icon="faWhatsapp" class="h-6 w-6 text-[#25D366]" aria-hidden="true" />
     </template>
@@ -518,90 +677,124 @@ async function onCreate() {
           </div>
         </div>
 
-        <div class="space-y-4 border-t border-outline-variant/15 pt-5 dark:border-dark-outline/20">
+        <div class="space-y-3 border-t border-outline-variant/15 pt-5 dark:border-dark-outline/20">
           <div>
-            <h3 class="text-sm font-bold text-on-surface dark:text-dark-on-surface">Horários de funcionamento</h3>
+            <h3 class="text-sm font-bold text-on-surface dark:text-dark-on-surface">
+              Horários de funcionamento
+            </h3>
             <p class="mt-1 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
-              Se não houver almoço no dia, deixe início e fim do almoço vazios.
+              Ative o dia para definir os horários. Sem almoço, deixe início e fim do almoço vazios.
             </p>
           </div>
 
-          <div
-            v-for="{ key, label } in DIAS_HORARIO"
-            :key="key"
-            class="space-y-3 rounded-xl border border-outline-variant/15 bg-surface-container-low/40 p-4 dark:border-dark-outline/20 dark:bg-dark-surface-container-low/40"
-          >
-            <div class="flex items-center justify-between gap-3">
-              <p class="text-sm font-semibold text-on-surface dark:text-dark-on-surface">{{ label }}</p>
-              <label class="inline-flex cursor-pointer items-center gap-2 text-sm text-on-surface dark:text-dark-on-surface">
-                <input
-                  v-model="horarios[key].aberto"
-                  type="checkbox"
-                  class="size-4 rounded border-gray-300 text-primary focus:ring-primary"
-                />
-                Aberto
-              </label>
-            </div>
-
-            <div class="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label
-                  class="mb-1.5 block text-xs font-semibold text-on-surface dark:text-dark-on-surface"
-                  :for="`canal-${key}-inicio-${fieldIdSuffix}`"
-                >
-                  Abertura
-                </label>
-                <BaseInput
-                  :id="`canal-${key}-inicio-${fieldIdSuffix}`"
-                  v-model="horarios[key].inicio"
-                  type="time"
-                  :name="`canal_${key}_inicio`"
-                />
+          <div class="overflow-x-auto rounded-xl border border-outline-variant/20 dark:border-dark-outline/25">
+            <div class="min-w-[40rem]">
+              <!-- Cabeçalho (desktop) -->
+              <div
+                class="hidden grid-cols-[9.5rem_3.5rem_minmax(0,1fr)] gap-3 border-b border-outline-variant/15 bg-surface-container-low/60 px-3 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant dark:border-dark-outline/20 dark:bg-dark-surface-container-low/50 dark:text-dark-on-surface-variant sm:grid"
+              >
+                <span>Dia da semana</span>
+                <span class="text-center">Ativo</span>
+                <div class="grid grid-cols-4 gap-2">
+                  <span>Início</span>
+                  <span>Início almoço</span>
+                  <span>Fim almoço</span>
+                  <span>Final</span>
+                </div>
               </div>
 
-              <div>
-                <label
-                  class="mb-1.5 block text-xs font-semibold text-on-surface dark:text-dark-on-surface"
-                  :for="`canal-${key}-inicio-almoco-${fieldIdSuffix}`"
+              <div
+                v-for="{ key, label } in DIAS_HORARIO"
+                :key="key"
+                class="border-b border-outline-variant/10 px-3 py-3 last:border-b-0 dark:border-dark-outline/15"
+              >
+                <div
+                  class="grid grid-cols-1 items-center gap-3 sm:grid-cols-[9.5rem_3.5rem_minmax(0,1fr)]"
                 >
-                  Início almoço
-                </label>
-                <BaseInput
-                  :id="`canal-${key}-inicio-almoco-${fieldIdSuffix}`"
-                  v-model="horarios[key].inicioAlmoco"
-                  type="time"
-                  :name="`canal_${key}_inicio_almoco`"
-                />
-              </div>
+                  <p class="text-sm font-medium text-on-surface dark:text-dark-on-surface">
+                    {{ label }}
+                  </p>
 
-              <div>
-                <label
-                  class="mb-1.5 block text-xs font-semibold text-on-surface dark:text-dark-on-surface"
-                  :for="`canal-${key}-fim-almoco-${fieldIdSuffix}`"
-                >
-                  Fim almoço
-                </label>
-                <BaseInput
-                  :id="`canal-${key}-fim-almoco-${fieldIdSuffix}`"
-                  v-model="horarios[key].fimAlmoco"
-                  type="time"
-                  :name="`canal_${key}_fim_almoco`"
-                />
-              </div>
+                  <div class="flex sm:justify-center">
+                    <button
+                      type="button"
+                      role="switch"
+                      :aria-checked="horarios[key].aberto"
+                      :aria-label="`${label}: ${horarios[key].aberto ? 'aberto' : 'fechado'}`"
+                      class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                      :class="
+                        horarios[key].aberto
+                          ? 'bg-primary'
+                          : 'bg-slate-300 dark:bg-slate-600'
+                      "
+                      @click.stop="toggleDiaAberto(key)"
+                    >
+                      <span
+                        class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                        :class="horarios[key].aberto ? 'translate-x-6' : 'translate-x-1'"
+                      />
+                    </button>
+                  </div>
 
-              <div>
-                <label
-                  class="mb-1.5 block text-xs font-semibold text-on-surface dark:text-dark-on-surface"
-                  :for="`canal-${key}-fim-${fieldIdSuffix}`"
-                >
-                  Fechamento
-                </label>
-                <BaseInput
-                  :id="`canal-${key}-fim-${fieldIdSuffix}`"
-                  v-model="horarios[key].fim"
-                  type="time"
-                  :name="`canal_${key}_fim`"
-                />
+                  <div v-if="horarios[key].aberto" class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div>
+                      <label
+                        class="mb-1 block text-[11px] font-medium text-on-surface-variant sm:hidden dark:text-dark-on-surface-variant"
+                        :for="`canal-${key}-inicio-${fieldIdSuffix}`"
+                      >
+                        Início
+                      </label>
+                      <BaseInput
+                        :id="`canal-${key}-inicio-${fieldIdSuffix}`"
+                        v-model="horarios[key].inicio"
+                        type="time"
+                        :name="`canal_${key}_inicio`"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        class="mb-1 block text-[11px] font-medium text-on-surface-variant sm:hidden dark:text-dark-on-surface-variant"
+                        :for="`canal-${key}-inicio-almoco-${fieldIdSuffix}`"
+                      >
+                        Início almoço
+                      </label>
+                      <BaseInput
+                        :id="`canal-${key}-inicio-almoco-${fieldIdSuffix}`"
+                        v-model="horarios[key].inicioAlmoco"
+                        type="time"
+                        :name="`canal_${key}_inicio_almoco`"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        class="mb-1 block text-[11px] font-medium text-on-surface-variant sm:hidden dark:text-dark-on-surface-variant"
+                        :for="`canal-${key}-fim-almoco-${fieldIdSuffix}`"
+                      >
+                        Fim almoço
+                      </label>
+                      <BaseInput
+                        :id="`canal-${key}-fim-almoco-${fieldIdSuffix}`"
+                        v-model="horarios[key].fimAlmoco"
+                        type="time"
+                        :name="`canal_${key}_fim_almoco`"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        class="mb-1 block text-[11px] font-medium text-on-surface-variant sm:hidden dark:text-dark-on-surface-variant"
+                        :for="`canal-${key}-fim-${fieldIdSuffix}`"
+                      >
+                        Final
+                      </label>
+                      <BaseInput
+                        :id="`canal-${key}-fim-${fieldIdSuffix}`"
+                        v-model="horarios[key].fim"
+                        type="time"
+                        :name="`canal_${key}_fim`"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -1,31 +1,27 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import type { AdminEmpresaRow } from '#shared/types/admin'
 
-const props = withDefaults(
-  defineProps<{
-    companies?: AdminEmpresaRow[]
-    selectedCompanyId?: string | null
-    showWhatsAppBadge?: boolean
-    loading?: boolean
-  }>(),
-  {
-    companies: () => [],
-    selectedCompanyId: null,
-    showWhatsAppBadge: false,
-    loading: false,
-  },
-)
-
 const emit = defineEmits<{
-  select: [company: AdminEmpresaRow]
+  select: []
 }>()
+
+const adminStore = useAdminStore()
+const { workspaceSeletorRows, selectedWorkspaceId, workspacesPending, workspacesLoaded } =
+  storeToRefs(adminStore)
 
 const search = ref('')
 
+onMounted(() => {
+  adminStore.fetchWorkspacesSeNecessario().catch(() => {})
+})
+
+const loading = computed(() => workspacesPending.value && !workspacesLoaded.value)
+
 const filtered = computed(() => {
   const s = search.value.trim().toLowerCase()
-  const items = props.companies
+  const items = workspaceSeletorRows.value
   if (!s) return items
   return items.filter(
     (c) =>
@@ -41,6 +37,11 @@ function displayName(company: AdminEmpresaRow) {
 
 function shortId(id: string) {
   return id.length > 8 ? `${id.slice(0, 8)}…` : id
+}
+
+function selecionar(company: AdminEmpresaRow) {
+  adminStore.setSelectedWorkspaceId(company.id)
+  emit('select')
 }
 </script>
 
@@ -102,16 +103,16 @@ function shortId(id: string) {
             type="button"
             class="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-surface-container-high/80 dark:hover:bg-dark-surface-container-high/60"
             :class="
-              c.id === selectedCompanyId
+              c.id === selectedWorkspaceId
                 ? 'border-r-2 border-primary-500 bg-primary-50/60 dark:bg-primary-950/25'
                 : ''
             "
-            @click="emit('select', c)"
+            @click="selecionar(c)"
           >
             <div
               class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold"
               :class="
-                c.id === selectedCompanyId
+                c.id === selectedWorkspaceId
                   ? 'bg-primary-500 text-white'
                   : 'bg-surface-container-high text-on-surface-variant dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant'
               "
@@ -127,7 +128,7 @@ function shortId(id: string) {
               <p
                 class="truncate text-sm font-medium"
                 :class="
-                  c.id === selectedCompanyId
+                  c.id === selectedWorkspaceId
                     ? 'text-primary-700 dark:text-primary-300'
                     : 'text-on-surface dark:text-dark-on-surface'
                 "
@@ -137,22 +138,6 @@ function shortId(id: string) {
               <p class="truncate font-mono text-[10px] text-on-surface-variant/70 dark:text-dark-on-surface-variant/70">
                 ID: {{ shortId(c.id) }}
               </p>
-            </div>
-
-            <div
-              v-if="showWhatsAppBadge"
-              class="flex shrink-0 flex-col items-end gap-1"
-            >
-              <span
-                class="rounded-md border px-1.5 py-0 text-[10px] font-medium"
-                :class="
-                  c.instance_count > 0
-                    ? 'border-success/50 text-success dark:text-success'
-                    : 'border-outline/40 bg-surface-container-high text-on-surface-variant dark:border-dark-outline/40 dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant'
-                "
-              >
-                {{ c.instance_count > 0 ? `${c.instance_count} inst.` : 'Desconectado' }}
-              </span>
             </div>
           </button>
         </li>

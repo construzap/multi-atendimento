@@ -3,14 +3,47 @@ import { argStr, ctxStr, type ToolDef } from './helpers'
 export const estoqueTool: ToolDef = {
   name: 'estoque',
   description:
-    'Chame essa ferramenta sempre que precisar consultar preço e disponibilidade de produtos\nLembrete: Caso o cliente solicite uma lista de produtos, Busque sempre um produto de cada vez.\n\nAtenção: caso tenha mais de um produto, chame para cada produto individual!\n\n##quando o perguntar sobre qualquer produto chame e acione imediatamente a ferramenta <estoque>!  \n\nREGRA CRÍTICA DE PROCESSAMENTO: UM POR UM\nAo receber um pedido com múltiplos itens, você deve seguir o protocolo de Chamada Individual Obrigatória. A ferramenta <estoque> só processa um (1) único produto por vez.\n\nProtocolo de Execução:\n\nIdentifique todos os produtos da lista do cliente.\n\nPara CADA item identificado, acione a ferramenta <estoque> de forma independente.\n\nSe houver 7 itens, você deve realizar 7 chamadas distintas à ferramenta antes de formular qualquer resposta.\n\nProibido: Enviar listas, múltiplos produtos ou termos genéricos em uma única chamada.',
+    'Chame essa ferramenta sempre que precisar consultar preço e disponibilidade de produtos.\n\n' +
+    'Lembrete: Caso o cliente solicite uma lista de produtos, busque sempre um produto de cada vez.\n\n' +
+    'Atenção: caso tenha mais de um produto, chame para cada produto individual!\n\n' +
+    '## Quando o cliente perguntar sobre qualquer produto, chame e acione imediatamente a ferramenta <estoque>!\n\n' +
+    'REGRA CRÍTICA DE PROCESSAMENTO: UM POR UM\n' +
+    'Ao receber um pedido com múltiplos itens, siga o protocolo de Chamada Individual Obrigatória. A ferramenta <estoque> só processa um (1) único produto por vez.\n\n' +
+    'Protocolo de Execução:\n' +
+    '1) Identifique todos os produtos da lista do cliente.\n' +
+    '2) Para CADA item, acione a ferramenta <estoque> de forma independente.\n' +
+    '3) Se houver 7 itens, realize 7 chamadas distintas antes de formular qualquer resposta.\n\n' +
+    'REGRA DE QUANTIDADE E EMBALAGEM:\n' +
+    'Quando o cliente informar quantidade e/ou tipo de embalagem/unidade, inclua TUDO no campo produtos_ exatamente como ele pediu — quantidade numérica (ou por extenso convertida), tipo de embalagem/unidade e nome do produto.\n' +
+    'Não resuma nem omita a embalagem. Ex.: "4 fardos de Cimento CP II", não apenas "Cimento CP II".\n' +
+    'Se o cliente NÃO informou quantidade nem embalagem, envie apenas o nome do produto.\n\n' +
+    'Proibido: enviar listas, múltiplos produtos ou termos genéricos em uma única chamada.',
   parameters: {
     type: 'object',
     properties: {
       produtos_: {
         type: 'string',
         description:
-          'Contexto do Produtos e quantidade que o cliente pediu\n\n\nse o cliente nao informou a quantidade, nao envie a quantidade! apenas o nome do produto\n\ncoloque o preço do produto se foi de cartao (a prazo) ou a vista',
+          'Um único produto por chamada, com quantidade e embalagem/unidade quando o cliente informou.\n\n' +
+          'Formato: "{quantidade} {embalagem/unidade} de {nome do produto}" ou "{quantidade} {nome do produto}".\n\n' +
+          'Inclua quantidade E tipo de embalagem/unidade sempre que o cliente mencionar. Preserve abreviações comuns expandindo quando necessário (cx = caixa, pk/pek/pack = pack, fd = fardo, etc.).\n\n' +
+          'Exemplos de como o cliente pode pedir (envie nesse espírito):\n' +
+          '- "um milheiro de {produto}"\n' +
+          '- "4 fardos de {produto}" / "1 fardo de {produto}" / "quarenta fardinhos de {produto}"\n' +
+          '- "2 caixas de {produto}" / "uma caixa de {produto}" / "3 cx de {produto}"\n' +
+          '- "5 {produto}" / "um {produto}" / "4{produto}" (sem espaço)\n' +
+          '- "2 litros de {produto}" / "35 litrinho de {produto}"\n' +
+          '- "um pack de {produto}" / "3 pek de {produto}"\n' +
+          '- "latao de {produto}"\n' +
+          '- "meio metro de {produto}"\n' +
+          '- "0,5 de {produto}" / "metade de {produto}"\n\n' +
+          'Regras:\n' +
+          '- Se informou quantidade + embalagem: envie os três (ex.: "4 fardos de Cimento CP II").\n' +
+          '- Se informou só quantidade: envie quantidade + produto (ex.: "5 Parafuso 6x40").\n' +
+          '- Se informou só embalagem/unidade sem número: envie como disse (ex.: "latao de Tinta Branca").\n' +
+          '- Se NÃO informou quantidade nem embalagem: envie só o nome do produto.\n' +
+          '- Nunca invente quantidade ou embalagem que o cliente não disse.\n\n' +
+          'Coloque o preço do produto se foi de cartão (a prazo) ou à vista, quando aplicável.',
       },
     },
     required: ['produtos_'],

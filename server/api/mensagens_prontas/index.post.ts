@@ -12,7 +12,9 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 import {
   assertColunaDestinoDoWorkspace,
   mapColunaDestinoId,
+  mapFecharPedidoEmAberto,
   mapIaLigada,
+  parseFecharPedidoEmAbertoBody,
   parseIaLigadaBody,
   parseOptionalColunaDestinoId,
 } from '../../utils/mensagensProntasColunaDestino'
@@ -24,6 +26,7 @@ type Body = {
   passos?: unknown
   coluna_destino_id?: unknown
   ia_ligada?: unknown
+  fechar_pedido_em_aberto?: unknown
 }
 
 const TIPOS: MensagemProntaTipo[] = [
@@ -97,7 +100,7 @@ function parsePassos(raw: unknown): MensagemProntaPassoInput[] {
 
 /**
  * POST /api/mensagens_prontas
- * Body: `{ workspace_id, nome, passos[], coluna_destino_id?, ia_ligada? }`
+ * Body: `{ workspace_id, nome, passos[], coluna_destino_id?, ia_ligada?, fechar_pedido_em_aberto? }`
  * Cria sequência + passos em `mensagens_prontas_sequencias` / `mensagens_prontas_passos`.
  */
 export default defineEventHandler(async (event): Promise<CriarMensagemProntaResponse> => {
@@ -124,6 +127,7 @@ export default defineEventHandler(async (event): Promise<CriarMensagemProntaResp
   const passos = parsePassos(body.passos)
   const colunaDestinoId = parseOptionalColunaDestinoId(body.coluna_destino_id)
   const iaLigada = parseIaLigadaBody(body.ia_ligada)
+  const fecharPedidoEmAberto = parseFecharPedidoEmAbertoBody(body.fechar_pedido_em_aberto)
 
   await checkWorkspace(event, workspaceId, userId)
 
@@ -141,8 +145,11 @@ export default defineEventHandler(async (event): Promise<CriarMensagemProntaResp
       user_id: userId,
       coluna_destino_id: colunaDestinoId,
       ia_ligada: iaLigada,
+      fechar_pedido_em_aberto: fecharPedidoEmAberto,
     })
-    .select('id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada')
+    .select(
+      'id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada, fechar_pedido_em_aberto',
+    )
     .maybeSingle()
 
   if (seqErr) {
@@ -184,6 +191,7 @@ export default defineEventHandler(async (event): Promise<CriarMensagemProntaResp
     created_at: String(sequencia.created_at ?? new Date().toISOString()),
     coluna_destino_id: mapColunaDestinoId(sequencia.coluna_destino_id),
     ia_ligada: mapIaLigada(sequencia.ia_ligada),
+    fechar_pedido_em_aberto: mapFecharPedidoEmAberto(sequencia.fechar_pedido_em_aberto),
   }
 
   const passosOut: MensagemProntaPasso[] = (passosCriados ?? []).map((row: Record<string, unknown>) => ({

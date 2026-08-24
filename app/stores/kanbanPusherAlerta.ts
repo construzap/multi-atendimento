@@ -1,4 +1,8 @@
 import { defineStore } from 'pinia'
+import {
+  pararSomNavegadorPedidoNovo,
+  SomNavegadorPedidoNovo,
+} from '~/utils/SomNavegadorPedidoNovo'
 
 type Variante = 'aviso' | 'perigo' | 'info'
 type Acao = 'none' | 'abrir_pedido'
@@ -38,9 +42,11 @@ export const useKanbanPusherAlertaStore = defineStore('kanbanPusherAlerta', {
       this.conversaKey = conversaKey
       this.acao = 'abrir_pedido'
       this.open = true
+      SomNavegadorPedidoNovo()
     },
 
     close() {
+      pararSomNavegadorPedidoNovo()
       this.open = false
       this.conversaKey = null
       this.acao = 'none'

@@ -61,6 +61,9 @@ export type SearchHit = {
   similarity: number
 }
 
+/** Item de hit na resposta pública (sem id interno nem score). */
+export type BuscarProdutosPublicHit = Pick<SearchHit, 'content' | 'metadata'>
+
 export type VectorStoreSearchFilters = {
   workspaceId: number
   termosPesquisa?: string | null
@@ -73,8 +76,8 @@ export type SearchFormPayload = {
   categorias: string
 }
 
-/** Resposta do endpoint público POST /api/public/buscar-produtos */
-export type BuscarProdutosResponse = {
+/** Resultado interno da busca semântica (com id e similarity). */
+export type VectorSearchResult = {
   ok: true
   query: string
   workspace_id: string
@@ -85,4 +88,9 @@ export type BuscarProdutosResponse = {
   empresa_id?: string
   /** @deprecated use termos_pesquisa */
   categorias?: string | null
+}
+
+/** Resposta do endpoint público POST /api/public/buscar-produtos */
+export type BuscarProdutosResponse = Omit<VectorSearchResult, 'hits'> & {
+  hits: BuscarProdutosPublicHit[]
 }

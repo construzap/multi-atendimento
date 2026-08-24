@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import AdminAcessoNegado from '~/components/admin/AdminAcessoNegado.vue'
-import SeletorPagina from '~/components/admin/SeletorPagina.vue'
+import AdminAcessoNegado from '~/components/admin/pagina_inicial/AdminAcessoNegado.vue'
+import SeletorPagina from '~/components/admin/pagina_inicial/SeletorPagina.vue'
 
 definePageMeta({
   layout: 'default',

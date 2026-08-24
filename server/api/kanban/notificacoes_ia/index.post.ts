@@ -157,6 +157,10 @@ function mapNotificacao(row: Record<string, unknown>): KanbanNotificacaoIa {
     entrega_ou_retirada:
       row.entrega_ou_retirada != null ? String(row.entrega_ou_retirada) : null,
     concluido: row.concluido === true,
+    endereco: (() => {
+      const t = row.endereco != null ? String(row.endereco).trim() : ''
+      return t || null
+    })(),
   }
 }
 
@@ -293,7 +297,7 @@ export default defineEventHandler(async (event) => {
       updated_at: nowIso,
     })
     .select(
-      'id, produtos, total_orcamento, observacoes, forma_pagamento, latitude, longitude, tipo_solicitacao, created_at, updated_at, entrega_ou_retirada, concluido',
+      'id, produtos, total_orcamento, observacoes, forma_pagamento, latitude, longitude, tipo_solicitacao, created_at, updated_at, entrega_ou_retirada, concluido, endereco',
     )
     .maybeSingle()
 

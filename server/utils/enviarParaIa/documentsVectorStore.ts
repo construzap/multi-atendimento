@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
 import type { DocumentMetadata, SearchHit, VectorStoreSearchFilters } from '#shared/types/vectorStore'
-import { parseProdutoIdFromContent } from './produtoEmbeddingText'
+import { parseCodigoProdutoFromContent } from './produtoEmbeddingText'
 import { getSupabaseVectorClient } from './supabaseVector'
 
 const DEFAULT_TABLE = 'documentsconstruzapmulti'
@@ -80,7 +80,7 @@ export async function findHashesByWorkspace(
       if (!matchesWorkspaceMetadata(meta, workspaceId)) continue
       if (!meta?.content_hash) continue
 
-      const produtoId = parseProdutoIdFromContent(String(row.content ?? ''))
+      const produtoId = parseCodigoProdutoFromContent(String(row.content ?? ''))
       if (!produtoId) continue
 
       map.set(produtoId, meta.content_hash)
@@ -123,7 +123,7 @@ export async function listVectorDocumentsChunk(
     if (!matchesWorkspaceMetadata(row.metadata, workspaceId)) continue
     rows.push({
       id: String(row.id),
-      produtoId: parseProdutoIdFromContent(String(row.content ?? '')),
+      produtoId: parseCodigoProdutoFromContent(String(row.content ?? '')),
     })
   }
 
@@ -164,7 +164,7 @@ export async function countOrphanDocuments(
     const rows = data ?? []
     for (const row of rows) {
       if (!matchesWorkspaceMetadata(row.metadata, workspaceId)) continue
-      const produtoId = parseProdutoIdFromContent(String(row.content ?? ''))
+      const produtoId = parseCodigoProdutoFromContent(String(row.content ?? ''))
       if (!produtoId || !activeProdutoIds.has(produtoId)) orfaos++
     }
 
@@ -185,16 +185,22 @@ export async function deleteByProdutoId(
   const id = String(produtoId).trim()
   if (!id) return
 
-  const prefix = `Id: ${id}  |`
+  const prefixes = [
+    `codigo do produto: ${id}  |`,
+    `Id: ${id}  |`,
+    `Codigo: ${id}  |`,
+  ]
 
-  const { error } = await client
-    .from(getDocumentsTable(event))
-    .delete()
-    .or(`metadata->>workspace_id.eq.${ws},metadata->>empresa_id.eq.${ws}`)
-    .like('content', `${prefix}%`)
+  for (const prefix of prefixes) {
+    const { error } = await client
+      .from(getDocumentsTable(event))
+      .delete()
+      .or(`metadata->>workspace_id.eq.${ws},metadata->>empresa_id.eq.${ws}`)
+      .like('content', `${prefix}%`)
 
-  if (error) {
-    throw createError({ statusCode: 500, statusMessage: error.message })
+    if (error) {
+      throw createError({ statusCode: 500, statusMessage: error.message })
+    }
   }
 }
 

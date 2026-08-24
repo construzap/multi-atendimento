@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import BaseAvatar from '~/components/BaseAvatar.vue'
 import type { KanbanCard as KanbanCardModel } from '#shared/types/kanban'
 import ModalCriarPedido from '~/components/kanban/notificacoes_ia/ModalCriarPedido.vue'
-import ModalNotificacoesIa from '~/components/kanban/notificacoes_ia/ModalNotificacoesIa.vue'
+import ModalPedidoPronto from '~/components/kanban/notificacoes_ia/ModalPedidoPronto.vue'
 import { isPedidoPronto } from '~/components/kanban/notificacoes_ia/parseProdutosNotificacao'
 import { useKanbanStore } from '~/stores/kanban'
 
@@ -329,7 +329,7 @@ const timeLabel = computed(() => {
       </span>
     </div>
 
-    <ModalNotificacoesIa
+    <ModalPedidoPronto
       v-model:open="modalNotificacoesIaAberto"
       :conversa-key="card.conversa_key"
     />

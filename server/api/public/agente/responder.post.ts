@@ -32,6 +32,28 @@ function strOrEmpty(v: unknown): string {
   return strOrNull(v) ?? ''
 }
 
+/** Aceita objeto de taxas ou JSON string; null se vazio/inválido. */
+function taxasCartaoOrNull(v: unknown): Record<string, number> | string | null {
+  if (v === undefined || v === null) return null
+  if (typeof v === 'string') {
+    const s = v.trim()
+    if (!s) return null
+    try {
+      const parsed = JSON.parse(s) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, number>
+      }
+    } catch {
+      /* mantém string crua se N8N mandar texto */
+    }
+    return s
+  }
+  if (typeof v === 'object' && !Array.isArray(v)) {
+    return v as Record<string, number>
+  }
+  return null
+}
+
 /**
  * Endpoint público chamado pelo N8N no lugar do nó LangChain Agent.
  * Auth: Bearer / x-api-key com NUXT_N8N_AGENTE_API_KEY.
@@ -97,7 +119,7 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     evoURL: strOrNull(body.evoURL),
     url_uazapi: strOrNull(body.url_uazapi),
     phone_PARA_NOTIFICAR: strOrNull(body.phone_PARA_NOTIFICAR),
-    name_cliente_empresa: strOrNull(body.name_cliente_empresa),
+    name_canal_cliente: strOrNull(body.name_canal_cliente),
     tempo_pausa: strOrNull(body.tempo_pausa),
     tempo_resposta: strOrNull(body.tempo_resposta),
     ai_assinatura_enabled: strOrNull(body.ai_assinatura_enabled),
@@ -107,6 +129,11 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     chave_pix_aleatoria: strOrNull(
       body.chave_pix_aleatoria ?? body.CHAVE_PIX_ALEATORIA,
     ),
+    provedor_pagamentos: strOrNull(body.provedor_pagamentos),
+    credenciais_encrypted: strOrNull(
+      body.credenciais_encrypted ?? body.credenciais_pagarme_encrypted,
+    ),
+    taxas_cartao: taxasCartaoOrNull(body.taxas_cartao),
     model: modelOverride || canalCredenciais.model_name || defaultModel,
     max_tool_rounds:
       Number.isFinite(maxRoundsBody) && maxRoundsBody > 0

@@ -61,6 +61,11 @@ function normalizeKanbanCard(card: KanbanCard): KanbanCard {
           ...n,
           produtos: normalizeProdutosRaw(n.produtos),
           total_orcamento: normalizeTotalOrcamento(n.total_orcamento),
+          concluido: n.concluido === true,
+          endereco:
+            typeof n.endereco === 'string' && n.endereco.trim()
+              ? n.endereco.trim()
+              : n.endereco ?? null,
         }))
       : [],
   }
@@ -1148,12 +1153,35 @@ export const useKanbanStore = defineStore('kanban', {
             total_orcamento: normalizeTotalOrcamento(
               payload.notificacao.total_orcamento,
             ),
+            concluido: payload.notificacao.concluido === true,
+            endereco:
+              typeof payload.notificacao.endereco === 'string' &&
+              payload.notificacao.endereco.trim()
+                ? payload.notificacao.endereco.trim()
+                : payload.notificacao.endereco ?? null,
           }
           const list = [...(card.notificacoes_ia ?? [])]
           const nIdx = list.findIndex((n) => n.id === notifNorm.id)
           if (nIdx >= 0) list[nIdx] = notifNorm
           else list.unshift(notifNorm)
           card = { ...card, notificacoes_ia: list }
+        } else if (
+          payload.notificacao_id != null
+          && Number.isFinite(Number(payload.notificacao_id))
+          && payload.notificacao_concluido !== undefined
+          && payload.notificacao_concluido !== null
+        ) {
+          const nid = Number(payload.notificacao_id)
+          const list = [...(card.notificacoes_ia ?? [])]
+          const nIdx = list.findIndex((n) => n.id === nid)
+          if (nIdx >= 0) {
+            list[nIdx] = {
+              ...list[nIdx]!,
+              concluido: payload.notificacao_concluido === true,
+              updated_at: new Date().toISOString(),
+            }
+            card = { ...card, notificacoes_ia: list }
+          }
         }
 
         if (toColunaId != null && toColunaId !== fromCol.id) {

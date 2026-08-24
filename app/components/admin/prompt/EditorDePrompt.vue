@@ -82,9 +82,16 @@ function limparBuscaMemoriaIa() {
   modalApagarMemoriaIaAberto.value = false
 }
 
-watch(selectedWorkspaceId, () => {
-  limparBuscaMemoriaIa()
-})
+watch(
+  selectedWorkspaceId,
+  (id) => {
+    limparBuscaMemoriaIa()
+    if (id) {
+      adminStore.fetchPromptsSeNecessario(id).catch(() => {})
+    }
+  },
+  { immediate: true },
+)
 
 async function buscarConversasMemoriaIa(termo: string) {
   const wsId = workspaceIdNum.value

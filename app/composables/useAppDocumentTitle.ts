@@ -13,12 +13,38 @@ export function useAppDocumentTitle() {
     return raw || 'ConstruZap'
   })
 
+  const workspaceIdFromRoute = computed(() => {
+    const raw = route.params.id
+    const id = Array.isArray(raw) ? raw[0] : raw
+    return id != null ? String(id).trim() : ''
+  })
+
+  const activeWorkspace = computed(() => {
+    const idRaw = workspaces.currentWorkspaceId ?? workspaceIdFromRoute.value
+    if (!idRaw) return null
+
+    const n = Number.parseInt(String(idRaw), 10)
+    if (!Number.isFinite(n)) return null
+
+    return workspaces.items.find((w) => w.id === n) ?? null
+  })
+
+  function ensureWorkspacesForTitle() {
+    if (!/^\/workspaces\/[^/]+/.test(route.path)) return
+    workspaces.ensureAllLoaded().catch(() => {})
+  }
+
+  if (import.meta.client) {
+    onMounted(ensureWorkspacesForTitle)
+    watch(() => route.path, ensureWorkspacesForTitle)
+  }
+
   const documentTitle = computed(() => {
     const name = appName.value
     const inWorkspaceRoute = /^\/workspaces\/[^/]+/.test(route.path)
     if (!inWorkspaceRoute) return name
 
-    const wsNome = workspaces.currentWorkspace?.nome?.trim()
+    const wsNome = activeWorkspace.value?.nome?.trim()
     if (wsNome) return `${name} · ${wsNome}`
     return name
   })

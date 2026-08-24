@@ -61,14 +61,6 @@ function linhaSubtotal(p: (typeof produtos.value)[number]): string {
 
 <template>
   <div class="space-y-5">
-    <p
-      v-if="item.observacoes?.trim()"
-      class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant"
-    >
-      {{ item.observacoes.trim() }}
-    </p>
-
-    <!-- Itens -->
     <div v-if="produtos.length" class="space-y-3">
       <div
         v-for="(p, idx) in produtos"
@@ -113,7 +105,6 @@ function linhaSubtotal(p: (typeof produtos.value)[number]): string {
       Nenhum produto listado.
     </p>
 
-    <!-- Total + pagamento -->
     <div class="space-y-2 border-t border-outline/30 pt-4 dark:border-dark-outline/30">
       <div class="flex items-baseline justify-between gap-4">
         <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
@@ -155,7 +146,6 @@ function linhaSubtotal(p: (typeof produtos.value)[number]): string {
       </span>
     </label>
 
-    <!-- Ações -->
     <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
       <button
         type="button"
@@ -168,10 +158,10 @@ function linhaSubtotal(p: (typeof produtos.value)[number]): string {
       <button
         type="button"
         class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-60 dark:bg-primary-500 dark:hover:bg-primary-600"
-        :disabled="busy || item.concluido === true"
+        :disabled="busy"
         @click="onAceitar"
       >
-        {{ item.concluido ? 'Aceito' : 'Aceitar' }}
+        Aceitar
       </button>
     </div>
   </div>

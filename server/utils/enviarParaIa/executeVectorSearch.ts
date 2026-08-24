@@ -1,5 +1,5 @@
 import type { H3Event } from 'h3'
-import type { BuscarProdutosResponse } from '#shared/types/vectorStore'
+import type { VectorSearchResult } from '#shared/types/vectorStore'
 import { searchSimilar } from './documentsVectorStore'
 import { createEmbedding } from './openaiEmbeddings'
 import type { BuscarParams } from './parseBuscarParams'
@@ -7,7 +7,7 @@ import type { BuscarParams } from './parseBuscarParams'
 export async function executeVectorSearch(
   event: H3Event,
   params: BuscarParams,
-): Promise<BuscarProdutosResponse> {
+): Promise<VectorSearchResult> {
   const config = useRuntimeConfig(event)
   const queryEmbedding = await createEmbedding(
     String(config.openaiApiKey ?? ''),

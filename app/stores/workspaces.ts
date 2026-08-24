@@ -18,6 +18,15 @@ export const useWorkspacesStore = defineStore('workspaces', {
     currentWorkspaceId: null,
     loadedAt: null,
   }),
+  getters: {
+    currentWorkspace(state): Workspace | null {
+      const id = state.currentWorkspaceId
+      if (!id) return null
+      const n = Number.parseInt(String(id), 10)
+      if (!Number.isFinite(n)) return null
+      return state.items.find((w) => w.id === n) ?? null
+    },
+  },
   actions: {
     setCurrentWorkspaceId(id: string | null) {
       this.currentWorkspaceId = id

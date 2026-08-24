@@ -49,6 +49,8 @@ export type KanbanNotificacaoIa = {
   updated_at: string
   entrega_ou_retirada: string | null
   concluido: boolean
+  /** Endereço de entrega (`notificacoes_ia.endereco`). */
+  endereco: string | null
 }
 
 /**
@@ -65,8 +67,14 @@ export type PusherKanbanAtualizacaoPayload = {
   nome_contato?: string | null
   /** Pedido novo (criado ou já existente no banco). */
   notificacao?: KanbanNotificacaoIa | null
-  /** Motivo para o toast. */
-  motivo: 'coluna' | 'pedido' | 'ambos'
+  /**
+   * Patch leve de `concluido` (ex.: sync só Pinia via N8N).
+   * Preferir em vez de `notificacao` completa quando não houver insert/update no banco.
+   */
+  notificacao_id?: number | null
+  notificacao_concluido?: boolean | null
+  /** Motivo para o toast / comportamento no client. */
+  motivo: 'coluna' | 'pedido' | 'ambos' | 'pinia_sync'
 }
 
 export type KanbanCard = {

@@ -12,7 +12,9 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 import {
   assertColunaDestinoDoWorkspace,
   mapColunaDestinoId,
+  mapFecharPedidoEmAberto,
   mapIaLigada,
+  parseFecharPedidoEmAbertoBody,
   parseIaLigadaBody,
   parseOptionalColunaDestinoId,
 } from '../../utils/mensagensProntasColunaDestino'
@@ -24,6 +26,7 @@ type Body = {
   passos?: unknown
   coluna_destino_id?: unknown
   ia_ligada?: unknown
+  fechar_pedido_em_aberto?: unknown
 }
 
 const TIPOS: MensagemProntaTipo[] = [
@@ -105,7 +108,7 @@ function parsePassos(raw: unknown): MensagemProntaPassoInput[] {
 
 /**
  * PATCH /api/mensagens_prontas/:id
- * Body: `{ workspace_id, nome, passos[], coluna_destino_id?, ia_ligada? }`
+ * Body: `{ workspace_id, nome, passos[], coluna_destino_id?, ia_ligada?, fechar_pedido_em_aberto? }`
  * Atualiza a capa e substitui todos os passos da sequência.
  */
 export default defineEventHandler(async (event): Promise<AtualizarMensagemProntaResponse> => {
@@ -134,6 +137,7 @@ export default defineEventHandler(async (event): Promise<AtualizarMensagemPronta
   const passos = parsePassos(body.passos)
   const colunaDestinoId = parseOptionalColunaDestinoId(body.coluna_destino_id)
   const iaLigada = parseIaLigadaBody(body.ia_ligada)
+  const fecharPedidoEmAberto = parseFecharPedidoEmAbertoBody(body.fechar_pedido_em_aberto)
 
   await checkWorkspace(event, workspaceId, userId)
 
@@ -159,10 +163,17 @@ export default defineEventHandler(async (event): Promise<AtualizarMensagemPronta
 
   const { data: sequencia, error: updErr } = await admin
     .from('mensagens_prontas_sequencias')
-    .update({ nome, coluna_destino_id: colunaDestinoId, ia_ligada: iaLigada })
+    .update({
+      nome,
+      coluna_destino_id: colunaDestinoId,
+      ia_ligada: iaLigada,
+      fechar_pedido_em_aberto: fecharPedidoEmAberto,
+    })
     .eq('id', sequenciaId)
     .eq('workspace_id', workspaceId)
-    .select('id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada')
+    .select(
+      'id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada, fechar_pedido_em_aberto',
+    )
     .maybeSingle()
 
   if (updErr) {
@@ -210,6 +221,7 @@ export default defineEventHandler(async (event): Promise<AtualizarMensagemPronta
     created_at: String(sequencia.created_at ?? existente.created_at ?? new Date().toISOString()),
     coluna_destino_id: mapColunaDestinoId(sequencia.coluna_destino_id),
     ia_ligada: mapIaLigada(sequencia.ia_ligada),
+    fechar_pedido_em_aberto: mapFecharPedidoEmAberto(sequencia.fechar_pedido_em_aberto),
   }
 
   const passosOut: MensagemProntaPasso[] = (passosCriados ?? []).map((row: Record<string, unknown>) => ({

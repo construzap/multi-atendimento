@@ -8,15 +8,12 @@ import ModalAlerta from '~/components/ModalAlerta.vue'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 import { useWorkspacesStore } from '~/stores/workspaces'
-import NotificacaoPedidoPronto from './NotificacaoPedidoPronto.vue'
+import ItemPedidoPronto from './ItemPedidoPronto.vue'
+import PedidoProntoExpandido from './PedidoProntoExpandido.vue'
 import { imprimirCupomPedido } from './imprimirCupomPedido'
 import {
-  formatMoedaBr,
   isPedidoPronto,
-  labelTipoSolicitacao,
   normalizeTotalOrcamento,
-  parseProdutosNotificacao,
-  resolveTotalOrcamento,
 } from './parseProdutosNotificacao'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -131,14 +128,6 @@ function textoOuTraco(v: string | null | undefined): string {
   return t || '—'
 }
 
-function qtdItensPedido(item: KanbanNotificacaoIa): number {
-  return parseProdutosNotificacao(item.produtos).length
-}
-
-function totalPedidoExibicao(item: KanbanNotificacaoIa): number | null {
-  return resolveTotalOrcamento(item.total_orcamento, item.forma_pagamento)
-}
-
 function toggleExpandido(id: number) {
   expandidoId.value = expandidoId.value === id ? null : id
 }
@@ -171,65 +160,49 @@ function limparErro(id: number) {
   delete errosPorId[id]
 }
 
-function temErro(id: number): boolean {
-  return typeof errosPorId[id] === 'string' && errosPorId[id]!.length > 0
-}
-
 function mensagemErro(id: number): string {
   return errosPorId[id] ?? ''
 }
 
-function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boolean }) {
+async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boolean }) {
   const key = props.conversaKey?.trim()
   const wsId = workspaceId.value
   if (!key || !wsId || estaEmVoo(item.id)) return
-  if (item.concluido === true) return
 
   const snapshot = clonarNotificacao(item)
   const card = cardNoPinia.value
   limparErro(item.id)
   marcarEmVoo(item.id)
 
-  // Otimista: some da lista na hora.
-  kanban.setNotificacaoIaConcluido(key, item.id, true)
-
-  // Move para coluna ordem 4 (Em Separação).
-  void kanban.moverConversaParaColunaOrdem({
-    workspaceId: wsId,
-    conversaKey: key,
-    ordem: 4,
-  })
-
-  if (payload.imprimir) {
-    imprimirCupomPedido({
-      item: snapshot,
-      lojaNome: lojaNome.value,
-      clienteNome: card?.name ?? card?.name_group ?? null,
-      clienteTelefone: card?.phone ?? null,
-      canalNome: card?.canal_nome ?? null,
+  try {
+    const ok = await kanban.moverConversaParaColunaOrdem({
+      workspaceId: wsId,
+      conversaKey: key,
+      ordem: 4,
     })
-  }
 
-  void (async () => {
-    try {
-      await kanban.patchNotificacaoIaConcluido({
-        workspaceId: wsId,
-        conversaKey: key,
-        notificacaoId: item.id,
-        concluido: true,
+    if (payload.imprimir) {
+      imprimirCupomPedido({
+        item: snapshot,
+        lojaNome: lojaNome.value,
+        clienteNome: card?.name ?? card?.name_group ?? null,
+        clienteTelefone: card?.phone ?? null,
+        canalNome: card?.canal_nome ?? null,
       })
+    }
+
+    if (ok) {
       toast.success('Pedido em preparação', {
         description: 'O pedido foi aceito e está em preparação.',
       })
-    } catch (err) {
-      const msg = mensagemErroFetch(err, 'Não foi possível aceitar o pedido.')
-      kanban.restaurarNotificacaoIaNoCard(key, { ...snapshot, concluido: false })
-      marcarErro(item.id, msg)
-      toast.error(msg)
-    } finally {
-      limparEmVoo(item.id)
     }
-  })()
+  } catch (err) {
+    const msg = mensagemErroFetch(err, 'Não foi possível aceitar o pedido.')
+    marcarErro(item.id, msg)
+    toast.error(msg)
+  } finally {
+    limparEmVoo(item.id)
+  }
 }
 
 function rejeitarPedido(item: KanbanNotificacaoIa) {
@@ -325,93 +298,14 @@ function confirmarExcluirNotificacao() {
     </p>
 
     <ul v-else class="space-y-3" role="list">
-      <li
-        v-for="item in notificacoes"
-        :key="item.id"
-        class="overflow-hidden rounded-2xl border bg-surface-container-lowest shadow-sm dark:bg-dark-surface-container-low"
-        :class="temErro(item.id)
-          ? 'border-red-500 ring-1 ring-red-500/30 dark:border-red-400 dark:ring-red-400/30'
-          : 'border-outline/35 dark:border-dark-outline/35'"
-      >
-        <p
-          v-if="temErro(item.id)"
-          class="border-b border-red-500/30 bg-red-50 px-4 py-2 text-xs font-medium text-red-700 dark:border-red-400/30 dark:bg-red-950/40 dark:text-red-300"
+      <li v-for="item in notificacoes" :key="item.id">
+        <ItemPedidoPronto
+          :item="item"
+          :expandido="expandidoId === item.id"
+          :erro="mensagemErro(item.id) || null"
+          @toggle="toggleExpandido(item.id)"
         >
-          {{ mensagemErro(item.id) }}
-        </p>
-
-        <!-- Resumo (sempre visível) -->
-        <div
-          class="flex cursor-pointer items-start gap-3 px-4 py-3.5 transition-colors hover:bg-surface-container-high/50 dark:hover:bg-dark-surface-container-high/35"
-          role="button"
-          tabindex="0"
-          :aria-expanded="expandidoId === item.id"
-          @click="toggleExpandido(item.id)"
-          @keydown.enter.prevent="toggleExpandido(item.id)"
-          @keydown.space.prevent="toggleExpandido(item.id)"
-        >
-          <div class="min-w-0 flex-1 space-y-2">
-            <div class="flex flex-wrap items-center gap-2">
-              <span class="font-headline text-base font-bold text-on-surface dark:text-dark-on-surface">
-                Nº {{ item.id }}
-              </span>
-              <span
-                class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                :class="isPedidoPronto(item.tipo_solicitacao)
-                  ? 'bg-primary-500/10 text-primary-700 dark:bg-primary-400/15 dark:text-primary-300'
-                  : 'bg-surface-container-high text-on-surface-variant dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant'"
-              >
-                <span
-                  class="h-1.5 w-1.5 rounded-full"
-                  :class="temErro(item.id) ? 'bg-red-500' : item.concluido ? 'bg-emerald-500' : 'bg-amber-500'"
-                  aria-hidden="true"
-                />
-                {{ labelTipoSolicitacao(item.tipo_solicitacao) }}
-              </span>
-            </div>
-
-            <p class="text-xs tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-              {{ formatData(item.created_at) }}
-            </p>
-
-            <template v-if="isPedidoPronto(item.tipo_solicitacao)">
-              <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-                <span class="font-semibold tabular-nums text-on-surface dark:text-dark-on-surface">
-                  {{ formatMoedaBr(totalPedidoExibicao(item)) }}
-                </span>
-                <span class="text-on-surface-variant dark:text-dark-on-surface-variant">
-                  {{ textoOuTraco(item.forma_pagamento) }}
-                </span>
-                <span
-                  v-if="qtdItensPedido(item) > 0"
-                  class="text-on-surface-variant dark:text-dark-on-surface-variant"
-                >
-                  {{ qtdItensPedido(item) }}
-                  {{ qtdItensPedido(item) === 1 ? 'item' : 'itens' }}
-                </span>
-              </div>
-            </template>
-            <template v-else>
-              <p class="line-clamp-2 text-sm text-on-surface dark:text-dark-on-surface">
-                {{ textoOuTraco(item.observacoes) }}
-              </p>
-            </template>
-          </div>
-
-          <span
-            class="material-symbols-outlined shrink-0 text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
-            aria-hidden="true"
-          >
-            {{ expandidoId === item.id ? 'expand_less' : 'expand_more' }}
-          </span>
-        </div>
-
-        <!-- Detalhe expandido -->
-        <div
-          v-if="expandidoId === item.id"
-          class="border-t border-outline/25 px-4 py-4 dark:border-dark-outline/25"
-        >
-          <NotificacaoPedidoPronto
+          <PedidoProntoExpandido
             v-if="isPedidoPronto(item.tipo_solicitacao)"
             :item="item"
             :busy="estaEmVoo(item.id)"
@@ -437,7 +331,7 @@ function confirmarExcluirNotificacao() {
               </p>
             </div>
           </div>
-        </div>
+        </ItemPedidoPronto>
       </li>
     </ul>
   </BaseModal>

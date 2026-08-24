@@ -30,6 +30,16 @@ watch(
   { immediate: true },
 )
 
+watch(
+  selectedWorkspaceId,
+  (id) => {
+    if (id) {
+      adminIaStore.fetchCanaisSeNecessario(id).catch(() => {})
+    }
+  },
+  { immediate: true },
+)
+
 const carregando = computed(() => canaisPending.value && !canaisLoaded.value)
 
 const mostrarResumoPerfil = computed(

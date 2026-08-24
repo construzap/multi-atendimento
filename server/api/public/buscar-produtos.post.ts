@@ -23,5 +23,10 @@ export default defineEventHandler(async (event): Promise<BuscarProdutosResponse>
   const body = await readBody<Record<string, unknown>>(event)
   const params = parseBuscarBody(body)
 
-  return executeVectorSearch(event, params)
+  const result = await executeVectorSearch(event, params)
+
+  return {
+    ...result,
+    hits: result.hits.map(({ content, metadata }) => ({ content, metadata })),
+  }
 })

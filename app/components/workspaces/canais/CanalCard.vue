@@ -6,6 +6,7 @@ import { toast } from 'vue-sonner'
 import type { Canal } from '#shared/types/canal'
 import BaseAvatar from '~/components/BaseAvatar.vue'
 import ModalUrlApiKey from '~/components/workspaces/canais/ModalUrlApiKey.vue'
+import ModalAtivarPagamento from '~/components/workspaces/canais/ModalAtivarPagamento.vue'
 import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
 
 type CanalStatus = 'ativo' | 'pausado'
@@ -29,6 +30,7 @@ const togglePending = ref(false)
 const modalIaAberto = ref(false)
 /** Modal aberto porque o usuário tentou ligar a I.A. sem API key. */
 const modalParaAtivarIa = ref(false)
+const modalPagamentoAberto = ref(false)
 
 const canalPinia = computed(() => {
   return canaisStore.items.find((c) => c.id === props.canal.id) ?? props.canal
@@ -56,6 +58,12 @@ function abrirConfigIa(e: MouseEvent) {
   e.stopPropagation()
   modalParaAtivarIa.value = false
   modalIaAberto.value = true
+}
+
+function abrirPagamento(e: MouseEvent) {
+  e.preventDefault()
+  e.stopPropagation()
+  modalPagamentoAberto.value = true
 }
 
 async function desativarIaSilencioso() {
@@ -208,6 +216,16 @@ function onKeydown(e: KeyboardEvent) {
 
       <button
         type="button"
+        class="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-emerald-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-emerald-400"
+        aria-label="Ativar pagamento"
+        title="Ativar pagamento"
+        @click="abrirPagamento"
+      >
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">payments</span>
+      </button>
+
+      <button
+        type="button"
         class="inline-flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-primary"
         aria-label="Editar canal"
         title="Editar canal"
@@ -240,5 +258,11 @@ function onKeydown(e: KeyboardEvent) {
     :canal-id="canal.id"
     :ativar-ia-ao-salvar="modalParaAtivarIa"
     @salvo-com-key="onIaSalvaComKey"
+  />
+
+  <ModalAtivarPagamento
+    v-model:open="modalPagamentoAberto"
+    :canal-id="canal.id"
+    :workspace-id="workspaceId"
   />
 </template>

@@ -28,6 +28,23 @@ export function parseIaLigadaBody(raw: unknown): boolean {
   throw createError({ statusCode: 400, statusMessage: 'ia_ligada inválido (true ou false).' })
 }
 
+/** Default `false` (coluna DB `fechar_pedido_em_aberto boolean not null default false`). */
+export function mapFecharPedidoEmAberto(raw: unknown): boolean {
+  if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true
+  return false
+}
+
+/** Body: se omitido, default `false`. */
+export function parseFecharPedidoEmAbertoBody(raw: unknown): boolean {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return false
+  if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true
+  if (raw === false || raw === 'false' || raw === 0 || raw === '0') return false
+  throw createError({
+    statusCode: 400,
+    statusMessage: 'fechar_pedido_em_aberto inválido (true ou false).',
+  })
+}
+
 /**
  * Garante que a coluna existe, não está soft-deleted e pertence ao workspace.
  */

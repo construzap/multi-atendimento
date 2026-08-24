@@ -33,6 +33,7 @@ type Body = {
   coluna_destino_id?: unknown
   mover_contato?: unknown
   ia_ligada?: unknown
+  fechar_pedido_em_aberto?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -90,6 +91,11 @@ function parseMensagemPronta(raw: unknown): MensagemProntaComPassos {
         ? null
         : parsePositiveInt(s.coluna_destino_id, 'mensagem_pronta.sequencia.coluna_destino_id'),
     ia_ligada: !(s.ia_ligada === false || s.ia_ligada === 'false' || s.ia_ligada === 0 || s.ia_ligada === '0'),
+    fechar_pedido_em_aberto:
+      s.fechar_pedido_em_aberto === true ||
+      s.fechar_pedido_em_aberto === 'true' ||
+      s.fechar_pedido_em_aberto === 1 ||
+      s.fechar_pedido_em_aberto === '1',
   }
 
   if (!Array.isArray(o.passos) || o.passos.length === 0) {
@@ -187,6 +193,21 @@ export default defineEventHandler(async (event): Promise<WebhookN8nMensagemPront
   }
   mensagem_pronta.sequencia.ia_ligada = ia_ligada
 
+  // Preferência: top-level do body → sequencia; default false.
+  let fechar_pedido_em_aberto = mensagem_pronta.sequencia.fechar_pedido_em_aberto === true
+  if (
+    body.fechar_pedido_em_aberto !== undefined &&
+    body.fechar_pedido_em_aberto !== null &&
+    String(body.fechar_pedido_em_aberto).trim() !== ''
+  ) {
+    fechar_pedido_em_aberto =
+      body.fechar_pedido_em_aberto === true ||
+      body.fechar_pedido_em_aberto === 'true' ||
+      body.fechar_pedido_em_aberto === 1 ||
+      body.fechar_pedido_em_aberto === '1'
+  }
+  mensagem_pronta.sequencia.fechar_pedido_em_aberto = fechar_pedido_em_aberto
+
   await checkWorkspace(event, workspace_id, userId)
 
   const payload = {
@@ -199,6 +220,7 @@ export default defineEventHandler(async (event): Promise<WebhookN8nMensagemPront
     coluna_destino_id,
     mover_contato,
     ia_ligada,
+    fechar_pedido_em_aberto,
   }
 
   let res: Response

@@ -34,6 +34,7 @@ type Body = {
   total_orcamento?: unknown
   observacoes?: unknown
   entrega_ou_retirada?: unknown
+  endereco?: unknown
   nome?: unknown
   fone?: unknown
 }
@@ -203,11 +204,15 @@ function mapNotificacao(row: Record<string, unknown>): KanbanNotificacaoIa {
     entrega_ou_retirada:
       row.entrega_ou_retirada != null ? String(row.entrega_ou_retirada) : null,
     concluido: row.concluido === true,
+    endereco: (() => {
+      const t = row.endereco != null ? String(row.endereco).trim() : ''
+      return t || null
+    })(),
   }
 }
 
 const NOTIF_SELECT =
-  'id, produtos, total_orcamento, observacoes, forma_pagamento, latitude, longitude, tipo_solicitacao, created_at, updated_at, entrega_ou_retirada, concluido'
+  'id, produtos, total_orcamento, observacoes, forma_pagamento, latitude, longitude, tipo_solicitacao, created_at, updated_at, entrega_ou_retirada, concluido, endereco'
 
 /**
  * POST /api/public/kanban-atualizacao
@@ -382,6 +387,7 @@ export default defineEventHandler(async (event) => {
     const fone = strOrNull(body.fone) ?? strOrNull(conversa.phone)
     const observacoes = strOrNull(body.observacoes)
     const entrega = strOrNull(body.entrega_ou_retirada)
+    const endereco = strOrNull(body.endereco)
 
     const { data: created, error: insErr } = await admin
       .from('notificacoes_ia')
@@ -396,6 +402,7 @@ export default defineEventHandler(async (event) => {
         forma_pagamento: formaPagamento,
         observacoes,
         entrega_ou_retirada: entrega,
+        endereco,
         tipo_solicitacao: 'pedido_pronto',
         concluido: false,
         created_at: nowIso,

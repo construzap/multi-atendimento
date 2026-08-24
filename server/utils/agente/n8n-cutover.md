@@ -36,7 +36,7 @@ Headers:
   "evoURL": "{{ DADOS_PRINCIPAL_WEBHOOK.evoURL }}",
   "url_uazapi": "{{ junta_dados_antes_resposta.url_uazapi }}",
   "phone_PARA_NOTIFICAR": "{{ junta_dados_antes_resposta.phone_PARA_NOTIFICAR }}",
-  "name_cliente_empresa": "{{ WORKSPACE - EMPRESA.name_cliente }}",
+  "name_canal_cliente": "{{ WORKSPACE - EMPRESA.name_cliente }}",
   "tempo_pausa": "{{ WORKSPACE - EMPRESA.tempo_pausa }}",
   "tempo_resposta": "{{ WORKSPACE - EMPRESA.tempo_resposta }}",
   "ai_assinatura_enabled": "{{ WORKSPACE - EMPRESA.ai_assinatura_enabled }}",
@@ -71,7 +71,6 @@ Configure no `.env` do app as Production URLs:
 | `NUXT_AGENTE_TOOL_ESTOQUE_URL` | ferramenta de estoque supabase |
 | `NUXT_AGENTE_TOOL_ENVIA_LOCALIZACAO_URL` | envia localização loja |
 | `NUXT_AGENTE_TOOL_FRETE_URL` | Calculadora de Frete |
-| `NUXT_AGENTE_TOOL_SOLICITA_PAGAMENTO_URL` | solicita pagamento |
 | `NUXT_AGENTE_TOOL_ORCAMENTO_PRONTO_URL` | já preenchido (nwebhook orçamento) |
 
 Cada workflow tool precisa de um **Webhook Trigger** (ou URL de produção) que aceite o mesmo JSON de inputs que o `toolWorkflow` recebia.

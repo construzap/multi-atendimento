@@ -92,7 +92,7 @@ async function fetchIndexableProdutoRows(
   return rows
 }
 
-/** Ids dos produtos indexáveis do workspace (chave na vector store). */
+/** Ids dos produtos indexáveis (valor em `codigo do produto:` no content). */
 export async function fetchIndexableProdutoIdKeys(
   event: H3Event,
   workspaceId: number,

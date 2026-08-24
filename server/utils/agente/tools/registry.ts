@@ -7,8 +7,8 @@ import { estoqueTool } from './estoque'
 import { freteTool } from './frete'
 import { argStr, type ToolDef } from './helpers'
 import { postToolHttp } from './httpPost'
+import { gravarInfoClienteTool } from './gravarInfoCliente'
 import { orcamentoprontoTool } from './orcamentopronto'
-import { solicitaPagamentoTool } from './solicitapagamento'
 import { transferirAtendimentoTool } from './transferirAtendimento'
 
 const TOOLS: ToolDef[] = [
@@ -31,7 +31,7 @@ const TOOLS: ToolDef[] = [
   estoqueTool,
   enviaLocalizacaoTool,
   freteTool,
-  solicitaPagamentoTool,
+  gravarInfoClienteTool,
   orcamentoprontoTool,
   transferirAtendimentoTool,
 ]
