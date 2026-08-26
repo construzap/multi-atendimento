@@ -22,7 +22,9 @@ WITH
           'updated_at', n_1.updated_at,
           'entrega_ou_retirada', n_1.entrega_ou_retirada,
           'concluido', COALESCE(n_1.concluido, false),
-          'endereco', n_1.endereco
+          'endereco', n_1.endereco,
+          'token_entrega', n_1.token_entrega,
+          'entrega_status', COALESCE(n_1.entrega_status, 'aguardando_entregador')
         )
         ORDER BY n_1.created_at DESC
       ) AS lista_notificacoes

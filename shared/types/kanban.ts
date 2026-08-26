@@ -51,6 +51,13 @@ export type KanbanNotificacaoIa = {
   concluido: boolean
   /** Endereço de entrega (`notificacoes_ia.endereco`). */
   endereco: string | null
+  /** Token público da URL `/entrega/{token}` (gerado na impressão). */
+  token_entrega?: string | null
+  /**
+   * Status do fluxo do entregador.
+   * `aguardando_entregador` | `coletado` | `no_local` | `entregue`
+   */
+  entrega_status?: string | null
 }
 
 /**

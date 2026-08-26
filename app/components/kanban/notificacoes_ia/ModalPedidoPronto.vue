@@ -182,8 +182,9 @@ async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boo
     })
 
     if (payload.imprimir) {
-      imprimirCupomPedido({
+      await imprimirCupomPedido({
         item: snapshot,
+        workspaceId: wsId,
         lojaNome: lojaNome.value,
         clienteNome: card?.name ?? card?.name_group ?? null,
         clienteTelefone: card?.phone ?? null,

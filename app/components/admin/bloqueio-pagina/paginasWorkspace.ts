@@ -15,6 +15,7 @@ const LABELS: Record<string, string> = {
   produtos: 'Produtos',
   'vector-store': 'Vector Store',
   atendentes: 'Atendentes',
+  entregadores: 'Entregadores',
   frete: 'Frete',
   cobranca: 'Cobrança',
   'agendamento-mensagens': 'Agendamento',

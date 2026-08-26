@@ -256,8 +256,9 @@ async function criarPedido() {
     })
 
     if (imprimirAoCriar.value) {
-      imprimirCupomPedido({
+      await imprimirCupomPedido({
         item: res.notificacao,
+        workspaceId: wsId,
         lojaNome: lojaNome.value,
         clienteNome: props.clienteNome ?? null,
         clienteTelefone: props.clienteTelefone ?? null,

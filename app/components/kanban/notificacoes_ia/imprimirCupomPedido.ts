@@ -10,10 +10,16 @@ import {
 
 export type CupomPedidoImpressaoInput = {
   item: KanbanNotificacaoIa
+  /** Necessário para gerar/garantir `token_entrega` antes de imprimir. */
+  workspaceId?: number | null
   lojaNome?: string | null
   clienteNome?: string | null
   clienteTelefone?: string | null
   canalNome?: string | null
+  /** URL pública da entrega (preenchida internamente após garantir o token). */
+  entregaUrl?: string | null
+  /** Data URL do QR (preenchida internamente). */
+  qrDataUrl?: string | null
 }
 
 function esc(v: string | null | undefined): string {
@@ -219,6 +225,21 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
       text-align: center;
       text-transform: uppercase;
     }
+    .qr-wrap {
+      margin-top: 12px;
+      text-align: center;
+    }
+    .qr-wrap img {
+      width: 120px;
+      height: 120px;
+      image-rendering: pixelated;
+    }
+    .qr-url {
+      margin-top: 6px;
+      font-size: 9px;
+      word-break: break-all;
+      line-height: 1.3;
+    }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
@@ -266,19 +287,24 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
 
     <div class="split">${split}</div>
 
+    ${
+      input.qrDataUrl && input.entregaUrl
+        ? `<hr class="sep" />
+    <div class="qr-wrap">
+      <div class="bold" style="margin-bottom:6px">ENTREGA</div>
+      <img src="${esc(input.qrDataUrl)}" alt="QR Code entrega" width="120" height="120" />
+      <div class="qr-url muted">${esc(input.entregaUrl)}</div>
+    </div>`
+        : ''
+    }
+
     <div class="footer">Não tem valor fiscal</div>
   </div>
 </body>
 </html>`
 }
 
-/**
- * Abre o diálogo de impressão do navegador com o cupom do pedido.
- */
-export function imprimirCupomPedido(input: CupomPedidoImpressaoInput): void {
-  if (!import.meta.client) return
-
-  const html = buildCupomHtml(input)
+function abrirImpressao(html: string): void {
   const iframe = document.createElement('iframe')
   iframe.setAttribute('aria-hidden', 'true')
   iframe.style.position = 'fixed'
@@ -295,7 +321,6 @@ export function imprimirCupomPedido(input: CupomPedidoImpressaoInput): void {
   const doc = iframe.contentDocument || win?.document
   if (!win || !doc) {
     iframe.remove()
-    // Fallback: nova janela
     const popup = window.open('', '_blank', 'noopener,noreferrer,width=420,height=700')
     if (!popup) return
     popup.document.open()
@@ -320,7 +345,6 @@ export function imprimirCupomPedido(input: CupomPedidoImpressaoInput): void {
 
   win.onafterprint = cleanup
 
-  // Aguarda layout/fonts antes de imprimir
   setTimeout(() => {
     try {
       win.focus()
@@ -328,7 +352,74 @@ export function imprimirCupomPedido(input: CupomPedidoImpressaoInput): void {
     } catch {
       cleanup()
     }
-    // Fallback se o browser não disparar onafterprint
     setTimeout(cleanup, 60_000)
   }, 300)
+}
+
+async function garantirTokenEQr(
+  input: CupomPedidoImpressaoInput,
+): Promise<{ entregaUrl: string | null; qrDataUrl: string | null; token: string | null }> {
+  const wsId = input.workspaceId
+  const pedidoId = input.item.id
+  if (
+    wsId == null ||
+    !Number.isFinite(wsId) ||
+    wsId < 1 ||
+    !Number.isFinite(pedidoId) ||
+    pedidoId < 1
+  ) {
+    return { entregaUrl: null, qrDataUrl: null, token: null }
+  }
+
+  let token =
+    typeof input.item.token_entrega === 'string' && input.item.token_entrega.trim()
+      ? input.item.token_entrega.trim().toLowerCase()
+      : null
+
+  try {
+    const res = await $fetch<{ ok: true; token_entrega: string }>('/api/kanban/notificacoes_ia/token-entrega', {
+      method: 'POST',
+      body: { workspace_id: wsId, id: pedidoId },
+    })
+    token = String(res.token_entrega ?? '').trim().toLowerCase() || token
+  } catch {
+    /* imprime sem QR se falhar */
+  }
+
+  if (!token) {
+    return { entregaUrl: null, qrDataUrl: null, token: null }
+  }
+
+  const entregaUrl = `${window.location.origin}/entrega/${token}`
+  try {
+    const QRCode = (await import('qrcode')).default
+    const qrDataUrl = await QRCode.toDataURL(entregaUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 240,
+      color: { dark: '#000000', light: '#ffffff' },
+    })
+    return { entregaUrl, qrDataUrl, token }
+  } catch {
+    return { entregaUrl, qrDataUrl: null, token }
+  }
+}
+
+/**
+ * Abre o diálogo de impressão do navegador com o cupom do pedido.
+ * Garante `token_entrega` e embute QR da página pública do entregador.
+ */
+export async function imprimirCupomPedido(input: CupomPedidoImpressaoInput): Promise<void> {
+  if (!import.meta.client) return
+
+  const { entregaUrl, qrDataUrl, token } = await garantirTokenEQr(input)
+  const html = buildCupomHtml({
+    ...input,
+    entregaUrl,
+    qrDataUrl,
+    item: token
+      ? { ...input.item, token_entrega: token }
+      : input.item,
+  })
+  abrirImpressao(html)
 }

@@ -3,6 +3,10 @@ import { NuxtPage, NuxtRouteAnnouncer } from '#components'
 import { Toaster } from 'vue-sonner'
 import 'vue-sonner/style.css'
 import KanbanPusherAlertaModal from '~/components/kanban/KanbanPusherAlertaModal.vue'
+import { isRotaEntregaPublica } from '~/utils/isRotaEntregaPublica'
+
+const route = useRoute()
+const naEntregaPublica = computed(() => isRotaEntregaPublica(route.path))
 
 const { isDark, pageBg } = useColorMode()
 useAppDocumentTitle()
@@ -30,7 +34,7 @@ useHead({
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>
-    <KanbanPusherAlertaModal />
+    <KanbanPusherAlertaModal v-if="!naEntregaPublica" />
     <Toaster
       rich-colors
       position="top-right"

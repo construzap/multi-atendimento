@@ -66,6 +66,14 @@ function normalizeKanbanCard(card: KanbanCard): KanbanCard {
             typeof n.endereco === 'string' && n.endereco.trim()
               ? n.endereco.trim()
               : n.endereco ?? null,
+          token_entrega:
+            typeof n.token_entrega === 'string' && n.token_entrega.trim()
+              ? n.token_entrega.trim()
+              : n.token_entrega ?? null,
+          entrega_status:
+            typeof n.entrega_status === 'string' && n.entrega_status.trim()
+              ? n.entrega_status.trim()
+              : n.entrega_status ?? null,
         }))
       : [],
   }

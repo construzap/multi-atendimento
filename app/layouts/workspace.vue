@@ -32,6 +32,7 @@ type NavItem = {
     | 'produtos'
     | 'buscarProdutosIa'
     | 'atendentes'
+    | 'entregadores'
     | 'frete'
     | 'cobranca'
     | 'agendamento'
@@ -96,6 +97,7 @@ const items = computed<NavItem[]>(() => {
     { label: 'Canais', to: `${base.value}/canais`, page: 'canais', icon: 'canais' },
     { label: 'Produtos', to: `${base.value}/produtos`, page: 'produtos', icon: 'produtos' },
     { label: 'Atendentes', to: `${base.value}/atendentes`, page: 'atendentes', icon: 'atendentes' },
+    { label: 'Entregadores', to: `${base.value}/entregadores`, page: 'entregadores', icon: 'entregadores' },
     { label: 'Frete', to: `${base.value}/frete`, page: 'frete', icon: 'frete' },
     { label: 'Cobrança', to: `${base.value}/cobranca`, page: 'cobranca', icon: 'cobranca' },
     { label: 'Agendamento de mensagens', to: `${base.value}/agendamento-mensagens`, page: 'agendamento-mensagens', icon: 'agendamento' },
@@ -229,6 +231,12 @@ function closeMobileSidebar() {
                 <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                 <circle cx="9" cy="7" r="4" />
                 <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke-linecap="round" />
+              </svg>
+              <svg v-else-if="it.icon === 'entregadores'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="18.5" cy="17.5" r="2.5" />
+                <circle cx="5.5" cy="17.5" r="2.5" />
+                <path d="M15 17.5H8.5L6 10h8l1 3.5h3.5l2 4" />
+                <path d="M12 6V3M9 6h6" />
               </svg>
               <svg v-else-if="it.icon === 'frete'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 18V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h1" />
@@ -379,6 +387,12 @@ function closeMobileSidebar() {
               <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
               <circle cx="9" cy="7" r="4" />
               <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" stroke-linecap="round" />
+            </svg>
+            <svg v-else-if="it.icon === 'entregadores'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="18.5" cy="17.5" r="2.5" />
+              <circle cx="5.5" cy="17.5" r="2.5" />
+              <path d="M15 17.5H8.5L6 10h8l1 3.5h3.5l2 4" />
+              <path d="M12 6V3M9 6h6" />
             </svg>
             <svg v-else-if="it.icon === 'frete'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 18V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h1" />

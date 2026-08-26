@@ -10,6 +10,7 @@ export type PageRoleSlug =
   | 'produtos'
   | 'vector-store'
   | 'atendentes'
+  | 'entregadores'
   | 'frete'
   | 'cobranca'
   | 'agendamento-mensagens'
@@ -28,6 +29,7 @@ export const MSG_SEM_PERMISSAO_PAGINA =
 export const PAGE_ROLES_PADRAO: readonly PageRoleSlug[] = [
   'canais',
   'atendentes',
+  'entregadores',
   'configuracoes',
   'frete',
   'vector-store',
