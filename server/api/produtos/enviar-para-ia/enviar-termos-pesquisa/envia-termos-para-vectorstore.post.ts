@@ -1,19 +1,19 @@
 import { readBody } from 'h3'
 import type { SyncChunkResult } from '#shared/types/vectorStore'
-import { checkWorkspace } from '../../../utils/checkWorkspace'
-import { requireAuthUserId } from '../../../utils/requireAuthUserId'
+import { checkWorkspace } from '../../../../utils/checkWorkspace'
+import { requireAuthUserId } from '../../../../utils/requireAuthUserId'
+import { createEmbeddings } from '../../../../utils/enviarParaIa/openaiEmbeddings'
+import { parseWorkspaceId } from '../../../../utils/enviarParaIa/parseWorkspaceId'
 import {
-  deleteByProdutoId,
-  findHashesByWorkspace,
-  insertDocument,
-} from '../../../utils/enviarParaIa/documentsVectorStore'
-import { createEmbeddings } from '../../../utils/enviarParaIa/openaiEmbeddings'
-import { parseWorkspaceId } from '../../../utils/enviarParaIa/parseWorkspaceId'
-import { buildProdutoEmbeddingPayload, isProdutoIndexavel } from '../../../utils/enviarParaIa/produtoEmbeddingText'
+  deleteByTermoId,
+  findTermoHashesByWorkspace,
+  insertTermoDocument,
+} from '../../../../utils/enviarParaIa/termosPesquisa/documentsTermosVectorStore'
+import { buildTermoEmbeddingPayload } from '../../../../utils/enviarParaIa/termosPesquisa/termoEmbeddingText'
 import {
-  countProdutosIndexaveis,
-  fetchProdutosIndexaveisChunk,
-} from '../../../utils/enviarParaIa/produtosIndexaveis'
+  countTermosIndexaveis,
+  fetchTermosIndexaveisChunk,
+} from '../../../../utils/enviarParaIa/termosPesquisa/termosIndexaveis'
 
 type Body = {
   workspace_id?: unknown
@@ -24,7 +24,7 @@ type Body = {
 
 const DEFAULT_CHUNK = 50
 
-/** POST /api/produtos/enviar-para-ia/sync — processa um chunk de produtos. */
+/** POST /api/produtos/enviar-para-ia/enviar-termos-pesquisa/envia-termos-para-vectorstore — indexa termos em uso. */
 export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
   const userId = await requireAuthUserId(event)
   const body = await readBody<Body>(event)
@@ -46,21 +46,21 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
   await checkWorkspace(event, workspaceId, userId)
 
   const config = useRuntimeConfig(event)
-  const total = await countProdutosIndexaveis(event, workspaceId)
-  const rows = await fetchProdutosIndexaveisChunk(event, workspaceId, offset, limit)
+  const total = await countTermosIndexaveis(event, workspaceId)
+  const rows = await fetchTermosIndexaveisChunk(event, workspaceId, offset, limit)
 
-  const existingHashes = force ? new Map<string, string>() : await findHashesByWorkspace(event, workspaceId)
+  const existingHashes = force
+    ? new Map<string, string>()
+    : await findTermoHashesByWorkspace(event, workspaceId)
 
-  const toEmbed: ReturnType<typeof buildProdutoEmbeddingPayload>[] = []
+  const toEmbed: ReturnType<typeof buildTermoEmbeddingPayload>[] = []
   let skipped = 0
 
   for (const row of rows) {
-    if (!isProdutoIndexavel(row)) continue
-
-    const payload = buildProdutoEmbeddingPayload(row, workspaceId)
+    const payload = buildTermoEmbeddingPayload(row, workspaceId)
     if (!payload) continue
 
-    const prev = existingHashes.get(String(payload.produtoId))
+    const prev = existingHashes.get(String(payload.termoId))
     if (!force && prev === payload.contentHash) {
       skipped++
       continue
@@ -84,17 +84,17 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
         const payload = toEmbed[i]!
         const embedding = embeddings[i]
         if (!embedding) {
-          errors.push(`Produto ${payload.produtoId}: embedding vazio`)
+          errors.push(`Termo ${payload.termoId}: embedding vazio`)
           continue
         }
 
         try {
-          await deleteByProdutoId(event, workspaceId, payload.produtoId)
-          await insertDocument(event, payload.content, payload.metadata, embedding)
+          await deleteByTermoId(event, workspaceId, payload.termoId)
+          await insertTermoDocument(event, payload.content, payload.metadata, embedding)
           embedded++
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          errors.push(`Produto ${payload.produtoId}: ${msg}`)
+          errors.push(`Termo ${payload.termoId}: ${msg}`)
         }
       }
     } catch (err) {

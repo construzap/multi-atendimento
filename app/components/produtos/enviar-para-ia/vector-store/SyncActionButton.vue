@@ -17,11 +17,12 @@ const emit = defineEmits<{
 
 const syncing = ref(false)
 const cancelled = ref(false)
-const phase = ref<'cleanup' | 'embed' | null>(null)
-// Padrão false: envia só produtos novos ou alterados. Para reexibir a opção no front, descomente o bloco no template.
+const phase = ref<'cleanup' | 'embed' | 'termos_cleanup' | 'termos_embed' | null>(null)
 const force = ref(false)
 const cleanupLogs = ref<SyncCleanupChunkResult[]>([])
 const embedLogs = ref<SyncChunkResult[]>([])
+const termosCleanupLogs = ref<SyncCleanupChunkResult[]>([])
+const termosEmbedLogs = ref<SyncChunkResult[]>([])
 
 let abortController: AbortController | null = null
 
@@ -53,82 +54,126 @@ onBeforeRouteLeave(() => {
   )
 })
 
+async function runCleanupLoop(
+  url: string,
+  logs: Ref<SyncCleanupChunkResult[]>,
+): Promise<boolean> {
+  let offset = 0
+  let done = false
+  while (!done && !cancelled.value) {
+    const chunk = await $fetch<SyncCleanupChunkResult>(url, {
+      method: 'POST',
+      body: {
+        workspace_id: props.workspaceId,
+        offset,
+        limit: 100,
+      },
+      signal: abortController!.signal,
+    })
+
+    logs.value.push(chunk)
+    done = chunk.done
+    if (!done) {
+      offset = chunk.nextOffset ?? 0
+    }
+  }
+  return cancelled.value
+}
+
+async function runEmbedLoop(
+  url: string,
+  logs: Ref<SyncChunkResult[]>,
+): Promise<boolean> {
+  let offset = 0
+  let done = false
+  while (!done && !cancelled.value) {
+    const chunk = await $fetch<SyncChunkResult>(url, {
+      method: 'POST',
+      body: {
+        workspace_id: props.workspaceId,
+        force: force.value,
+        offset,
+        limit: 50,
+      },
+      signal: abortController!.signal,
+    })
+
+    logs.value.push(chunk)
+    done = chunk.done
+    offset = chunk.nextOffset ?? chunk.processed
+  }
+  return cancelled.value
+}
+
 async function sync() {
   if (syncing.value) return
   syncing.value = true
   cancelled.value = false
   cleanupLogs.value = []
   embedLogs.value = []
+  termosCleanupLogs.value = []
+  termosEmbedLogs.value = []
   phase.value = null
   abortController = new AbortController()
 
   let interrompido = false
 
   try {
-    await $fetch('/api/produtos/enviar-para-ia/enviar-ia', {
+    await $fetch('/api/produtos/enviar-para-ia/envia-produtos-para-n8n', {
       method: 'POST',
       body: { workspace_id: props.workspaceId },
       signal: abortController.signal,
     })
 
     phase.value = 'cleanup'
-    let cleanupOffset = 0
-    let cleanupDone = false
-    while (!cleanupDone && !cancelled.value) {
-      const chunk = await $fetch<SyncCleanupChunkResult>('/api/produtos/enviar-para-ia/sync-cleanup', {
-        method: 'POST',
-        body: {
-          workspace_id: props.workspaceId,
-          offset: cleanupOffset,
-          limit: 100,
-        },
-        signal: abortController.signal,
-      })
-
-      cleanupLogs.value.push(chunk)
-      cleanupDone = chunk.done
-      if (!cleanupDone) {
-        cleanupOffset = chunk.nextOffset ?? 0
-      }
-    }
-
-    if (cancelled.value) {
+    if (await runCleanupLoop('/api/produtos/enviar-para-ia/sync-cleanup', cleanupLogs)) {
       interrompido = true
       emit('stopped')
       return
     }
 
     phase.value = 'embed'
-    let embedOffset = 0
-    let embedDone = false
-    while (!embedDone && !cancelled.value) {
-      const chunk = await $fetch<SyncChunkResult>('/api/produtos/enviar-para-ia/sync', {
-        method: 'POST',
-        body: {
-          workspace_id: props.workspaceId,
-          force: force.value,
-          offset: embedOffset,
-          limit: 50,
-        },
-        signal: abortController.signal,
-      })
-
-      embedLogs.value.push(chunk)
-      embedDone = chunk.done
-      embedOffset = chunk.nextOffset ?? chunk.processed
-    }
-
-    if (cancelled.value) {
+    if (await runEmbedLoop('/api/produtos/enviar-para-ia/envia-produtos-para-vectorstore', embedLogs)) {
       interrompido = true
       emit('stopped')
-    } else {
-      emit('completed')
+      return
     }
+
+    phase.value = 'termos_cleanup'
+    if (
+      await runCleanupLoop(
+        '/api/produtos/enviar-para-ia/enviar-termos-pesquisa/sync-cleanup',
+        termosCleanupLogs,
+      )
+    ) {
+      interrompido = true
+      emit('stopped')
+      return
+    }
+
+    phase.value = 'termos_embed'
+    if (
+      await runEmbedLoop(
+        '/api/produtos/enviar-para-ia/enviar-termos-pesquisa/envia-termos-para-vectorstore',
+        termosEmbedLogs,
+      )
+    ) {
+      interrompido = true
+      emit('stopped')
+      return
+    }
+
+    emit('completed')
   } catch (err) {
     if (cancelled.value || (err instanceof Error && err.name === 'AbortError')) {
       interrompido = true
       emit('stopped')
-    } else if (!cleanupLogs.value.length && !embedLogs.value.length) {
+    } else if (
+      !cleanupLogs.value.length &&
+      !embedLogs.value.length &&
+      !termosCleanupLogs.value.length &&
+      !termosEmbedLogs.value.length
+    ) {
       toast.error(mensagemErroFetch(err, 'Não foi possível iniciar o envio para a I.A.'))
     } else {
       const msg = err instanceof Error ? err.message : 'Erro na sincronização.'
@@ -137,6 +182,25 @@ async function sync() {
           total: cleanupLogs.value.at(-1)?.total ?? 0,
           processed: cleanupLogs.value.at(-1)?.processed ?? 0,
           removed: 0,
+          errors: [msg],
+          done: true,
+          nextOffset: null,
+        })
+      } else if (phase.value === 'termos_cleanup') {
+        termosCleanupLogs.value.push({
+          total: termosCleanupLogs.value.at(-1)?.total ?? 0,
+          processed: termosCleanupLogs.value.at(-1)?.processed ?? 0,
+          removed: 0,
+          errors: [msg],
+          done: true,
+          nextOffset: null,
+        })
+      } else if (phase.value === 'termos_embed') {
+        termosEmbedLogs.value.push({
+          total: termosEmbedLogs.value.at(-1)?.total ?? 0,
+          processed: termosEmbedLogs.value.at(-1)?.processed ?? 0,
+          embedded: 0,
+          skipped: 0,
           errors: [msg],
           done: true,
           nextOffset: null,
@@ -193,26 +257,6 @@ defineExpose({ syncing })
       </p>
     </div>
 
-    <!-- Opção "Enviar todos os produtos de novo" oculta; force permanece false no script.
-    <div class="mb-3">
-      <label class="flex items-start gap-2 text-sm text-zinc-900 dark:text-zinc-100">
-        <input
-          v-model="force"
-          type="checkbox"
-          class="mt-0.5 rounded border-zinc-300 dark:border-zinc-600 dark:bg-zinc-900"
-          :disabled="syncing"
-        />
-        <span>
-          <span class="font-medium">Enviar todos os produtos de novo</span>
-          <span class="mt-0.5 block text-xs text-zinc-500 dark:text-zinc-400">
-            Desmarcado: envia só produtos novos ou que você alterou. Marcado: reenvia tudo
-            (demora mais e gasta mais créditos da I.A.).
-          </span>
-        </span>
-      </label>
-    </div>
-    -->
-
     <div class="flex flex-wrap items-center gap-2">
       <button
         type="button"
@@ -237,6 +281,8 @@ defineExpose({ syncing })
       :phase="phase"
       :cleanup-logs="cleanupLogs"
       :embed-logs="embedLogs"
+      :termos-cleanup-logs="termosCleanupLogs"
+      :termos-embed-logs="termosEmbedLogs"
       :syncing="syncing"
       :cancelled="cancelled"
     />

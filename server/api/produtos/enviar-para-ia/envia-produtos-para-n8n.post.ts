@@ -21,7 +21,7 @@ function parseWorkspaceId(raw: unknown): number {
   return n
 }
 
-/** POST /api/produtos/enviar-para-ia/enviar-ia — dispara webhook antes da indexação. */
+/** POST /api/produtos/enviar-para-ia/envia-produtos-para-n8n — dispara webhook n8n antes da indexação. */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
 

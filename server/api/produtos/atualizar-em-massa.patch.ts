@@ -7,6 +7,7 @@ import {
   buildProdutoMassUpdateFromPatch,
   parseProdutoMassUpdateIds,
 } from '../../utils/produtoMassUpdatePatch'
+import { adicionarTermosVinculoEmMassa } from '../../utils/produtoTermosPesquisa'
 
 const MAX_IDS = 100
 
@@ -58,28 +59,43 @@ export default defineEventHandler(async (event): Promise<ProdutosAtualizarEmMass
   await checkWorkspace(event, workspaceId, userId)
 
   const admin = serverSupabaseServiceRole<any>(event)
-  const { update } = await buildProdutoMassUpdateFromPatch(
+  const { update, termosIdsPatch } = await buildProdutoMassUpdateFromPatch(
     admin,
     workspaceId,
     rawPatch as Record<string, unknown>,
   )
 
-  update.updated_at = new Date().toISOString()
+  const hasCampos = Object.keys(update).length > 0
+  const hasTermos = termosIdsPatch !== undefined
 
-  const { data, error } = await admin
-    .from('produtos_workspace')
-    .update(update)
-    .eq('workspace_id', workspaceId)
-    .in('id', ids)
-    .select('id')
-
-  if (error) {
-    throw createError({ statusCode: 500, statusMessage: error.message })
+  if (!hasCampos && !hasTermos) {
+    throw createError({ statusCode: 400, statusMessage: 'Nenhum campo válido para atualizar.' })
   }
 
-  const atualizadosIds = (data ?? [])
-    .map((r: { id?: unknown }) => (typeof r.id === 'number' ? r.id : Number(r.id)))
-    .filter((n: number) => Number.isFinite(n))
+  let atualizadosIds: number[] = []
+
+  if (hasCampos || hasTermos) {
+    const patchUpdate: Record<string, unknown> = { ...update, updated_at: new Date().toISOString() }
+
+    const { data, error } = await admin
+      .from('produtos_workspace')
+      .update(patchUpdate)
+      .eq('workspace_id', workspaceId)
+      .in('id', ids)
+      .select('id')
+
+    if (error) {
+      throw createError({ statusCode: 500, statusMessage: error.message })
+    }
+
+    atualizadosIds = (data ?? [])
+      .map((r: { id?: unknown }) => (typeof r.id === 'number' ? r.id : Number(r.id)))
+      .filter((n: number) => Number.isFinite(n))
+  }
+
+  if (hasTermos && atualizadosIds.length > 0 && (termosIdsPatch?.length ?? 0) > 0) {
+    await adicionarTermosVinculoEmMassa(admin, atualizadosIds, termosIdsPatch ?? [])
+  }
 
   return {
     atualizados: atualizadosIds.length,

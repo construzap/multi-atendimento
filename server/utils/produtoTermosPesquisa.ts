@@ -168,6 +168,99 @@ export async function conjuntoIdsTermoValidos(
   return out
 }
 
+/** Normaliza ids de termos vindos do body (array ou legado `termo_pesquisa` único). */
+export function parseTermosPesquisaIdsInput(raw: unknown, legadoTermoId?: unknown): number[] {
+  if (Array.isArray(raw)) {
+    return [...new Set(
+      raw
+        .map((x) => (typeof x === 'number' ? Math.trunc(x) : Number.parseInt(String(x), 10)))
+        .filter((n) => Number.isFinite(n) && n >= 1),
+    )]
+  }
+  if (legadoTermoId !== undefined && legadoTermoId !== null && legadoTermoId !== '') {
+    const n = typeof legadoTermoId === 'number' ? Math.trunc(legadoTermoId) : Number.parseInt(String(legadoTermoId), 10)
+    if (Number.isFinite(n) && n >= 1) return [n]
+  }
+  return []
+}
+
+/**
+ * Substitui vínculos do produto em `produto_termo_de_pesquisa_vinculo`.
+ * `termoIds` vazio remove todos os vínculos.
+ */
+export async function sincronizarTermosVinculo(
+  admin: { from: (table: string) => any },
+  produtoId: number,
+  termoIds: number[],
+): Promise<void> {
+  const uniq = [...new Set(termoIds.filter((id) => Number.isInteger(id) && id >= 1))]
+
+  const { error: delErr } = await admin
+    .from('produto_termo_de_pesquisa_vinculo')
+    .delete()
+    .eq('produto_id', produtoId)
+
+  if (delErr) throw delErr
+  if (!uniq.length) return
+
+  const rows = uniq.map((termo_id) => ({ produto_id: produtoId, termo_id }))
+  const { error: insErr } = await admin.from('produto_termo_de_pesquisa_vinculo').insert(rows)
+  if (insErr) throw insErr
+}
+
+/** Aplica o mesmo conjunto de termos a vários produtos (edição em massa — só adiciona, não remove). */
+export async function adicionarTermosVinculoEmMassa(
+  admin: { from: (table: string) => any },
+  produtoIds: number[],
+  termoIds: number[],
+): Promise<void> {
+  const ids = [...new Set(produtoIds.filter((id) => Number.isInteger(id) && id >= 1))]
+  if (!ids.length) return
+
+  const uniqTermos = [...new Set(termoIds.filter((id) => Number.isInteger(id) && id >= 1))]
+  if (!uniqTermos.length) return
+
+  const rows: { produto_id: number; termo_id: number }[] = []
+  for (const produto_id of ids) {
+    for (const termo_id of uniqTermos) {
+      rows.push({ produto_id, termo_id })
+    }
+  }
+
+  await inserirTermosVinculoLote(admin, rows)
+}
+
+/** @deprecated use adicionarTermosVinculoEmMassa — mantido como alias add-only. */
+export async function sincronizarTermosVinculoEmMassa(
+  admin: { from: (table: string) => any },
+  produtoIds: number[],
+  termoIds: number[],
+): Promise<void> {
+  await adicionarTermosVinculoEmMassa(admin, produtoIds, termoIds)
+}
+
+/** Insere vínculos produto↔termo após create/import (ignora pares duplicados). */
+export async function inserirTermosVinculoLote(
+  admin: { from: (table: string) => any },
+  pares: { produto_id: number; termo_id: number }[],
+): Promise<void> {
+  if (!pares.length) return
+  const seen = new Set<string>()
+  const rows: { produto_id: number; termo_id: number }[] = []
+  for (const p of pares) {
+    if (!Number.isFinite(p.produto_id) || !Number.isFinite(p.termo_id) || p.produto_id < 1 || p.termo_id < 1) {
+      continue
+    }
+    const k = `${p.produto_id}:${p.termo_id}`
+    if (seen.has(k)) continue
+    seen.add(k)
+    rows.push(p)
+  }
+  if (!rows.length) return
+  const { error } = await admin.from('produto_termo_de_pesquisa_vinculo').insert(rows)
+  if (error) throw error
+}
+
 function coletarIdsProdutos(items: ProdutoWorkspaceItem[]): number[] {
   const ids = new Set<number>()
   for (const pai of items) {
@@ -185,17 +278,26 @@ export async function mapaTermosPorProdutoId(
   const out = new Map<number, ProdutoTermoPesquisaItem[]>()
   if (!produtoIds.length) return out
 
-  const { data: produtos, error: pErr } = await admin
-    .from('produtos_workspace')
-    .select('id, termo_pesquisa')
-    .eq('workspace_id', workspaceId)
-    .in('id', produtoIds)
+  for (const id of produtoIds) out.set(id, [])
 
-  if (pErr) throw pErr
-  if (!produtos?.length) return out
+  const { data: vinculos, error: vErr } = await admin
+    .from('produto_termo_de_pesquisa_vinculo')
+    .select('produto_id, termo_id')
+    .in('produto_id', produtoIds)
 
-  const termoIds = [...new Set(produtos.map((p: any) => p.termo_pesquisa).filter((id: unknown): id is number => typeof id === 'number' && id > 0))]
-  
+  if (vErr) throw vErr
+  if (!vinculos?.length) return out
+
+  const termoIds = [
+    ...new Set(
+      vinculos
+        .map((v: { termo_id?: unknown }) =>
+          typeof v.termo_id === 'number' ? v.termo_id : Number(v.termo_id),
+        )
+        .filter((n: number) => Number.isFinite(n) && n >= 1),
+    ),
+  ]
+
   const mapaTermos = new Map<number, ProdutoTermoPesquisaItem>()
   if (termoIds.length > 0) {
     const { data: termos, error: tErr } = await admin
@@ -203,24 +305,28 @@ export async function mapaTermosPorProdutoId(
       .select('id, nome')
       .eq('workspace_id', workspaceId)
       .in('id', termoIds)
-      
+
     if (tErr) throw tErr
-    
+
     for (const row of termos ?? []) {
       const t = mapTermoPesquisaRow(row as Record<string, unknown>)
       if (t.id) mapaTermos.set(t.id, t)
     }
   }
 
-  for (const row of produtos) {
-    const rec = row as { id?: unknown; termo_pesquisa?: unknown }
-    const produtoId = typeof rec.id === 'number' ? rec.id : Number(rec.id)
-    if (!Number.isFinite(produtoId)) continue
-    
-    const termoId = typeof rec.termo_pesquisa === 'number' ? rec.termo_pesquisa : Number(rec.termo_pesquisa)
-    const termo = Number.isFinite(termoId) ? mapaTermos.get(termoId) : null
-    
-    out.set(produtoId, termo ? [termo] : [])
+  for (const row of vinculos) {
+    const rec = row as { produto_id?: unknown; termo_id?: unknown }
+    const produtoId = typeof rec.produto_id === 'number' ? rec.produto_id : Number(rec.produto_id)
+    const termoId = typeof rec.termo_id === 'number' ? rec.termo_id : Number(rec.termo_id)
+    if (!Number.isFinite(produtoId) || !Number.isFinite(termoId)) continue
+
+    const termo = mapaTermos.get(termoId)
+    if (!termo) continue
+
+    const lista = out.get(produtoId) ?? []
+    if (!lista.some((x) => x.id === termo.id)) lista.push(termo)
+    lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
+    out.set(produtoId, lista)
   }
 
   return out

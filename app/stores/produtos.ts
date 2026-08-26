@@ -118,7 +118,7 @@ function linhaParaPayload(row: ProdutoWorkspaceItem): ProdutoCriarEmMassaLinha {
     envia_foto: row.envia_foto ?? true,
     categoria_id: row.categoria_id,
     codigo_ncm: row.codigo_ncm,
-    termo_pesquisa: (row.termos_pesquisa ?? [])[0]?.id ?? null,
+    termos_pesquisa_ids: (row.termos_pesquisa ?? []).map((t) => t.id),
     codigo_barras_ean: row.codigo_barras_ean,
     largura: row.largura,
     altura: row.altura,
@@ -547,7 +547,7 @@ export const useProdutosStore = defineStore('produtos', {
       /** Nome final do produto (editável no modal). Fallback: `item.produto_sugerido`. */
       nome?: string | null
       preco: number
-      /** Id de `produto_termo_de_pesquisa` → coluna `termo_pesquisa`. */
+      /** Ids em `produto_termo_de_pesquisa_vinculo`. */
       termoPesquisaId?: number | null
     }): Promise<void> {
       const nome = String(opts.nome ?? opts.item.produto_sugerido ?? '').trim()
@@ -564,7 +564,7 @@ export const useProdutosStore = defineStore('produtos', {
         method: 'POST',
         body: {
           workspace_id: opts.workspaceId,
-          linhas: [{ nome, preco, termo_pesquisa: termoId }],
+          linhas: [{ nome, preco, termos_pesquisa_ids: termoId != null ? [termoId] : [] }],
         },
       })
 
@@ -1138,7 +1138,7 @@ export const useProdutosStore = defineStore('produtos', {
     removerLinhasCriarEmMassaIncompletas() {
       this.criarEmMassaItems = this.criarEmMassaItems.filter((r) => {
         const nomeOk = String(r.nome ?? '').trim().length > 0
-        const termoOk = (r.termos_pesquisa?.[0]?.id ?? 0) > 0
+        const termoOk = (r.termos_pesquisa?.length ?? 0) > 0
         const unidadeOk = String(r.unidade_venda ?? '').trim().length > 0
         const precoOk = r.preco != null && Number.isFinite(r.preco) && r.preco >= 0
         return nomeOk && termoOk && unidadeOk && precoOk
@@ -1149,7 +1149,7 @@ export const useProdutosStore = defineStore('produtos', {
       return this.criarEmMassaItems
         .filter((r) => {
           const nomeOk = String(r.nome ?? '').trim().length > 0
-          const termoOk = (r.termos_pesquisa?.[0]?.id ?? 0) > 0
+          const termoOk = (r.termos_pesquisa?.length ?? 0) > 0
           const unidadeOk = String(r.unidade_venda ?? '').trim().length > 0
           return nomeOk && termoOk && unidadeOk
         })

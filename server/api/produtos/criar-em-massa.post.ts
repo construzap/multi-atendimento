@@ -4,6 +4,7 @@ import type { ProdutoCriarEmMassaLinha, ProdutosCriarEmMassaResponse } from '#sh
 import { checkLimiteProdutos } from '../../utils/checkLimiteProdutos'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
+import { inserirTermosVinculoLote, parseTermosPesquisaIdsInput } from '../../utils/produtoTermosPesquisa'
 
 const MAX_LINHAS_POR_REQUISICAO = 10
 
@@ -115,10 +116,7 @@ function normalizarLinha(raw: unknown): ProdutoCriarEmMassaLinha | null {
       return v != null && v > 0 ? v : null
     })(),
     codigo_ncm: strOrNull(o.codigo_ncm),
-    termo_pesquisa: (() => {
-      const v = intOrNull(o.termo_pesquisa)
-      return v != null && v > 0 ? v : null
-    })(),
+    termos_pesquisa_ids: parseTermosPesquisaIdsInput(o.termos_pesquisa_ids, o.termo_pesquisa),
     codigo_barras_ean: strOrNull(o.codigo_barras_ean),
     largura: largura != null && largura >= 0 ? largura : 0,
     altura: altura != null && altura >= 0 ? altura : 0,
@@ -227,7 +225,6 @@ export default defineEventHandler(async (event): Promise<ProdutosCriarEmMassaRes
       envia_foto: r.envia_foto ?? true,
       categoria_id: r.categoria_id ?? null,
       codigo_ncm: r.codigo_ncm ?? null,
-      termo_pesquisa: r.termo_pesquisa ?? null,
       codigo_barras_ean: r.codigo_barras_ean ?? null,
       largura: r.largura ?? 0,
       altura: r.altura ?? 0,
@@ -237,8 +234,20 @@ export default defineEventHandler(async (event): Promise<ProdutosCriarEmMassaRes
     }
   })
 
-  const { error } = await admin.from('produtos_workspace').insert(insertRows)
+  const { data: inserted, error } = await admin.from('produtos_workspace').insert(insertRows).select('id')
   if (error) throw createError({ statusCode: 500, statusMessage: error.message })
+
+  const vinculos: { produto_id: number; termo_id: number }[] = []
+  for (let i = 0; i < (inserted ?? []).length; i++) {
+    const row = inserted![i] as { id?: unknown }
+    const produtoId = typeof row.id === 'number' ? row.id : Number(row.id)
+    if (!Number.isFinite(produtoId)) continue
+    const termoIds = normalizadas[i]?.termos_pesquisa_ids ?? []
+    for (const termo_id of termoIds) {
+      vinculos.push({ produto_id: produtoId, termo_id })
+    }
+  }
+  await inserirTermosVinculoLote(admin, vinculos)
 
   if (parentIds.size > 0) {
     const { error: errFlag } = await admin

@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import type {
   ProdutoCriarEmMassaLinha,
+  ProdutoTermoPesquisaItem,
   ProdutosCriarEmMassaResponse,
   ProdutoWorkspaceCampos,
   ProdutoWorkspacePatch,
@@ -11,8 +12,9 @@ import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import BaseTextarea from '~/components/BaseTextarea.vue'
-import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
+import ProdutosSelecaoMultipla from '~/components/produtos/selecao-multipla/ProdutosSelecaoMultipla.vue'
 import { mensagemErroFetch } from '~/stores/canais'
+import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
 import { parseDecimalPtBr } from '~/utils/mapearLinhasImportacaoProduto'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -40,7 +42,7 @@ const isCriar = computed(() => open.value && props.row == null)
 const tituloModal = computed(() => (isCriar.value ? 'Novo produto' : 'Editar produto'))
 
 const nome = ref('')
-const termoSelecao = ref<{ id: number; nome: string } | null>(null)
+const termosSelecionados = ref<ProdutoTermoPesquisaItem[]>([])
 const unidadeVenda = ref('')
 const marca = ref('')
 const precoCusto = ref('')
@@ -75,12 +77,7 @@ function fmtNumCampo(n: number | null | undefined, vazioSeZero = false): string 
 
 function popularDoRow(row: ProdutoWorkspaceCampos) {
   nome.value = row.nome ?? ''
-  const termo = row.termos_pesquisa?.[0]
-  if (termo?.id && termo.nome) {
-    termoSelecao.value = { id: termo.id, nome: termo.nome }
-  } else {
-    termoSelecao.value = null
-  }
+  termosSelecionados.value = [...(row.termos_pesquisa ?? [])]
   unidadeVenda.value = row.unidade_venda ?? ''
   marca.value = row.marca ?? ''
   precoCusto.value = fmtPrecoCampo(row.preco_custo)
@@ -102,7 +99,7 @@ function popularDoRow(row: ProdutoWorkspaceCampos) {
 
 function limpar() {
   nome.value = ''
-  termoSelecao.value = null
+  termosSelecionados.value = []
   unidadeVenda.value = ''
   marca.value = ''
   precoCusto.value = ''
@@ -138,11 +135,24 @@ watch(
 const podeSalvar = computed(() => {
   if (salvando.value) return false
   if (!nome.value.trim()) return false
-  if (termoSelecao.value?.id == null) return false
+  if (termosSelecionados.value.length === 0) return false
   if (!unidadeVenda.value.trim()) return false
   if (!precoVista.value.trim()) return false
   return true
 })
+
+function onTermosCommit(patch: ProdutoWorkspacePatch) {
+  const ids = patch.termos_pesquisa_ids ?? []
+  const wid = props.workspaceId
+  if (wid == null || wid < 1) {
+    termosSelecionados.value = []
+    return
+  }
+  const lista = useProdutoTermosPesquisaStore().getListaCompletaCopia(wid)
+  termosSelecionados.value = ids
+    .map((id) => lista.find((t) => t.id === id))
+    .filter((t): t is ProdutoTermoPesquisaItem => t != null)
+}
 
 function strOuNull(v: string): string | null {
   const t = v.trim()
@@ -192,8 +202,8 @@ function montarPatch(): ProdutoWorkspacePatch | null {
     toast.error('Informe o nome do produto.')
     return null
   }
-  if (termoSelecao.value?.id == null) {
-    toast.error('Selecione uma categoria / termo de pesquisa.')
+  if (termosSelecionados.value.length === 0) {
+    toast.error('Selecione ao menos uma categoria / termo de pesquisa.')
     return null
   }
   const unidade = unidadeVenda.value.trim()
@@ -247,7 +257,7 @@ function montarPatch(): ProdutoWorkspacePatch | null {
     infos_relevantes: strOuNull(infosRelevantes.value),
     status: statusAtivo.value,
     envia_foto: enviaFoto.value,
-    termos_pesquisa_ids: [termoSelecao.value.id],
+    termos_pesquisa_ids: termosSelecionados.value.map((t) => t.id),
   }
   return patch
 }
@@ -266,7 +276,7 @@ function patchParaLinhaCriar(patch: ProdutoWorkspacePatch): ProdutoCriarEmMassaL
     status: patch.status ?? true,
     envia_foto: patch.envia_foto ?? true,
     codigo_ncm: patch.codigo_ncm ?? null,
-    termo_pesquisa: patch.termos_pesquisa_ids?.[0] ?? null,
+    termos_pesquisa_ids: patch.termos_pesquisa_ids ?? [],
     codigo_barras_ean: patch.codigo_barras_ean ?? null,
     sku: patch.sku ?? null,
     largura: patch.largura,
@@ -351,14 +361,11 @@ function fechar() {
         >
           Categoria / Termo de pesquisa <span class="text-red-600 dark:text-red-400">*</span>
         </label>
-        <ProdutosSelecaoUnica
-          catalogo="termos_pesquisa"
-          variant="form"
+        <ProdutosSelecaoMultipla
           :workspace-id="workspaceId"
-          :ativo="open"
-          v-model:selecao="termoSelecao"
-          input-id="produto-edit-termo"
-          placeholder="Comece a digitar para buscar…"
+          :produto-id="row?.id"
+          :termos="termosSelecionados"
+          @commit="onTermosCommit"
         />
       </div>
 

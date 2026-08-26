@@ -3,7 +3,7 @@ import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutoAtualizarResponse } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
 import { mapProdutoWorkspaceRow, SELECT_PRODUTO_WORKSPACE_EMBED } from '../../utils/produtoWorkspaceRow'
-import { conjuntoIdsTermoValidos, termosDoProduto } from '../../utils/produtoTermosPesquisa'
+import { conjuntoIdsTermoValidos, parseTermosPesquisaIdsInput, sincronizarTermosVinculo, termosDoProduto } from '../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -274,15 +274,7 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
     if (!Array.isArray(p.termos_pesquisa_ids)) {
       throw createError({ statusCode: 400, statusMessage: 'termos_pesquisa_ids deve ser um array.' })
     }
-    termosIdsPatch = p.termos_pesquisa_ids
-      .map((x) => (typeof x === 'number' ? Math.trunc(x) : Number.parseInt(String(x), 10)))
-      .filter((n) => Number.isFinite(n) && n >= 1)
-    if (termosIdsPatch.length > 1) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: 'Cada produto pode ter no máximo um termo de pesquisa.',
-      })
-    }
+    termosIdsPatch = parseTermosPesquisaIdsInput(p.termos_pesquisa_ids)
   }
 
   if (p.largura !== undefined) {
@@ -360,16 +352,18 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
   }
 
   if (termosIdsPatch !== undefined) {
-    if (termosIdsPatch.length === 0) {
-      update.termo_pesquisa = null
-    } else {
-      const tid = termosIdsPatch[0]!
-      const ok = await conjuntoIdsTermoValidos(admin, workspaceId, [tid])
-      if (!ok.has(tid)) {
-        throw createError({ statusCode: 400, statusMessage: 'termos_pesquisa_ids inválido ou não pertence a este workspace.' })
+    if (termosIdsPatch.length > 0) {
+      const ok = await conjuntoIdsTermoValidos(admin, workspaceId, termosIdsPatch)
+      for (const tid of termosIdsPatch) {
+        if (!ok.has(tid)) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: 'termos_pesquisa_ids inválido ou não pertence a este workspace.',
+          })
+        }
       }
-      update.termo_pesquisa = tid
     }
+    await sincronizarTermosVinculo(admin, produtoId, termosIdsPatch)
   }
 
   let updated: Record<string, unknown> | null = null

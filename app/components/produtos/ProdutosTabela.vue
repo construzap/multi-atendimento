@@ -409,7 +409,8 @@ function patchOtimista(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch
       extra.termos_pesquisa = ids
         .map((id) => lista.find((t) => t.id === id))
         .filter((t): t is NonNullable<typeof t> => t != null)
-      extra.termos_pesquisa_busca = (extra.termos_pesquisa as { nome: string }[])[0]?.nome ?? row.termos_pesquisa_busca
+      extra.termos_pesquisa_busca =
+        (extra.termos_pesquisa as { nome: string }[]).map((t) => t.nome).join(' ') || null
     }
   }
   return extra
@@ -538,6 +539,22 @@ function reverterPatchLocal(
   flashErroCelulas(id, campos)
 }
 
+function mergeTermosIdsExistentes(row: ProdutoWorkspaceCampos, novosIds: number[]): number[] {
+  const existentes = (row.termos_pesquisa ?? []).map((t) => t.id)
+  return [...new Set([...existentes, ...novosIds])]
+}
+
+function patchTermosMassaAdicionar(
+  row: ProdutoWorkspaceCampos,
+  patch: ProdutoWorkspacePatch,
+): ProdutoWorkspacePatch {
+  if (patch.termos_pesquisa_ids === undefined) return patch
+  return {
+    ...patch,
+    termos_pesquisa_ids: mergeTermosIdsExistentes(row, patch.termos_pesquisa_ids ?? []),
+  }
+}
+
 async function aplicarEdicaoMassa(patch: ProdutoWorkspacePatch) {
   if (props.modo === 'rascunho') return
   const wid = props.workspaceId
@@ -562,7 +579,7 @@ async function aplicarEdicaoMassa(patch: ProdutoWorkspacePatch) {
     const row = encontrarRowPorId(id)
     if (!row) continue
     snapshots.set(id, clonarLinhaParaSalvar(row))
-    emitLinhaLocal(row, patch)
+    emitLinhaLocal(row, patchTermosMassaAdicionar(row, patch))
   }
 
   let sucesso = 0
@@ -767,11 +784,6 @@ function podeGravar(): boolean {
 }
 
 const opcoesPageSize = [10, 50, 100, 1000] as const
-
-/** Altura fixa da área rolável ≈ 10 linhas de card (independente do page_size). */
-const ALTURA_LINHA_CARD_PX = 96
-const LINHAS_VIEWPORT_SCROLL = 10
-const alturaMaxScrollCardsPx = LINHAS_VIEWPORT_SCROLL * ALTURA_LINHA_CARD_PX
 
 function onMudarPageSize(ev: Event) {
   const raw = (ev.target as HTMLSelectElement).value
@@ -1349,7 +1361,7 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="w-full min-w-0 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+    class="w-full min-w-0 overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
   >
     <div
       v-if="mostrarLimiteLinhas"
@@ -1500,8 +1512,7 @@ onUnmounted(() => {
       <!-- Lista em cards (listagem API e rascunho criar em massa) -->
       <div
         ref="tabelaScrollRef"
-        class="w-full min-w-0 max-w-full overflow-auto"
-        :style="{ maxHeight: `${alturaMaxScrollCardsPx}px` }"
+        class="w-full min-w-0 max-w-full"
         :class="{ 'pointer-events-none opacity-50': excluindo || editandoMassa }"
       >
         <div

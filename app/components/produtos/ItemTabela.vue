@@ -5,7 +5,7 @@ import type {
   ProdutoWorkspaceItem,
   ProdutoWorkspacePatch,
 } from '#shared/types/produtos'
-import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
+import ProdutosSelecaoMultipla from '~/components/produtos/selecao-multipla/ProdutosSelecaoMultipla.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 
 const props = withDefaults(
@@ -217,13 +217,10 @@ const checkboxVisualBaseClass =
           class="item-tabela-termo max-w-full min-w-0"
           @click.stop
         >
-          <ProdutosSelecaoUnica
-            catalogo="termos_pesquisa"
-            variant="celula"
+          <ProdutosSelecaoMultipla
             :workspace-id="workspaceId"
             :produto-id="row.id"
-            :termo-id="row.termos_pesquisa?.[0]?.id ?? null"
-            :termo-nome="row.termos_pesquisa?.[0]?.nome ?? row.termos_pesquisa_busca ?? null"
+            :termos="row.termos_pesquisa ?? []"
             :disabled="desabilitado"
             @commit="emit('commit-termo', $event)"
           />

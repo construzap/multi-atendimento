@@ -12,6 +12,15 @@ import {
   countProdutosIndexaveis,
   computeIndexableProdutoSyncStatus,
 } from '../../../utils/enviarParaIa/produtosIndexaveis'
+import {
+  countOrphanTermoDocuments,
+  countTermosByWorkspace,
+  findTermoHashesByWorkspace,
+} from '../../../utils/enviarParaIa/termosPesquisa/documentsTermosVectorStore'
+import {
+  countTermosIndexaveis,
+  computeTermoSyncStatus,
+} from '../../../utils/enviarParaIa/termosPesquisa/termosIndexaveis'
 
 /** GET /api/produtos/enviar-para-ia/status?workspace_id= */
 export default defineEventHandler(async (event): Promise<VectorStoreStatus> => {
@@ -21,19 +30,38 @@ export default defineEventHandler(async (event): Promise<VectorStoreStatus> => {
 
   await checkWorkspace(event, workspaceId, userId)
 
-  const [total_produtos, total_documentos, hashes] = await Promise.all([
+  const [
+    total_produtos,
+    total_documentos,
+    produtoHashes,
+    total_termos,
+    total_documentos_termos,
+    termoHashes,
+  ] = await Promise.all([
     countProdutosIndexaveis(event, workspaceId),
     countByWorkspace(event, workspaceId),
     findHashesByWorkspace(event, workspaceId),
+    countTermosIndexaveis(event, workspaceId),
+    countTermosByWorkspace(event, workspaceId),
+    findTermoHashesByWorkspace(event, workspaceId),
   ])
 
   const { activeProdutoIds, sincronizados, pendentes } = await computeIndexableProdutoSyncStatus(
     event,
     workspaceId,
-    hashes,
+    produtoHashes,
   )
 
-  const orfaos = await countOrphanDocuments(event, workspaceId, activeProdutoIds)
+  const {
+    activeTermoIds,
+    sincronizados: termos_sincronizados,
+    pendentes: termos_pendentes,
+  } = await computeTermoSyncStatus(event, workspaceId, termoHashes)
+
+  const [orfaos, termos_orfaos] = await Promise.all([
+    countOrphanDocuments(event, workspaceId, activeProdutoIds),
+    countOrphanTermoDocuments(event, workspaceId, activeTermoIds),
+  ])
 
   return {
     total_produtos,
@@ -41,6 +69,11 @@ export default defineEventHandler(async (event): Promise<VectorStoreStatus> => {
     sincronizados,
     orfaos,
     pendentes,
+    total_termos,
+    total_documentos_termos,
+    termos_sincronizados,
+    termos_orfaos,
+    termos_pendentes,
     total_indexados: total_documentos,
   }
 })

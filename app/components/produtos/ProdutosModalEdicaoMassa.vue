@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import type { ProdutoWorkspacePatch } from '#shared/types/produtos'
+import type { ProdutoTermoPesquisaItem, ProdutoWorkspacePatch } from '#shared/types/produtos'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import BaseTextarea from '~/components/BaseTextarea.vue'
-import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
+import ProdutosSelecaoMultipla from '~/components/produtos/selecao-multipla/ProdutosSelecaoMultipla.vue'
+import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
 import { parseDecimalPtBr } from '~/utils/mapearLinhasImportacaoProduto'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -39,7 +40,7 @@ type CampoMassa =
   | 'infos_relevantes'
 
 const CAMPOS: { id: CampoMassa; label: string }[] = [
-  { id: 'termos_pesquisa', label: 'Categoria / Termo de pesquisa' },
+  { id: 'termos_pesquisa', label: 'Categoria / Termo de pesquisa (adicionar)' },
   { id: 'unidade_venda', label: 'Unidade de venda' },
   { id: 'marca', label: 'Marca' },
   { id: 'preco', label: 'Preço à vista (R$)' },
@@ -56,7 +57,7 @@ const statusAtivo = ref(true)
 const enviaFoto = ref(true)
 const marca = ref('')
 const unidadeVenda = ref('')
-const termoSelecao = ref<{ id: number; nome: string } | null>(null)
+const termosSelecionados = ref<ProdutoTermoPesquisaItem[]>([])
 const precoVista = ref('')
 const precoCusto = ref('')
 const precoPrazo = ref('')
@@ -75,7 +76,7 @@ function limparValores() {
   enviaFoto.value = true
   marca.value = ''
   unidadeVenda.value = ''
-  termoSelecao.value = null
+  termosSelecionados.value = []
   precoVista.value = ''
   precoCusto.value = ''
   precoPrazo.value = ''
@@ -93,6 +94,19 @@ watch(
 function strOuNull(v: string): string | null {
   const t = v.trim()
   return t.length ? t : null
+}
+
+function onTermosCommit(patch: ProdutoWorkspacePatch) {
+  const ids = patch.termos_pesquisa_ids ?? []
+  const wid = props.workspaceId
+  if (wid == null || wid < 1) {
+    termosSelecionados.value = []
+    return
+  }
+  const lista = useProdutoTermosPesquisaStore().getListaCompletaCopia(wid)
+  termosSelecionados.value = ids
+    .map((id) => lista.find((t) => t.id === id))
+    .filter((t): t is ProdutoTermoPesquisaItem => t != null)
 }
 
 function parsePrecoObrigatorio(raw: string, label: string): number | null {
@@ -132,11 +146,11 @@ function montarPatch(): ProdutoWorkspacePatch | null {
       return { unidade_venda: u }
     }
     case 'termos_pesquisa':
-      if (termoSelecao.value?.id == null) {
-        toast.error('Selecione uma categoria / termo de pesquisa.')
+      if (!termosSelecionados.value.length) {
+        toast.error('Selecione ao menos uma categoria / termo de pesquisa.')
         return null
       }
-      return { termos_pesquisa_ids: [termoSelecao.value.id] }
+      return { termos_pesquisa_ids: termosSelecionados.value.map((t) => t.id) }
     case 'preco': {
       const n = parsePrecoObrigatorio(precoVista.value, 'Preço à vista')
       return n == null ? null : { preco: n }
@@ -216,16 +230,15 @@ function fechar() {
 
       <div v-if="campoSelecionado === 'termos_pesquisa'">
         <label class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface">
-          Categoria / Termo de pesquisa
+          Adicionar categoria / termo de pesquisa
         </label>
-        <ProdutosSelecaoUnica
-          catalogo="termos_pesquisa"
-          variant="form"
+        <p class="mb-2 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+          Os termos selecionados serão incluídos nos produtos; os que já existem não serão removidos.
+        </p>
+        <ProdutosSelecaoMultipla
           :workspace-id="workspaceId"
-          :ativo="open"
-          v-model:selecao="termoSelecao"
-          input-id="edicao-massa-termo"
-          placeholder="Comece a digitar para buscar…"
+          :termos="termosSelecionados"
+          @commit="onTermosCommit"
         />
       </div>
 

@@ -69,7 +69,7 @@ export type ProdutoWorkspaceCampos = {
   codigo_ncm: string | null
   /** Texto do termo (para busca); vem da view como `termos_pesquisa_busca`. */
   termos_pesquisa_busca?: string | null
-  /** Termo de pesquisa único (0 ou 1 item; nome espelhado de `produtos_workspace.termos_pesquisa`). */
+  /** Termos de pesquisa (0..N) via `produto_termo_de_pesquisa_vinculo`. */
   termos_pesquisa: ProdutoTermoPesquisaItem[]
   codigo_barras_ean: string | null
   largura: number
@@ -114,7 +114,7 @@ export type ProdutoWorkspacePatch = {
   infos_relevantes?: string | null
   imagem_url?: string | null
   codigo_ncm?: string | null
-  /** Id do termo no catálogo (0 ou 1 elemento; grava `nome` em `produtos_workspace.termos_pesquisa`). */
+  /** Ids dos termos no catálogo (grava em `produto_termo_de_pesquisa_vinculo`). */
   termos_pesquisa_ids?: number[]
   codigo_barras_ean?: string | null
   largura?: number
@@ -218,7 +218,9 @@ export type ProdutoCriarEmMassaLinha = {
   envia_foto?: boolean
   categoria_id?: number | null
   codigo_ncm?: string | null
+  /** @deprecated use termos_pesquisa_ids */
   termo_pesquisa?: number | null
+  termos_pesquisa_ids?: number[]
   codigo_barras_ean?: string | null
   largura?: number
   altura?: number

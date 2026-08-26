@@ -20,7 +20,7 @@ import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCate
 
 export const SELECT_PRODUTO_WORKSPACE_EMBED =
 
-  'id, codigo, nome, categoria_id, sku, unidade_venda, marca, preco, preco_custo, preco_promocional, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, codigo_ncm, termo_pesquisa, codigo_barras_ean, largura, altura, comprimento, status, envia_foto, produto_categorias(nome)'
+  'id, codigo, nome, categoria_id, sku, unidade_venda, marca, preco, preco_custo, preco_promocional, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, codigo_ncm, codigo_barras_ean, largura, altura, comprimento, status, envia_foto, produto_categorias(nome)'
 
 
 

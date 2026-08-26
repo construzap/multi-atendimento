@@ -49,6 +49,8 @@ export default defineNuxtConfig({
     vectorSupabaseUrl: '',
     vectorSupabaseSecretKey: '',
     vectorDocumentsTable: 'documentsconstruzapmulti',
+    /** Tabela pgvector de termos de pesquisa (override: NUXT_VECTOR_TERMOS_DOCUMENTS_TABLE). */
+    vectorTermosDocumentsTable: 'documents_termos_pesquisa',
     /** Chave para POST /api/public/buscar-produtos (integrações externas). */
     vectorSearchApiKey: '',
     /**

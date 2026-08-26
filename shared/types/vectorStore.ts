@@ -25,6 +25,29 @@ export type ProdutoEmbeddingPayload = {
   contentHash: string
 }
 
+/** Metadata persistido na vector store de termos de pesquisa. */
+export type TermoDocumentMetadata = {
+  loc: {
+    lines: {
+      from: number
+      to: number
+    }
+  }
+  source: 'blob'
+  blobType: 'text/plain'
+  workspace_id: string
+  content_hash: string
+  termo_id: string
+  nome: string
+}
+
+export type TermoEmbeddingPayload = {
+  termoId: number
+  content: string
+  metadata: TermoDocumentMetadata
+  contentHash: string
+}
+
 export type SyncChunkResult = {
   total: number
   processed: number
@@ -50,6 +73,12 @@ export type VectorStoreStatus = {
   sincronizados: number
   orfaos: number
   pendentes: number
+  /** Termos de pesquisa em uso (produtos/variações ativos). */
+  total_termos: number
+  total_documentos_termos: number
+  termos_sincronizados: number
+  termos_orfaos: number
+  termos_pendentes: number
   /** @deprecated use total_documentos */
   total_indexados?: number
 }
@@ -93,4 +122,35 @@ export type VectorSearchResult = {
 /** Resposta do endpoint público POST /api/public/buscar-produtos */
 export type BuscarProdutosResponse = Omit<VectorSearchResult, 'hits'> & {
   hits: BuscarProdutosPublicHit[]
+}
+
+export type TermoSearchHit = {
+  id: string
+  content: string
+  metadata: TermoDocumentMetadata | Record<string, unknown>
+  similarity: number
+}
+
+/** Item de hit na resposta pública de termos (sem id interno nem score). */
+export type BuscarTermosPublicHit = Pick<TermoSearchHit, 'content' | 'metadata'>
+
+export type TermoVectorStoreSearchFilters = {
+  workspaceId: number
+  /** Filtros opcionais: todas as chaves devem bater com metadata (ex.: termo_id, nome). */
+  metadata?: Record<string, string> | null
+}
+
+/** Resultado interno da busca semântica de termos (com id e similarity). */
+export type TermoVectorSearchResult = {
+  ok: true
+  query: string
+  workspace_id: string
+  metadata_filters: Record<string, string> | null
+  count: number
+  hits: TermoSearchHit[]
+}
+
+/** Resposta do endpoint público POST /api/public/buscar-termos-pesquisa */
+export type BuscarTermosResponse = Omit<TermoVectorSearchResult, 'hits'> & {
+  hits: BuscarTermosPublicHit[]
 }

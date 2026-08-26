@@ -2,72 +2,79 @@
 import { computed } from 'vue'
 import type { SyncChunkResult, SyncCleanupChunkResult } from '#shared/types/vectorStore'
 
+type SyncPhase = 'cleanup' | 'embed' | 'termos_cleanup' | 'termos_embed' | null
+
 const props = defineProps<{
-  phase: 'cleanup' | 'embed' | null
+  phase: SyncPhase
   cleanupLogs: SyncCleanupChunkResult[]
   embedLogs: SyncChunkResult[]
+  termosCleanupLogs: SyncCleanupChunkResult[]
+  termosEmbedLogs: SyncChunkResult[]
   syncing: boolean
   cancelled?: boolean
 }>()
 
 const ultimoCleanup = computed(() => props.cleanupLogs.at(-1) ?? null)
 const ultimoEmbed = computed(() => props.embedLogs.at(-1) ?? null)
+const ultimoTermosCleanup = computed(() => props.termosCleanupLogs.at(-1) ?? null)
+const ultimoTermosEmbed = computed(() => props.termosEmbedLogs.at(-1) ?? null)
+
+function chunkAtual(): SyncChunkResult | SyncCleanupChunkResult | null {
+  if (props.phase === 'cleanup') return ultimoCleanup.value
+  if (props.phase === 'embed') return ultimoEmbed.value
+  if (props.phase === 'termos_cleanup') return ultimoTermosCleanup.value
+  if (props.phase === 'termos_embed') return ultimoTermosEmbed.value
+  return ultimoTermosEmbed.value ?? ultimoTermosCleanup.value ?? ultimoEmbed.value ?? ultimoCleanup.value
+}
 
 const progressoPct = computed(() => {
-  if (props.phase === 'cleanup') {
-    const last = ultimoCleanup.value
-    if (!last?.total) return 0
-    return Math.min(100, Math.round((last.processed / last.total) * 100))
-  }
-  if (props.phase === 'embed') {
-    const last = ultimoEmbed.value
-    if (!last?.total) return 0
-    return Math.min(100, Math.round((last.processed / last.total) * 100))
-  }
-  const last = ultimoEmbed.value ?? ultimoCleanup.value
+  const last = chunkAtual()
   if (!last?.total) return 0
   return Math.min(100, Math.round((last.processed / last.total) * 100))
 })
 
-const totalItens = computed(() => {
-  if (props.phase === 'cleanup') return ultimoCleanup.value?.total ?? 0
-  if (props.phase === 'embed') return ultimoEmbed.value?.total ?? 0
-  return ultimoEmbed.value?.total ?? ultimoCleanup.value?.total ?? 0
-})
-
-const processados = computed(() => {
-  if (props.phase === 'cleanup') return ultimoCleanup.value?.processed ?? 0
-  if (props.phase === 'embed') return ultimoEmbed.value?.processed ?? 0
-  return ultimoEmbed.value?.processed ?? ultimoCleanup.value?.processed ?? 0
-})
+const totalItens = computed(() => chunkAtual()?.total ?? 0)
+const processados = computed(() => chunkAtual()?.processed ?? 0)
 
 const totalRemovidos = computed(() =>
-  props.cleanupLogs.reduce((s, c) => s + c.removed, 0),
+  [...props.cleanupLogs, ...props.termosCleanupLogs].reduce((s, c) => s + c.removed, 0),
 )
 
 const totalIndexados = computed(() =>
-  props.embedLogs.reduce((s, c) => s + c.embedded, 0),
+  [...props.embedLogs, ...props.termosEmbedLogs].reduce((s, c) => s + c.embedded, 0),
 )
 
 const totalIgnorados = computed(() =>
-  props.embedLogs.reduce((s, c) => s + c.skipped, 0),
+  [...props.embedLogs, ...props.termosEmbedLogs].reduce((s, c) => s + c.skipped, 0),
 )
 
 const erros = computed(() => [
   ...props.cleanupLogs.flatMap((c) => c.errors),
   ...props.embedLogs.flatMap((c) => c.errors),
+  ...props.termosCleanupLogs.flatMap((c) => c.errors),
+  ...props.termosEmbedLogs.flatMap((c) => c.errors),
 ])
 
 const temLogs = computed(
-  () => props.cleanupLogs.length > 0 || props.embedLogs.length > 0,
+  () =>
+    props.cleanupLogs.length > 0 ||
+    props.embedLogs.length > 0 ||
+    props.termosCleanupLogs.length > 0 ||
+    props.termosEmbedLogs.length > 0,
 )
 
 const concluido = computed(() => {
   if (props.syncing) return false
   if (!temLogs.value) return false
-  const embedDone = props.embedLogs.length === 0 || (ultimoEmbed.value?.done ?? false)
+
   const cleanupDone = props.cleanupLogs.length === 0 || (ultimoCleanup.value?.done ?? false)
-  return embedDone && cleanupDone
+  const embedDone = props.embedLogs.length === 0 || (ultimoEmbed.value?.done ?? false)
+  const termosCleanupDone =
+    props.termosCleanupLogs.length === 0 || (ultimoTermosCleanup.value?.done ?? false)
+  const termosEmbedDone =
+    props.termosEmbedLogs.length === 0 || (ultimoTermosEmbed.value?.done ?? false)
+
+  return cleanupDone && embedDone && termosCleanupDone && termosEmbedDone
 })
 
 const interrompido = computed(() => props.cancelled && !props.syncing)
@@ -75,7 +82,19 @@ const interrompido = computed(() => props.cancelled && !props.syncing)
 const labelFase = computed(() => {
   if (props.phase === 'cleanup') return 'Removendo produtos excluídos da I.A.…'
   if (props.phase === 'embed') return 'Enviando produtos para a I.A.…'
+  if (props.phase === 'termos_cleanup') return 'Removendo termos não usados…'
+  if (props.phase === 'termos_embed') return 'Enviando termos para a I.A.…'
   return ''
+})
+
+const corBarra = computed(() => {
+  if (interrompido.value) return 'bg-amber-500 dark:bg-amber-400'
+  if (concluido.value && !erros.value.length) return 'bg-emerald-500 dark:bg-emerald-400'
+  if (erros.value.length) return 'bg-red-500 dark:bg-red-400'
+  if (props.phase === 'cleanup' || props.phase === 'termos_cleanup') {
+    return 'bg-orange-500 dark:bg-orange-400'
+  }
+  return 'bg-blue-600 dark:bg-blue-400'
 })
 </script>
 
@@ -102,17 +121,7 @@ const labelFase = computed(() => {
     >
       <div
         class="h-full rounded-full transition-all duration-300 ease-out"
-        :class="
-          interrompido
-            ? 'bg-amber-500 dark:bg-amber-400'
-            : concluido && !erros.length
-              ? 'bg-emerald-500 dark:bg-emerald-400'
-              : erros.length
-                ? 'bg-red-500 dark:bg-red-400'
-                : phase === 'cleanup'
-                  ? 'bg-orange-500 dark:bg-orange-400'
-                  : 'bg-blue-600 dark:bg-blue-400'
-        "
+        :class="corBarra"
         :style="{ width: `${progressoPct}%` }"
       />
     </div>

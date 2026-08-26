@@ -5,6 +5,7 @@ import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCate
 import {
   normalizarTermoImportacao,
   resolverTermosDoLoteImportacao,
+  inserirTermosVinculoLote,
 } from '../../utils/produtoTermosPesquisa'
 import { checkLimiteProdutos } from '../../utils/checkLimiteProdutos'
 import { checkWorkspace } from '../../utils/checkWorkspace'
@@ -256,14 +257,11 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
 
   const insertRows = normalizadas.map((r) => {
     codigoAtual += 1
-    const termoNome = r.termos_pesquisa?.trim() || null
-    const termoId = termoNome ? termoIdPorNome.get(termoNome.toLowerCase()) ?? null : null
     return {
       workspace_id: workspaceId,
       codigo: codigoAtual,
       nome: r.nome,
       categoria_id: resolverCategoriaId(r),
-      termo_pesquisa: termoId,
       sku: r.sku ?? null,
       unidade_venda: r.unidade_venda ?? null,
       marca: r.marca ?? null,
@@ -278,11 +276,23 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
     }
   })
 
-  const { error } = await admin.from('produtos_workspace').insert(insertRows)
+  const { data: inserted, error } = await admin.from('produtos_workspace').insert(insertRows).select('id')
 
   if (error) {
     throw createError({ statusCode: 500, statusMessage: error.message })
   }
+
+  const vinculos: { produto_id: number; termo_id: number }[] = []
+  for (let i = 0; i < (inserted ?? []).length; i++) {
+    const row = inserted![i] as { id?: unknown }
+    const produtoId = typeof row.id === 'number' ? row.id : Number(row.id)
+    if (!Number.isFinite(produtoId)) continue
+    const termoNome = normalizadas[i]?.termos_pesquisa?.trim() || null
+    if (!termoNome) continue
+    const termoId = termoIdPorNome.get(termoNome.toLowerCase()) ?? null
+    if (termoId) vinculos.push({ produto_id: produtoId, termo_id: termoId })
+  }
+  await inserirTermosVinculoLote(admin, vinculos)
 
   return { inseridos: insertRows.length }
 })

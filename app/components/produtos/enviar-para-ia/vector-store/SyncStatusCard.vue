@@ -36,27 +36,64 @@ defineExpose({ refresh })
     <p v-else-if="error" class="text-sm text-red-600 dark:text-red-400">
       Não foi possível carregar o status.
     </p>
-    <dl v-else-if="data" class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
-      <div class="rounded-md bg-zinc-100 p-3 dark:bg-zinc-900">
-        <dt class="text-xs text-zinc-500 dark:text-zinc-400">Produtos ativos</dt>
-        <dd class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{{ data.total_produtos }}</dd>
-      </div>
-      <div class="rounded-md bg-emerald-50 p-3 dark:bg-emerald-950/40">
-        <dt class="text-xs text-emerald-700 dark:text-emerald-300">Na I.A. (válidos)</dt>
-        <dd class="text-xl font-semibold text-emerald-800 dark:text-emerald-200">{{ data.sincronizados }}</dd>
-      </div>
-      <div class="rounded-md bg-red-50 p-3 dark:bg-red-950/40">
-        <dt class="text-xs text-red-700 dark:text-red-300">Excluídos na I.A.</dt>
-        <dd class="text-xl font-semibold text-red-800 dark:text-red-200">{{ data.orfaos }}</dd>
-      </div>
-      <div class="rounded-md bg-amber-50 p-3 dark:bg-amber-950/40">
-        <dt class="text-xs text-amber-700 dark:text-amber-300">Falta enviar</dt>
-        <dd class="text-xl font-semibold text-amber-800 dark:text-amber-200">{{ data.pendentes }}</dd>
-      </div>
-    </dl>
-    <p v-if="data" class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-      Total de documentos na vector store deste workspace: {{ data.total_documentos }}.
-      Sincronize para remover excluídos e enviar o que falta.
-    </p>
+
+    <template v-else-if="data">
+      <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        Produtos
+      </h3>
+      <dl class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+        <div class="rounded-md bg-zinc-100 p-3 dark:bg-zinc-900">
+          <dt class="text-xs text-zinc-500 dark:text-zinc-400">Produtos ativos</dt>
+          <dd class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{{ data.total_produtos }}</dd>
+        </div>
+        <div class="rounded-md bg-emerald-50 p-3 dark:bg-emerald-950/40">
+          <dt class="text-xs text-emerald-700 dark:text-emerald-300">Na I.A. (válidos)</dt>
+          <dd class="text-xl font-semibold text-emerald-800 dark:text-emerald-200">{{ data.sincronizados }}</dd>
+        </div>
+        <div class="rounded-md bg-red-50 p-3 dark:bg-red-950/40">
+          <dt class="text-xs text-red-700 dark:text-red-300">Excluídos na I.A.</dt>
+          <dd class="text-xl font-semibold text-red-800 dark:text-red-200">{{ data.orfaos }}</dd>
+        </div>
+        <div class="rounded-md bg-amber-50 p-3 dark:bg-amber-950/40">
+          <dt class="text-xs text-amber-700 dark:text-amber-300">Falta enviar</dt>
+          <dd class="text-xl font-semibold text-amber-800 dark:text-amber-200">{{ data.pendentes }}</dd>
+        </div>
+      </dl>
+      <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+        Documentos na vector store de produtos: {{ data.total_documentos }}.
+      </p>
+
+      <h3
+        class="mb-2 mt-5 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+      >
+        Termos de pesquisa
+      </h3>
+      <dl class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
+        <div class="rounded-md bg-zinc-100 p-3 dark:bg-zinc-900">
+          <dt class="text-xs text-zinc-500 dark:text-zinc-400">Termos em uso</dt>
+          <dd class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{{ data.total_termos }}</dd>
+        </div>
+        <div class="rounded-md bg-emerald-50 p-3 dark:bg-emerald-950/40">
+          <dt class="text-xs text-emerald-700 dark:text-emerald-300">Na I.A. (válidos)</dt>
+          <dd class="text-xl font-semibold text-emerald-800 dark:text-emerald-200">
+            {{ data.termos_sincronizados }}
+          </dd>
+        </div>
+        <div class="rounded-md bg-red-50 p-3 dark:bg-red-950/40">
+          <dt class="text-xs text-red-700 dark:text-red-300">Excluídos na I.A.</dt>
+          <dd class="text-xl font-semibold text-red-800 dark:text-red-200">{{ data.termos_orfaos }}</dd>
+        </div>
+        <div class="rounded-md bg-amber-50 p-3 dark:bg-amber-950/40">
+          <dt class="text-xs text-amber-700 dark:text-amber-300">Falta enviar</dt>
+          <dd class="text-xl font-semibold text-amber-800 dark:text-amber-200">
+            {{ data.termos_pendentes }}
+          </dd>
+        </div>
+      </dl>
+      <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+        Documentos na vector store de termos: {{ data.total_documentos_termos }}.
+        Sincronize para remover excluídos e enviar o que falta.
+      </p>
+    </template>
   </section>
 </template>

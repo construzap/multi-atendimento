@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
-import { conjuntoIdsTermoValidos } from './produtoTermosPesquisa'
+import { conjuntoIdsTermoValidos, parseTermosPesquisaIdsInput } from './produtoTermosPesquisa'
 
 /** Campos permitidos em `PATCH /api/produtos/atualizar-em-massa`. */
 export const PRODUTO_MASS_PATCH_ALLOWED = new Set([
@@ -98,6 +98,7 @@ async function conjuntoIdsCategoriaValidos(
 
 export type MassUpdateBuildResult = {
   update: Record<string, unknown>
+  termosIdsPatch?: number[]
 }
 
 /**
@@ -211,38 +212,31 @@ export async function buildProdutoMassUpdateFromPatch(
     if (!Array.isArray(p.termos_pesquisa_ids)) {
       throw createError({ statusCode: 400, statusMessage: 'termos_pesquisa_ids deve ser um array.' })
     }
-    termosIdsPatch = p.termos_pesquisa_ids
-      .map((x) => (typeof x === 'number' ? Math.trunc(x) : Number.parseInt(String(x), 10)))
-      .filter((n) => Number.isFinite(n) && n >= 1)
-    if (termosIdsPatch.length > 1) {
+    termosIdsPatch = parseTermosPesquisaIdsInput(p.termos_pesquisa_ids)
+    if (termosIdsPatch.length === 0) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Cada produto pode ter no máximo um termo de pesquisa.',
+        statusMessage: 'Selecione ao menos um termo de pesquisa para adicionar.',
       })
     }
-  }
-
-  if (termosIdsPatch !== undefined) {
-    if (termosIdsPatch.length === 0) {
-      update.termo_pesquisa = null
-    } else {
-      const tid = termosIdsPatch[0]!
-      const ok = await conjuntoIdsTermoValidos(admin, workspaceId, [tid])
-      if (!ok.has(tid)) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: 'termos_pesquisa_ids inválido ou não pertence a este workspace.',
-        })
+    if (termosIdsPatch.length > 0) {
+      const ok = await conjuntoIdsTermoValidos(admin, workspaceId, termosIdsPatch)
+      for (const tid of termosIdsPatch) {
+        if (!ok.has(tid)) {
+          throw createError({
+            statusCode: 400,
+            statusMessage: 'termos_pesquisa_ids inválido ou não pertence a este workspace.',
+          })
+        }
       }
-      update.termo_pesquisa = tid
     }
   }
 
-  if (Object.keys(update).length === 0) {
+  if (Object.keys(update).length === 0 && termosIdsPatch === undefined) {
     throw createError({ statusCode: 400, statusMessage: 'Nenhum campo válido para atualizar.' })
   }
 
-  return { update }
+  return { update, termosIdsPatch }
 }
 
 export function parseProdutoMassUpdateIds(raw: unknown, maxIds: number): number[] {
