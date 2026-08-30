@@ -5,11 +5,11 @@ import type {
   MensagemProntaComPassos,
   MensagemProntaPasso,
   MensagemProntaSequenciaResumo,
-  MensagemProntaTipo,
 } from '#shared/types/mensagensProntas'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 import { mapColunaDestinoId, mapFecharPedidoEmAberto, mapIaLigada } from '../../utils/mensagensProntasColunaDestino'
+import { MENSAGEM_PRONTA_PASSOS_SELECT, mapPassoFromDbRow } from '../../utils/mensagensProntasPassos'
 
 /**
  * GET /api/mensagens_prontas?workspace_id=
@@ -77,7 +77,7 @@ export default defineEventHandler(async (event): Promise<ListarMensagensProntasR
 
   const { data: passosRows, error: passosErr } = await admin
     .from('mensagens_prontas_passos')
-    .select('id, sequencia_id, ordem, tipo, conteudo, delay_segundos, created_at')
+    .select(MENSAGEM_PRONTA_PASSOS_SELECT)
     .in('sequencia_id', ids)
     .order('ordem', { ascending: true })
 
@@ -87,19 +87,10 @@ export default defineEventHandler(async (event): Promise<ListarMensagensProntasR
 
   const passosPorSeq = new Map<string, MensagemProntaPasso[]>()
   for (const row of passosRows ?? []) {
-    const sid = String(row.sequencia_id)
-    const passo: MensagemProntaPasso = {
-      id: String(row.id),
-      sequencia_id: sid,
-      ordem: Number(row.ordem),
-      tipo: String(row.tipo) as MensagemProntaTipo,
-      conteudo: String(row.conteudo ?? ''),
-      delay_segundos: Number(row.delay_segundos ?? 0),
-      created_at: String(row.created_at ?? new Date().toISOString()),
-    }
-    const list = passosPorSeq.get(sid) ?? []
+    const passo = mapPassoFromDbRow(row as Record<string, unknown>)
+    const list = passosPorSeq.get(passo.sequencia_id) ?? []
     list.push(passo)
-    passosPorSeq.set(sid, list)
+    passosPorSeq.set(passo.sequencia_id, list)
   }
 
   const items: MensagemProntaComPassos[] = seqRows.map((row: Record<string, unknown>) => {

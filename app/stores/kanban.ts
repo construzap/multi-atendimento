@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { toast } from 'vue-sonner'
 import type { KanbanBoardResponse, KanbanCard, KanbanColumn, KanbanColumnPageResponse, KanbanConversaAtualizarResponse, KanbanConversaPatch, KanbanCriarFunilResponse, KanbanFunilColunaResumo, KanbanFunilItem, KanbanListarFunisResponse, PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
 import {
+  normalizeEntregaStatus,
   normalizeProdutosRaw,
   normalizeTotalOrcamento,
 } from '#shared/utils/notificacaoIaProdutos'
@@ -61,19 +62,20 @@ function normalizeKanbanCard(card: KanbanCard): KanbanCard {
           ...n,
           produtos: normalizeProdutosRaw(n.produtos),
           total_orcamento: normalizeTotalOrcamento(n.total_orcamento),
-          concluido: n.concluido === true,
+          entrega_status: normalizeEntregaStatus(n.entrega_status),
+          id_cobranca:
+            typeof n.id_cobranca === 'string' && n.id_cobranca.trim()
+              ? n.id_cobranca.trim()
+              : n.id_cobranca ?? null,
+          pagamento_realizado: n.pagamento_realizado === true,
           endereco:
             typeof n.endereco === 'string' && n.endereco.trim()
               ? n.endereco.trim()
               : n.endereco ?? null,
           token_entrega:
             typeof n.token_entrega === 'string' && n.token_entrega.trim()
-              ? n.token_entrega.trim()
-              : n.token_entrega ?? null,
-          entrega_status:
-            typeof n.entrega_status === 'string' && n.entrega_status.trim()
-              ? n.entrega_status.trim()
-              : n.entrega_status ?? null,
+              ? n.token_entrega.trim().toLowerCase()
+              : null,
         }))
       : [],
   }
@@ -96,6 +98,7 @@ function normalizeKanbanColumn(col: KanbanColumn): KanbanColumn {
   return {
     ...col,
     id_agendamento_mensagem: parseIdAgendamento(col.id_agendamento_mensagem),
+    recolhida: col.recolhida === true,
     total_cards: col.total_cards ?? col.cards.length,
     has_more: col.has_more ?? false,
     cards: (col.cards ?? []).map(normalizeKanbanCard),
@@ -764,14 +767,15 @@ export const useKanbanStore = defineStore('kanban', {
       if (changed) this.columns = next
     },
 
-    /** Atualiza `concluido` de uma notificação I.A. no card do board (Pinia). */
-    setNotificacaoIaConcluido(
+    /** Atualiza `entrega_status` de uma notificação I.A. no card do board (Pinia). */
+    setNotificacaoIaEntregaStatus(
       conversaKey: string,
       notificacaoId: number,
-      concluido: boolean,
+      entregaStatus: string | null,
     ) {
       const key = conversaKey?.trim()
       if (!key || !Number.isFinite(notificacaoId) || notificacaoId < 1) return
+      const status = normalizeEntregaStatus(entregaStatus)
 
       let changed = false
       const next = cloneColumns(this.columns)
@@ -786,7 +790,46 @@ export const useKanbanStore = defineStore('kanban', {
 
         list[nIdx] = {
           ...list[nIdx]!,
-          concluido,
+          entrega_status: status,
+          updated_at: new Date().toISOString(),
+        }
+        col.cards[idx] = normalizeKanbanCard({
+          ...current,
+          notificacoes_ia: list,
+        })
+        changed = true
+        break
+      }
+      if (changed) this.columns = next
+    },
+
+    /** Atualiza `token_entrega` de uma notificação I.A. no card do board (Pinia). */
+    setNotificacaoIaTokenEntrega(
+      conversaKey: string,
+      notificacaoId: number,
+      tokenEntrega: string | null,
+    ) {
+      const key = conversaKey?.trim()
+      if (!key || !Number.isFinite(notificacaoId) || notificacaoId < 1) return
+      const token =
+        typeof tokenEntrega === 'string' && tokenEntrega.trim()
+          ? tokenEntrega.trim().toLowerCase()
+          : null
+
+      let changed = false
+      const next = cloneColumns(this.columns)
+      for (const col of next) {
+        const idx = col.cards.findIndex((c) => c.conversa_key === key)
+        if (idx === -1) continue
+
+        const current = col.cards[idx]!
+        const list = [...(current.notificacoes_ia ?? [])]
+        const nIdx = list.findIndex((n) => n.id === notificacaoId)
+        if (nIdx < 0) break
+
+        list[nIdx] = {
+          ...list[nIdx]!,
+          token_entrega: token,
           updated_at: new Date().toISOString(),
         }
         col.cards[idx] = normalizeKanbanCard({
@@ -927,22 +970,24 @@ export const useKanbanStore = defineStore('kanban', {
       return res
     },
 
-    /** PATCH /api/kanban/notificacoes_ia — só persiste (Pinia fica a cargo do caller, otimista). */
-    async patchNotificacaoIaConcluido(input: {
+    /** PATCH /api/kanban/notificacoes_ia — atualiza `entrega_status`. */
+    async patchNotificacaoIaEntregaStatus(input: {
       workspaceId: number
       conversaKey: string
       notificacaoId: number
-      concluido: boolean
+      entregaStatus: string
     }) {
       const workspaceId = input.workspaceId
       const conversaKey = input.conversaKey?.trim()
       const notificacaoId = input.notificacaoId
+      const entregaStatus = input.entregaStatus?.trim()
       if (
         !Number.isFinite(workspaceId)
         || workspaceId < 1
         || !conversaKey
         || !Number.isFinite(notificacaoId)
         || notificacaoId < 1
+        || !entregaStatus
       ) {
         throw new Error('Dados inválidos para atualizar a notificação.')
       }
@@ -950,14 +995,14 @@ export const useKanbanStore = defineStore('kanban', {
       return await $fetch<{
         ok: true
         id: number
-        concluido: boolean
+        entrega_status: string
         updated_at: string
       }>('/api/kanban/notificacoes_ia', {
         method: 'PATCH',
         body: {
           workspace_id: workspaceId,
           id: notificacaoId,
-          concluido: input.concluido,
+          entrega_status: entregaStatus,
         },
       })
     },
@@ -1161,12 +1206,23 @@ export const useKanbanStore = defineStore('kanban', {
             total_orcamento: normalizeTotalOrcamento(
               payload.notificacao.total_orcamento,
             ),
-            concluido: payload.notificacao.concluido === true,
+            entrega_status: normalizeEntregaStatus(payload.notificacao.entrega_status),
+            id_cobranca:
+              typeof payload.notificacao.id_cobranca === 'string' &&
+              payload.notificacao.id_cobranca.trim()
+                ? payload.notificacao.id_cobranca.trim()
+                : payload.notificacao.id_cobranca ?? null,
+            pagamento_realizado: payload.notificacao.pagamento_realizado === true,
             endereco:
               typeof payload.notificacao.endereco === 'string' &&
               payload.notificacao.endereco.trim()
                 ? payload.notificacao.endereco.trim()
                 : payload.notificacao.endereco ?? null,
+            token_entrega:
+              typeof payload.notificacao.token_entrega === 'string' &&
+              payload.notificacao.token_entrega.trim()
+                ? payload.notificacao.token_entrega.trim().toLowerCase()
+                : payload.notificacao.token_entrega ?? null,
           }
           const list = [...(card.notificacoes_ia ?? [])]
           const nIdx = list.findIndex((n) => n.id === notifNorm.id)
@@ -1176,8 +1232,8 @@ export const useKanbanStore = defineStore('kanban', {
         } else if (
           payload.notificacao_id != null
           && Number.isFinite(Number(payload.notificacao_id))
-          && payload.notificacao_concluido !== undefined
-          && payload.notificacao_concluido !== null
+          && payload.notificacao_entrega_status != null
+          && String(payload.notificacao_entrega_status).trim()
         ) {
           const nid = Number(payload.notificacao_id)
           const list = [...(card.notificacoes_ia ?? [])]
@@ -1185,7 +1241,7 @@ export const useKanbanStore = defineStore('kanban', {
           if (nIdx >= 0) {
             list[nIdx] = {
               ...list[nIdx]!,
-              concluido: payload.notificacao_concluido === true,
+              entrega_status: normalizeEntregaStatus(payload.notificacao_entrega_status),
               updated_at: new Date().toISOString(),
             }
             card = { ...card, notificacoes_ia: list }
@@ -1413,7 +1469,59 @@ export const useKanbanStore = defineStore('kanban', {
       cor: string | null
       id_agendamento_mensagem: string | null
     }): Promise<boolean> {
-      return this.updateColumn(payload)
+      return this.updateColumn({
+        workspaceId: payload.workspaceId,
+        colunaId: payload.colunaId,
+        nome: payload.nome,
+        cor: payload.cor,
+        id_agendamento_mensagem: payload.id_agendamento_mensagem,
+      })
+    },
+
+    /** Recolhe / expande coluna no board (persistido em `funil_workspace_colunas.recolhida`). */
+    async setColunaRecolhida(payload: {
+      workspaceId: number
+      colunaId: number
+      recolhida: boolean
+    }): Promise<boolean> {
+      if (!payload.workspaceId || !payload.colunaId) return false
+      const col = this.columns.find((c) => c.id === payload.colunaId)
+      if (!col) return false
+
+      const prev = col.recolhida === true
+      const next = payload.recolhida === true
+      if (prev === next) return true
+
+      col.recolhida = next
+      try {
+        await $fetch('/api/kanban/coluna', {
+          method: 'PATCH',
+          body: {
+            workspace_id: payload.workspaceId,
+            coluna_id: payload.colunaId,
+            recolhida: next,
+          },
+        })
+        return true
+      } catch (err: unknown) {
+        col.recolhida = prev
+        const msg = mensagemErroFetch(err, 'Não foi possível recolher/expandir a coluna.')
+        toast.error(msg, { duration: 8000 })
+        return false
+      }
+    },
+
+    async toggleColunaRecolhida(payload: {
+      workspaceId: number
+      colunaId: number
+    }): Promise<boolean> {
+      const col = this.columns.find((c) => c.id === payload.colunaId)
+      if (!col) return false
+      return this.setColunaRecolhida({
+        workspaceId: payload.workspaceId,
+        colunaId: payload.colunaId,
+        recolhida: !(col.recolhida === true),
+      })
     },
 
     async reorderColumnAdjacent(payload: {

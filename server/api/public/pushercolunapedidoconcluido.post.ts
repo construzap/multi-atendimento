@@ -1,6 +1,7 @@
 import { assertMethod, createError, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import type { PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
+import { normalizeEntregaStatus } from '#shared/utils/notificacaoIaProdutos'
 import { requireN8nKanbanApiKey } from '../../utils/requireN8nKanbanApiKey'
 import { triggerKanbanAtualizacao } from '../../utils/pusherServer'
 
@@ -9,8 +10,8 @@ type Body = {
   conversa_key?: unknown
   coluna_id?: unknown
   notificacao_id?: unknown
-  /** `true` | `false` — espelhado no Pinia via Pusher (sem gravar no banco). */
-  concluido?: unknown
+  /** Status em `notificacoes_ia.entrega_status` — espelhado no Pinia via Pusher (sem gravar no banco). */
+  entrega_status?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -30,30 +31,15 @@ function strOrNull(v: unknown): string | null {
   return s.length ? s : null
 }
 
-function parseConcluido(raw: unknown): boolean {
-  if (raw === true || raw === false) return raw
-  if (typeof raw === 'string') {
-    const s = raw.trim().toLowerCase()
-    if (s === 'true' || s === '1') return true
-    if (s === 'false' || s === '0') return false
-  }
-  if (raw === 1) return true
-  if (raw === 0) return false
-  throw createError({
-    statusCode: 400,
-    statusMessage: 'concluido deve ser true ou false.',
-  })
-}
-
 /**
  * POST /api/public/pushercolunapedidoconcluido
  *
  * Sync leve N8N → Pusher → Pinia (sem escrever no banco).
- * Atualiza coluna do card e `notificacoes_ia[].concluido` no board.
+ * Atualiza coluna do card e `notificacoes_ia[].entrega_status` no board.
  *
  * Auth: Authorization: Bearer <NUXT_N8N_KANBAN_API_KEY>  ou  x-api-key: <…>
  *
- * Body: `{ workspace_id, conversa_key, coluna_id, notificacao_id, concluido }`
+ * Body: `{ workspace_id, conversa_key, coluna_id, notificacao_id, entrega_status }`
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
@@ -72,7 +58,7 @@ export default defineEventHandler(async (event) => {
 
   const colunaId = parsePositiveInt(body.coluna_id, 'coluna_id')
   const notificacaoId = parsePositiveInt(body.notificacao_id, 'notificacao_id')
-  const concluido = parseConcluido(body.concluido)
+  const entregaStatus = normalizeEntregaStatus(body.entrega_status)
 
   // Só leitura: precisa do id_canal para o canal Pusher (não grava nada).
   const admin = serverSupabaseServiceRole<any>(event)
@@ -116,7 +102,7 @@ export default defineEventHandler(async (event) => {
     nome_contato: strOrNull(conversa.name) ?? strOrNull(conversa.phone),
     notificacao: null,
     notificacao_id: notificacaoId,
-    notificacao_concluido: concluido,
+    notificacao_entrega_status: entregaStatus,
     motivo: 'pinia_sync',
   }
 
@@ -128,7 +114,7 @@ export default defineEventHandler(async (event) => {
     conversa_key: conversaKey,
     coluna_id: colunaId,
     notificacao_id: notificacaoId,
-    concluido,
+    entrega_status: entregaStatus,
     id_canal: idCanal,
     motivo: 'pinia_sync' as const,
   }

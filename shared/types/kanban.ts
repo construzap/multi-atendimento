@@ -48,16 +48,19 @@ export type KanbanNotificacaoIa = {
   created_at: string
   updated_at: string
   entrega_ou_retirada: string | null
-  concluido: boolean
+  /**
+   * Ciclo do pedido / entrega.
+   * `separacao` | `aguardando_entregador` | `coletado` | `no_local` | `entregue`
+   */
+  entrega_status: string
   /** Endereço de entrega (`notificacoes_ia.endereco`). */
   endereco: string | null
+  /** Cobrança vinculada (ex.: Pagar.me). Se preenchido, o som só toca com `pagamento_realizado`. */
+  id_cobranca?: string | null
+  /** Se a cobrança já foi paga (`notificacoes_ia.pagamento_realizado`). */
+  pagamento_realizado?: boolean
   /** Token público da URL `/entrega/{token}` (gerado na impressão). */
   token_entrega?: string | null
-  /**
-   * Status do fluxo do entregador.
-   * `aguardando_entregador` | `coletado` | `no_local` | `entregue`
-   */
-  entrega_status?: string | null
 }
 
 /**
@@ -75,11 +78,11 @@ export type PusherKanbanAtualizacaoPayload = {
   /** Pedido novo (criado ou já existente no banco). */
   notificacao?: KanbanNotificacaoIa | null
   /**
-   * Patch leve de `concluido` (ex.: sync só Pinia via N8N).
+   * Patch leve de `entrega_status` (ex.: sync só Pinia via N8N).
    * Preferir em vez de `notificacao` completa quando não houver insert/update no banco.
    */
   notificacao_id?: number | null
-  notificacao_concluido?: boolean | null
+  notificacao_entrega_status?: string | null
   /** Motivo para o toast / comportamento no client. */
   motivo: 'coluna' | 'pedido' | 'ambos' | 'pinia_sync'
 }
@@ -125,6 +128,8 @@ export type KanbanColumn = {
   ordem: number
   /** FK para `mensagens_prontas_sequencias.id` (uuid). */
   id_agendamento_mensagem: string | null
+  /** Coluna estreita no board (`funil_workspace_colunas.recolhida`). */
+  recolhida: boolean
   cards: KanbanCard[]
   /** Total de cards na coluna (independente da paginação). */
   total_cards: number

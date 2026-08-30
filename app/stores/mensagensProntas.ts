@@ -67,6 +67,12 @@ function previewTexto(passos: MensagemProntaPasso[], fallbackNome: string): stri
     video: 'Vídeo',
     documento: 'Documento',
     figurinha: 'Figurinha',
+    ligacao: 'Ligação',
+  }
+  if (primeiro.tipo === 'ligacao') {
+    const s = Number(primeiro.duracao_ligacao_segundos)
+    if (Number.isFinite(s) && s > 0) return `Ligação (${s}s)`
+    return 'Ligação'
   }
   return labelTipo[primeiro.tipo] ?? fallbackNome
 }

@@ -63,6 +63,13 @@ export interface Canal {
    * `undefined` = ainda não carregado no Pinia.
    */
   pagamento?: CanalPagamentoInfo
+  /** Loja aberta/fechada (`canais.loja_aberta`; null no banco → true). */
+  loja_aberta: boolean
+  /**
+   * Agenda pedido com loja fechada (`canais.agenda_pedido`; null → false).
+   * Na UI só aparece o toggle quando `loja_aberta` é false.
+   */
+  agenda_pedido: boolean
 }
 
 export type CanalProvedorPagamentos = 'pagar.me' | 'asaas'
@@ -87,7 +94,8 @@ export type CanalPagamentoInfo = {
   chave_pix: string | null
   /** Indica se há credenciais_encrypted no banco. */
   tem_credenciais_pagarme: boolean
-  taxas_cartao: CanalTaxasCartao
+  /** null = sem taxas cadastradas. */
+  taxas_cartao: CanalTaxasCartao | null
 }
 
 /** Payload de criação de canal (POST /api/canais/criarcanal). */
@@ -118,4 +126,6 @@ export type CanalUpdateInput = {
   model_name?: string | null
   /** Texto plano da API key — o servidor criptografa com pgp_sym_encrypt. */
   api_key?: string | null
+  loja_aberta?: boolean
+  agenda_pedido?: boolean
 }

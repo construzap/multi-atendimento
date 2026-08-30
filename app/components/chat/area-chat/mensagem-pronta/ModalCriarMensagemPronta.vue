@@ -9,6 +9,12 @@ import type {
   MensagemProntaPassoInput,
   MensagemProntaTipo,
 } from '#shared/types/mensagensProntas'
+import {
+  CONTEUDO_PASSO_LIGACAO,
+  DURACAO_LIGACAO_SEGUNDOS_DEFAULT,
+  DURACAO_LIGACAO_SEGUNDOS_MAX,
+  DURACAO_LIGACAO_SEGUNDOS_MIN,
+} from '#shared/types/mensagensProntas'
 import { VAR_PRIMEIRO_NOME, VAR_SAUDACAO } from '#shared/utils/mensagemProntaVariaveis'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseModal from '~/components/BaseModal.vue'
@@ -22,6 +28,7 @@ type PassoForm = {
   tipo: MensagemProntaTipo
   conteudo: string
   delay_segundos: number
+  duracao_ligacao_segundos: number | null
   arquivo: File | null
   nomeArquivo: string | null
   previewUrl: string | null
@@ -91,6 +98,7 @@ const tiposOpcao: { id: MensagemProntaTipo; label: string; icon: string }[] = [
   { id: 'audio', label: 'Áudio', icon: 'mic' },
   { id: 'video', label: 'Vídeo', icon: 'movie' },
   { id: 'figurinha', label: 'Figurinha', icon: 'mood' },
+  { id: 'ligacao', label: 'Ligação', icon: 'call' },
 ]
 
 const iaOpcoes: { value: boolean; label: string; icon: string }[] = [
@@ -130,6 +138,7 @@ function novoPasso(delayDefault: number): PassoForm {
     tipo: 'texto',
     conteudo: '',
     delay_segundos: delayDefault,
+    duracao_ligacao_segundos: null,
     arquivo: null,
     nomeArquivo: null,
     previewUrl: null,
@@ -137,21 +146,29 @@ function novoPasso(delayDefault: number): PassoForm {
 }
 
 function passoFromExistente(p: MensagemProntaPasso, idx: number): PassoForm {
-  const isTexto = p.tipo === 'texto'
+  const isMidia = p.tipo !== 'texto' && p.tipo !== 'ligacao'
+  const duracaoRaw = Number(p.duracao_ligacao_segundos)
   return {
     key: p.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     tipo: p.tipo,
     conteudo: p.conteudo ?? '',
     delay_segundos: idx === 0 ? 0 : Math.max(0, Number(p.delay_segundos) || 0),
+    duracao_ligacao_segundos:
+      p.tipo === 'ligacao'
+        ? Number.isFinite(duracaoRaw) && duracaoRaw >= DURACAO_LIGACAO_SEGUNDOS_MIN
+          ? Math.min(DURACAO_LIGACAO_SEGUNDOS_MAX, Math.trunc(duracaoRaw))
+          : DURACAO_LIGACAO_SEGUNDOS_DEFAULT
+        : null,
     arquivo: null,
-    nomeArquivo: isTexto ? null : 'Arquivo atual',
+    nomeArquivo: isMidia ? 'Arquivo atual' : null,
     previewUrl: null,
   }
 }
 
 function midiaSrc(passo: PassoForm): string | null {
   if (passo.previewUrl) return passo.previewUrl
-  if (passo.tipo !== 'texto' && passo.conteudo.trim()) return passo.conteudo.trim()
+  if (passo.tipo === 'texto' || passo.tipo === 'ligacao') return null
+  if (passo.conteudo.trim()) return passo.conteudo.trim()
   return null
 }
 
@@ -179,6 +196,10 @@ function resumoPasso(passo: PassoForm): string {
     const t = passo.conteudo.trim()
     return t || 'Sem texto'
   }
+  if (passo.tipo === 'ligacao') {
+    const s = Math.max(0, Number(passo.duracao_ligacao_segundos) || 0)
+    return s > 0 ? `Toca por ${s}s` : 'Sem tempo'
+  }
   if (passo.arquivo || passo.conteudo.trim()) {
     return passo.nomeArquivo?.trim() || 'Arquivo anexado'
   }
@@ -187,6 +208,10 @@ function resumoPasso(passo: PassoForm): string {
 
 function passoPreenchido(passo: PassoForm): boolean {
   if (passo.tipo === 'texto') return Boolean(passo.conteudo.trim())
+  if (passo.tipo === 'ligacao') {
+    const s = Number(passo.duracao_ligacao_segundos)
+    return Number.isFinite(s) && s >= DURACAO_LIGACAO_SEGUNDOS_MIN
+  }
   return Boolean(passo.arquivo || passo.conteudo.trim())
 }
 
@@ -201,7 +226,7 @@ function limparArquivoPasso(passo: PassoForm) {
   revokePreview(passo)
   passo.arquivo = null
   passo.nomeArquivo = null
-  if (passo.tipo !== 'texto') passo.conteudo = ''
+  if (passo.tipo !== 'texto' && passo.tipo !== 'ligacao') passo.conteudo = ''
   const el = fileInputRefs.value[passo.key]
   if (el) el.value = ''
 }
@@ -437,6 +462,8 @@ function onTipoChange(passo: PassoForm) {
   }
   limparArquivoPasso(passo)
   passo.conteudo = ''
+  passo.duracao_ligacao_segundos =
+    passo.tipo === 'ligacao' ? DURACAO_LIGACAO_SEGUNDOS_DEFAULT : null
 }
 
 function acceptParaTipo(tipo: MensagemProntaTipo): string {
@@ -452,7 +479,7 @@ function setFileInputRef(key: string, el: unknown) {
 }
 
 function abrirSeletorArquivo(passo: PassoForm) {
-  if (passo.tipo === 'texto' || pending.value) return
+  if (passo.tipo === 'texto' || passo.tipo === 'ligacao' || pending.value) return
   if (isRecording.value && gravandoPassoKey.value === passo.key) return
   fileInputRefs.value[passo.key]?.click()
 }
@@ -581,7 +608,7 @@ function arquivoParaBase64Payload(arquivo: File): Promise<{ data_base64: string;
 
 async function uploadMidiaPasso(
   wid: number,
-  tipo: Exclude<MensagemProntaTipo, 'texto'>,
+  tipo: Exclude<MensagemProntaTipo, 'texto' | 'ligacao'>,
   arquivo: File,
 ): Promise<string> {
   const part = await arquivoParaBase64Payload(arquivo)
@@ -620,7 +647,16 @@ async function salvar() {
 
   for (let i = 0; i < passos.value.length; i++) {
     const p = passos.value[i]!
-    if (p.tipo === 'texto') {
+    if (p.tipo === 'ligacao') {
+      const d = Math.trunc(Number(p.duracao_ligacao_segundos) || 0)
+      if (d < DURACAO_LIGACAO_SEGUNDOS_MIN || d > DURACAO_LIGACAO_SEGUNDOS_MAX) {
+        toast.error(
+          `Informe o tempo da ligação no passo ${i + 1} (${DURACAO_LIGACAO_SEGUNDOS_MIN} a ${DURACAO_LIGACAO_SEGUNDOS_MAX} segundos).`,
+        )
+        selecionarPasso(i)
+        return
+      }
+    } else if (p.tipo === 'texto') {
       if (!p.conteudo.trim()) {
         toast.error(`Preencha o texto do passo ${i + 1}.`)
         selecionarPasso(i)
@@ -650,8 +686,12 @@ async function salvar() {
       const p = passos.value[i]!
       const delay = Math.max(0, Math.trunc(Number(p.delay_segundos) || 0))
       let conteudo: string
+      let duracao_ligacao_segundos: number | null = null
 
-      if (p.tipo === 'texto') {
+      if (p.tipo === 'ligacao') {
+        conteudo = CONTEUDO_PASSO_LIGACAO
+        duracao_ligacao_segundos = Math.trunc(Number(p.duracao_ligacao_segundos) || 0)
+      } else if (p.tipo === 'texto') {
         conteudo = p.conteudo.trim()
       } else if (p.arquivo) {
         conteudo = await uploadMidiaPasso(wid, p.tipo, p.arquivo)
@@ -664,6 +704,7 @@ async function salvar() {
         tipo: p.tipo,
         conteudo,
         delay_segundos: i === 0 ? 0 : delay,
+        duracao_ligacao_segundos,
       })
     }
 
@@ -833,7 +874,7 @@ async function salvar() {
             <span class="text-[11px] font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
               Tipo
             </span>
-            <div class="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+            <div class="grid grid-cols-3 gap-1.5 sm:grid-cols-6">
               <button
                 v-for="t in tiposOpcao"
                 :key="t.id"
@@ -873,8 +914,40 @@ async function salvar() {
             Este é o primeiro passo — envia sem espera.
           </p>
 
+          <!-- Ligação -->
+          <div v-if="passoAtivo.tipo === 'ligacao'" class="space-y-2">
+            <label class="block space-y-1.5">
+              <span class="text-[11px] font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+                Tempo que a ligação toca (segundos)
+              </span>
+              <input
+                v-model.number="passoAtivo.duracao_ligacao_segundos"
+                type="number"
+                :min="DURACAO_LIGACAO_SEGUNDOS_MIN"
+                :max="DURACAO_LIGACAO_SEGUNDOS_MAX"
+                step="1"
+                :disabled="pending"
+                class="w-full rounded-lg border border-outline/40 bg-surface-container-lowest px-3 py-2 text-sm tabular-nums dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+              />
+            </label>
+            <div
+              class="flex items-start gap-2 rounded-lg border border-amber-300/80 bg-amber-50 px-3 py-2.5 text-[12px] leading-snug text-amber-950 dark:border-amber-700/70 dark:bg-amber-950/40 dark:text-amber-100"
+            >
+              <span
+                class="material-symbols-outlined mt-0.5 shrink-0 text-[18px] text-amber-600 dark:text-amber-400"
+                aria-hidden="true"
+              >
+                info
+              </span>
+              <p>
+                Não será possível conversar nem ouvir nada durante essa ligação. Serve apenas para chamar a
+                atenção do cliente.
+              </p>
+            </div>
+          </div>
+
           <!-- Texto -->
-          <div v-if="passoAtivo.tipo === 'texto'" class="space-y-1.5">
+          <div v-else-if="passoAtivo.tipo === 'texto'" class="space-y-1.5">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <span class="text-[11px] font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
                 Mensagem

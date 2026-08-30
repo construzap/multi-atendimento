@@ -22,11 +22,13 @@ function trimNome(raw: unknown): string | null {
 }
 
 const COLUNAS_PADRAO = [
-  { nome: 'Em Atendimento com I.A', cor: '#38BDF8', ordem: 1 },
+  { nome: 'Em atendimento com I.A', cor: '#38BDF8', ordem: 1 },
   { nome: 'Precisa de Atendimento', cor: '#F59E0B', ordem: 2 },
-  { nome: 'Pedido Realizado', cor: '#A855F7', ordem: 3 },
+  { nome: 'Pedidos Novos', cor: '#A855F7', ordem: 3 },
   { nome: 'Em Separação', cor: '#F43F5E', ordem: 4 },
   { nome: 'Entregas em Andamento', cor: '#10B981', ordem: 5 },
+  { nome: 'Entrega Chegou no Destino', cor: '#3B82F6', ordem: 6 },
+  { nome: 'Pedidos Entregues', cor: '#64748B', ordem: 7 },
 ] as const
 
 /**

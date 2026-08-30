@@ -40,5 +40,7 @@ export const transferirAtendimentoTool: ToolDef = {
     tempo_resposta: ctxStr(ctx.tempo_resposta),
     ai_assinatura_enabled: ctxStr(ctx.ai_assinatura_enabled),
     fase_teste: ctxStr(ctx.fase_teste),
+    loja_aberta: ctx.loja_aberta,
+    agenda_pedido: ctx.agenda_pedido,
   }),
 }

@@ -19,7 +19,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   aceitar: [payload: { imprimir: boolean }]
   rejeitar: []
+  imprimir: []
 }>()
+
+const emSeparacao = computed(
+  () => (props.item.entrega_status ?? '').trim().toLowerCase() === 'separacao',
+)
 
 const produtos = computed(() => parseProdutosNotificacao(props.item.produtos))
 const totais = computed(() => normalizeTotalOrcamento(props.item.total_orcamento))
@@ -131,6 +136,7 @@ function linhaSubtotal(p: (typeof produtos.value)[number]): string {
     </div>
 
     <label
+      v-if="emSeparacao"
       class="inline-flex cursor-pointer items-center gap-2.5 select-none"
       :class="busy ? 'pointer-events-none opacity-60' : ''"
     >
@@ -147,21 +153,35 @@ function linhaSubtotal(p: (typeof produtos.value)[number]): string {
     </label>
 
     <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
+      <template v-if="emSeparacao">
+        <button
+          type="button"
+          class="rounded-xl px-4 py-2.5 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface disabled:opacity-60 dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface"
+          :disabled="busy"
+          @click="emit('rejeitar')"
+        >
+          Rejeitar
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-60 dark:bg-primary-500 dark:hover:bg-primary-600"
+          :disabled="busy"
+          @click="onAceitar"
+        >
+          Aceitar
+        </button>
+      </template>
       <button
+        v-else
         type="button"
-        class="rounded-xl px-4 py-2.5 text-sm font-semibold text-on-surface-variant transition-colors hover:bg-surface-container-high hover:text-on-surface disabled:opacity-60 dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface"
+        class="inline-flex items-center gap-1.5 rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-60 dark:bg-primary-500 dark:hover:bg-primary-600"
         :disabled="busy"
-        @click="emit('rejeitar')"
+        @click="emit('imprimir')"
       >
-        Rejeitar
-      </button>
-      <button
-        type="button"
-        class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-60 dark:bg-primary-500 dark:hover:bg-primary-600"
-        :disabled="busy"
-        @click="onAceitar"
-      >
-        Aceitar
+        <span class="material-symbols-outlined text-[18px] leading-none" aria-hidden="true">
+          print
+        </span>
+        Imprimir
       </button>
     </div>
   </div>

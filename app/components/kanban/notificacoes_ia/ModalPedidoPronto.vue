@@ -13,6 +13,7 @@ import PedidoProntoExpandido from './PedidoProntoExpandido.vue'
 import { imprimirCupomPedido } from './imprimirCupomPedido'
 import {
   isPedidoPronto,
+  isPedidoProntoNaoEntregue,
   normalizeTotalOrcamento,
 } from './parseProdutosNotificacao'
 
@@ -30,7 +31,7 @@ const { columns } = storeToRefs(kanban)
 const expandidoId = ref<number | null>(null)
 const modalExcluirAberto = ref(false)
 const notificacaoParaExcluir = ref<KanbanNotificacaoIa | null>(null)
-/** Padrão: só pendentes (`concluido === false`). */
+/** Padrão: pedido pronto com `entrega_status !== 'entregue'`. */
 const mostrarTodos = ref(false)
 const filtroPending = ref(false)
 
@@ -77,7 +78,7 @@ const notificacoes = computed<KanbanNotificacaoIa[]>(() => {
     .filter((n) => {
       if (!isPedidoPronto(n.tipo_solicitacao)) return false
       if (mostrarTodos.value) return true
-      return n.concluido === false
+      return isPedidoProntoNaoEntregue(n)
     })
     .sort((a, b) => {
       const ta = a.created_at ? new Date(a.created_at).getTime() : 0
@@ -174,6 +175,8 @@ async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boo
   limparErro(item.id)
   marcarEmVoo(item.id)
 
+  kanban.setNotificacaoIaEntregaStatus(key, item.id, 'aguardando_entregador')
+
   try {
     const ok = await kanban.moverConversaParaColunaOrdem({
       workspaceId: wsId,
@@ -181,8 +184,15 @@ async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boo
       ordem: 4,
     })
 
+    await kanban.patchNotificacaoIaEntregaStatus({
+      workspaceId: wsId,
+      conversaKey: key,
+      notificacaoId: item.id,
+      entregaStatus: 'aguardando_entregador',
+    })
+
     if (payload.imprimir) {
-      await imprimirCupomPedido({
+      const { token_entrega: tokenGerado } = await imprimirCupomPedido({
         item: snapshot,
         workspaceId: wsId,
         lojaNome: lojaNome.value,
@@ -190,6 +200,9 @@ async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boo
         clienteTelefone: card?.phone ?? null,
         canalNome: card?.canal_nome ?? null,
       })
+      if (tokenGerado) {
+        kanban.setNotificacaoIaTokenEntrega(key, item.id, tokenGerado)
+      }
     }
 
     if (ok) {
@@ -198,6 +211,7 @@ async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boo
       })
     }
   } catch (err) {
+    kanban.setNotificacaoIaEntregaStatus(key, item.id, snapshot.entrega_status ?? 'separacao')
     const msg = mensagemErroFetch(err, 'Não foi possível aceitar o pedido.')
     marcarErro(item.id, msg)
     toast.error(msg)
@@ -210,6 +224,40 @@ function rejeitarPedido(item: KanbanNotificacaoIa) {
   if (estaEmVoo(item.id)) return
   notificacaoParaExcluir.value = item
   modalExcluirAberto.value = true
+}
+
+async function imprimirPedido(item: KanbanNotificacaoIa) {
+  const key = props.conversaKey?.trim()
+  const wsId = workspaceId.value
+  const card = cardNoPinia.value
+  if (!key || !wsId || estaEmVoo(item.id)) return
+
+  const tokenPinia = item.token_entrega?.trim()
+  if (!tokenPinia) {
+    toast.error('Este pedido ainda não tem token de entrega para reimprimir.')
+    return
+  }
+
+  limparErro(item.id)
+  marcarEmVoo(item.id)
+
+  try {
+    await imprimirCupomPedido({
+      item: clonarNotificacao(item),
+      workspaceId: wsId,
+      lojaNome: lojaNome.value,
+      clienteNome: card?.name ?? card?.name_group ?? null,
+      clienteTelefone: card?.phone ?? null,
+      canalNome: card?.canal_nome ?? null,
+      reutilizarTokenExistente: true,
+    })
+  } catch (err) {
+    const msg = mensagemErroFetch(err, 'Não foi possível imprimir o pedido.')
+    marcarErro(item.id, msg)
+    toast.error(msg)
+  } finally {
+    limparEmVoo(item.id)
+  }
 }
 
 function confirmarExcluirNotificacao() {
@@ -312,6 +360,7 @@ function confirmarExcluirNotificacao() {
             :busy="estaEmVoo(item.id)"
             @aceitar="aceitarPedido(item, $event)"
             @rejeitar="rejeitarPedido(item)"
+            @imprimir="imprimirPedido(item)"
           />
 
           <div v-else class="space-y-3">

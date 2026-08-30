@@ -20,6 +20,11 @@ export type CupomPedidoImpressaoInput = {
   entregaUrl?: string | null
   /** Data URL do QR (preenchida internamente). */
   qrDataUrl?: string | null
+  /**
+   * Reimpressão: usa só `item.token_entrega` do Pinia, sem chamar a API.
+   * Na 1ª impressão (aceite), omitir — gera token só se ainda não existir.
+   */
+  reutilizarTokenExistente?: boolean
 }
 
 function esc(v: string | null | undefined): string {
@@ -90,7 +95,7 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
   const entrega = item.entrega_ou_retirada?.trim() || ''
   const endereco = item.endereco?.trim() || ''
   const pagamento = item.forma_pagamento?.trim() || '—'
-  const concluido = item.concluido === true
+  const statusEntrega = item.entrega_status?.trim() || 'separacao'
   const cliente = input.clienteNome?.trim() || '—'
   const telefone = input.clienteTelefone?.trim() || ''
   const canal = input.canalNome?.trim() || ''
@@ -258,7 +263,7 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
 
     <div class="linha"><span>Pagamento:</span><span class="bold">${esc(pagamento)}</span></div>
     ${entrega ? `<div class="linha"><span>Entrega/retirada:</span><span class="bold">${esc(entrega)}</span></div>` : ''}
-    ${concluido ? `<div class="linha"><span>Status:</span><span class="bold">Concluído</span></div>` : ''}
+    <div class="linha"><span>Status:</span><span class="bold">${esc(statusEntrega.replace(/_/g, ' '))}</span></div>
 
     <hr class="sep" />
 
@@ -356,6 +361,27 @@ function abrirImpressao(html: string): void {
   }, 300)
 }
 
+async function qrFromToken(token: string): Promise<{
+  entregaUrl: string
+  qrDataUrl: string | null
+  token: string
+}> {
+  const normalized = token.trim().toLowerCase()
+  const entregaUrl = `${window.location.origin}/entrega/${normalized}`
+  try {
+    const QRCode = (await import('qrcode')).default
+    const qrDataUrl = await QRCode.toDataURL(entregaUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 240,
+      color: { dark: '#000000', light: '#ffffff' },
+    })
+    return { entregaUrl, qrDataUrl, token: normalized }
+  } catch {
+    return { entregaUrl, qrDataUrl: null, token: normalized }
+  }
+}
+
 async function garantirTokenEQr(
   input: CupomPedidoImpressaoInput,
 ): Promise<{ entregaUrl: string | null; qrDataUrl: string | null; token: string | null }> {
@@ -376,41 +402,45 @@ async function garantirTokenEQr(
       ? input.item.token_entrega.trim().toLowerCase()
       : null
 
-  try {
-    const res = await $fetch<{ ok: true; token_entrega: string }>('/api/kanban/notificacoes_ia/token-entrega', {
-      method: 'POST',
-      body: { workspace_id: wsId, id: pedidoId },
-    })
-    token = String(res.token_entrega ?? '').trim().toLowerCase() || token
-  } catch {
-    /* imprime sem QR se falhar */
+  if (input.reutilizarTokenExistente) {
+    if (!token) {
+      return { entregaUrl: null, qrDataUrl: null, token: null }
+    }
+    const qr = await qrFromToken(token)
+    return qr
+  }
+
+  if (!token) {
+    try {
+      const res = await $fetch<{ ok: true; token_entrega: string }>(
+        '/api/kanban/notificacoes_ia/token-entrega',
+        {
+          method: 'POST',
+          body: { workspace_id: wsId, id: pedidoId },
+        },
+      )
+      token = String(res.token_entrega ?? '').trim().toLowerCase() || token
+    } catch {
+      /* imprime sem QR se falhar */
+    }
   }
 
   if (!token) {
     return { entregaUrl: null, qrDataUrl: null, token: null }
   }
 
-  const entregaUrl = `${window.location.origin}/entrega/${token}`
-  try {
-    const QRCode = (await import('qrcode')).default
-    const qrDataUrl = await QRCode.toDataURL(entregaUrl, {
-      errorCorrectionLevel: 'M',
-      margin: 1,
-      width: 240,
-      color: { dark: '#000000', light: '#ffffff' },
-    })
-    return { entregaUrl, qrDataUrl, token }
-  } catch {
-    return { entregaUrl, qrDataUrl: null, token }
-  }
+  const qr = await qrFromToken(token)
+  return qr
 }
 
 /**
  * Abre o diálogo de impressão do navegador com o cupom do pedido.
- * Garante `token_entrega` e embute QR da página pública do entregador.
+ * Garante `token_entrega` na 1ª impressão; reutiliza o do Pinia na reimpressão.
  */
-export async function imprimirCupomPedido(input: CupomPedidoImpressaoInput): Promise<void> {
-  if (!import.meta.client) return
+export async function imprimirCupomPedido(
+  input: CupomPedidoImpressaoInput,
+): Promise<{ token_entrega: string | null }> {
+  if (!import.meta.client) return { token_entrega: null }
 
   const { entregaUrl, qrDataUrl, token } = await garantirTokenEQr(input)
   const html = buildCupomHtml({
@@ -422,4 +452,5 @@ export async function imprimirCupomPedido(input: CupomPedidoImpressaoInput): Pro
       : input.item,
   })
   abrirImpressao(html)
+  return { token_entrega: token }
 }

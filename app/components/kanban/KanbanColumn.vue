@@ -1,28 +1,23 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type {
   KanbanCard as KanbanCardModel,
   KanbanColumn,
-  KanbanCriarContatoBody,
-  KanbanCriarContatoResponse,
 } from '#shared/types/kanban'
 import type {
   AtualizarMensagemProntaResponse,
   CriarMensagemProntaResponse,
   MensagemProntaListaItem,
 } from '#shared/types/mensagensProntas'
-import { normalizarTelefoneContatoParaGravacao } from '#shared/utils/normalizeWhatsappBr'
-import BaseButton from '~/components/BaseButton.vue'
-import BaseInput from '~/components/BaseInput.vue'
-import BaseModal from '~/components/BaseModal.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
-import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
+import { mensagemErroFetch } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 import { useProfileStore } from '~/stores/profile'
 import DropdownMensagensProntas from './mensagem_pronta/DropdownMensagensProntas.vue'
 import ModalCriarMensagemPronta from './mensagem_pronta/ModalCriarMensagemPronta.vue'
+import { createdAtEsperaMaisAntiga } from './notificacoes_ia/parseProdutosNotificacao'
 import KanbanCard from './KanbanCard.vue'
 
 const props = defineProps<{
@@ -54,22 +49,13 @@ const emit = defineEmits<{
 }>()
 
 const kanban = useKanbanStore()
-const canaisStore = useCanaisStore()
 const profile = useProfileStore()
 const isAdmin = computed(() => profile.isAdminConfirmado)
 const { columns } = storeToRefs(kanban)
-const { items: canaisItems, listPending: canaisPending, currentCanalId } = storeToRefs(canaisStore)
 
-const modalNovoContatoAberto = ref(false)
-const nomeContato = ref('')
-const telefoneContato = ref('')
-const colunaSelecionadaId = ref<number | null>(null)
-const canalSelecionadoId = ref<number | null>(null)
-const criandoContato = ref(false)
-const carregandoCanaisModal = ref(false)
 /** Submenu "Mover coluna" dentro do dropdown da engrenagem. */
 const menuMoverAberto = ref(false)
-/** Submenu de mensagens prontas (agendamento) — visível para admin e membro. */
+/** Submenu de mensagens prontas (agendamento) — só admin (mesmo critério do menu). */
 const menuProntasAberto = ref(false)
 const modalMensagemProntaAberto = ref(false)
 const sequenciaIdModal = ref<string | null>(null)
@@ -79,6 +65,71 @@ const temAgendamentoAutomatico = computed(() => {
   const id = props.column.id_agendamento_mensagem
   return typeof id === 'string' && id.trim().length > 0
 })
+
+const recolhida = computed(() => props.column.recolhida === true)
+const toggleRecolhidaPending = ref(false)
+
+/** Largura real da coluna (desktop + recolher outras → mais espaço → fonte maior). */
+const colunaRootRef = ref<HTMLElement | null>(null)
+const larguraColunaPx = ref(0)
+let colunaResizeObserver: ResizeObserver | null = null
+
+const colunasAbertas = computed(
+  () => columns.value.filter((c) => c.recolhida !== true).length,
+)
+
+/**
+ * Fonte do nome: prioriza largura medida da coluna; fallback = qtd. de colunas abertas.
+ * Ao recolher colunas, as abertas ficam mais largas e a fonte sobe.
+ */
+const nomeTituloClass = computed(() => {
+  const w = larguraColunaPx.value
+  if (w >= 300) return 'text-base leading-snug'
+  if (w >= 240) return 'text-sm leading-snug'
+  if (w >= 190) return 'text-xs leading-snug'
+  if (w >= 150) return 'text-[11px] leading-snug'
+  if (w > 0) return 'text-[10px] leading-snug'
+
+  const n = colunasAbertas.value
+  if (n <= 3) return 'text-base leading-snug'
+  if (n <= 4) return 'text-sm leading-snug'
+  if (n <= 5) return 'text-xs leading-snug'
+  if (n <= 7) return 'text-[11px] leading-snug'
+  return 'text-[10px] leading-snug'
+})
+
+onMounted(() => {
+  const el = colunaRootRef.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  const aplicar = (width: number) => {
+    larguraColunaPx.value = width
+  }
+  aplicar(el.getBoundingClientRect().width)
+  colunaResizeObserver = new ResizeObserver((entries) => {
+    const entry = entries[0]
+    if (!entry) return
+    aplicar(entry.contentRect.width)
+  })
+  colunaResizeObserver.observe(el)
+})
+
+onBeforeUnmount(() => {
+  colunaResizeObserver?.disconnect()
+  colunaResizeObserver = null
+})
+
+async function toggleRecolhida() {
+  if (!props.workspaceId || toggleRecolhidaPending.value) return
+  toggleRecolhidaPending.value = true
+  try {
+    await kanban.toggleColunaRecolhida({
+      workspaceId: props.workspaceId,
+      colunaId: props.column.id,
+    })
+  } finally {
+    toggleRecolhidaPending.value = false
+  }
+}
 
 async function onAgendamentoExcluido() {
   if (!props.workspaceId || props.column.id_agendamento_mensagem == null) return
@@ -96,120 +147,6 @@ function uuidOuNulo(raw: unknown): string | null {
   const s = String(raw).trim()
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s)) return null
   return s
-}
-
-function nomeCanalOpcao(canal: { id: number; nome: string | null }) {
-  const n = canal.nome?.trim()
-  return n || `Canal #${canal.id}`
-}
-
-function canalPadraoId(): number | null {
-  const atual = currentCanalId.value
-  if (atual != null && canaisItems.value.some((c) => c.id === atual)) return atual
-  return canaisItems.value[0]?.id ?? null
-}
-
-async function garantirCanaisNoModal() {
-  if (!props.workspaceId) return
-  carregandoCanaisModal.value = true
-  try {
-    await canaisStore.ensureCanaisLoaded(props.workspaceId)
-    if (
-      canalSelecionadoId.value == null ||
-      !canaisItems.value.some((c) => c.id === canalSelecionadoId.value)
-    ) {
-      canalSelecionadoId.value = canalPadraoId()
-    }
-  } catch (err: unknown) {
-    toast.error(mensagemErroFetch(err, 'Não foi possível carregar os canais.'))
-  } finally {
-    carregandoCanaisModal.value = false
-  }
-}
-
-async function abrirModalNovoContato() {
-  nomeContato.value = ''
-  telefoneContato.value = ''
-  colunaSelecionadaId.value = props.column.id
-  canalSelecionadoId.value = canalPadraoId()
-  modalNovoContatoAberto.value = true
-  await garantirCanaisNoModal()
-}
-
-function fecharModalNovoContato() {
-  modalNovoContatoAberto.value = false
-}
-
-watch(modalNovoContatoAberto, (aberto) => {
-  if (!aberto) {
-    nomeContato.value = ''
-    telefoneContato.value = ''
-    colunaSelecionadaId.value = null
-    canalSelecionadoId.value = null
-    criandoContato.value = false
-    carregandoCanaisModal.value = false
-  }
-})
-
-function validarFormularioNovoContato():
-  | { erro: string }
-  | { telefone: string; id_canal: number; coluna_id: number } {
-  if (!nomeContato.value.trim()) return { erro: 'Informe o nome.' }
-
-  const telefone = normalizarTelefoneContatoParaGravacao(telefoneContato.value)
-  if (!telefone) {
-    return {
-      erro: 'Telefone inválido. Use DDD+número (ex: 11 9xxxx xxxx) ou com DDI 55.',
-    }
-  }
-
-  if (colunaSelecionadaId.value == null || colunaSelecionadaId.value < 1) {
-    return { erro: 'Selecione a coluna.' }
-  }
-
-  if (canalSelecionadoId.value == null || canalSelecionadoId.value < 1) {
-    return { erro: 'Selecione o canal.' }
-  }
-
-  return {
-    telefone,
-    id_canal: canalSelecionadoId.value,
-    coluna_id: colunaSelecionadaId.value,
-  }
-}
-
-async function criarContato() {
-  const validacao = validarFormularioNovoContato()
-  if ('erro' in validacao) {
-    toast.error(validacao.erro)
-    return
-  }
-  if (!props.workspaceId) {
-    toast.error('Workspace não informado.')
-    return
-  }
-
-  criandoContato.value = true
-  try {
-    const body: KanbanCriarContatoBody = {
-      workspace_id: props.workspaceId,
-      nome: nomeContato.value.trim(),
-      telefone: validacao.telefone,
-      coluna_id: validacao.coluna_id,
-      id_canal: validacao.id_canal,
-    }
-    await $fetch<KanbanCriarContatoResponse>('/api/kanban/contato', {
-      method: 'POST',
-      body,
-    })
-    fecharModalNovoContato()
-    await kanban.refetchCurrentBoard(props.workspaceId)
-    toast.success('Contato criado.')
-  } catch (err: unknown) {
-    toast.error(mensagemErroFetch(err, 'Não foi possível criar o contato.'))
-  } finally {
-    criandoContato.value = false
-  }
 }
 
 function onEditar(close: () => void) {
@@ -299,12 +236,6 @@ function onDropdownOpenChange(aberto: boolean) {
   }
 }
 
-const dotStyle = computed(() => {
-  const c = props.column.cor?.trim()
-  if (c) return { backgroundColor: c }
-  return { backgroundColor: 'rgb(148 163 184)' }
-})
-
 const columnSurfaceStyle = computed(() => {
   const c = props.column.cor?.trim()
   if (!c) return {}
@@ -319,12 +250,30 @@ const isDragOver = computed(
   () => props.dragOverColumnId != null && String(props.dragOverColumnId) === String(props.column.id),
 )
 
-/** Mais recente primeiro; desempate por `conversa_key` (igual à API). */
+/**
+ * 1) Com badge de espera (`BadgeTempoEsperaPedido`) → no topo, mais atrasado primeiro.
+ * 2) Sem badge → `updated_at` mais recente primeiro; empate → `conversa_key` A→Z.
+ */
 const cardsOrdenados = computed(() =>
   [...props.column.cards].sort((a, b) => {
-    const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0
-    const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0
-    if (tb !== ta) return tb - ta
+    const esperaA = createdAtEsperaMaisAntiga(a.notificacoes_ia)
+    const esperaB = createdAtEsperaMaisAntiga(b.notificacoes_ia)
+    const temEsperaA = esperaA != null
+    const temEsperaB = esperaB != null
+
+    if (temEsperaA && !temEsperaB) return -1
+    if (!temEsperaA && temEsperaB) return 1
+
+    if (temEsperaA && temEsperaB) {
+      const ta = new Date(esperaA).getTime()
+      const tb = new Date(esperaB).getTime()
+      // Mais antigo (mais atrasado) primeiro
+      if (ta !== tb) return ta - tb
+    }
+
+    const ua = a.updated_at ? new Date(a.updated_at).getTime() : 0
+    const ub = b.updated_at ? new Date(b.updated_at).getTime() : 0
+    if (ub !== ua) return ub - ua
     return a.conversa_key.localeCompare(b.conversa_key)
   }),
 )
@@ -396,131 +345,177 @@ function onDrop(e: DragEvent) {
 <template>
   <!-- drop/dragover na section inteira: sobre outro card o evento não chega no inner div -->
   <section
-    class="flex h-full min-h-0 flex-col rounded-3xl p-4 dark:bg-slate-900/30"
+    ref="colunaRootRef"
+    class="flex h-full min-h-0 min-w-0 flex-col rounded-3xl dark:bg-slate-900/30"
+    :class="recolhida ? 'items-center px-1.5 py-3' : 'p-4'"
     :style="columnSurfaceStyle"
     @dragover="onDragOver"
     @dragleave="onDragLeave"
     @drop="onDrop"
   >
-    <header class="mb-4 flex items-start justify-between gap-2">
-      <div class="min-w-0 flex-1">
-        <div class="flex items-start gap-2">
-          <label
-            v-if="props.forceShowCheckboxes && keysDaColuna.length > 0"
-            class="mt-0.5 shrink-0 cursor-pointer"
-            :title="todosSelecionadosNaColuna ? 'Desmarcar todos desta coluna' : 'Selecionar todos desta coluna'"
-            @click.stop
-            @mousedown.stop
-          >
-            <input
-              ref="checkboxSelecionarTodosColuna"
-              type="checkbox"
-              class="peer sr-only"
-              :checked="todosSelecionadosNaColuna"
-              @change="onToggleSelecionarTodosColuna"
-            />
-            <span
-              class="flex h-7 w-7 items-center justify-center rounded-lg border border-outline/45 bg-white/90 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/45 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:bg-slate-900"
-              :class="todosSelecionadosNaColuna || algunsSelecionadosNaColuna ? 'ring-2 ring-primary/25' : ''"
-              aria-hidden="true"
-            >
-              <span
-                class="flex h-3.5 w-3.5 items-center justify-center rounded border-2 transition-colors"
-                :class="
-                  todosSelecionadosNaColuna
-                    ? 'border-primary bg-primary text-white'
-                    : algunsSelecionadosNaColuna
-                      ? 'border-primary bg-primary/20'
-                      : 'border-slate-300 bg-transparent dark:border-slate-600'
-                "
-              >
-                <svg
-                  v-if="todosSelecionadosNaColuna"
-                  class="h-3 w-3"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.25 7.31a1 1 0 0 1-1.42-.002l-3.25-3.29a1 1 0 1 1 1.422-1.406l2.54 2.57 6.54-6.59a1 1 0 0 1 1.412-.006Z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-                <span
-                  v-else-if="algunsSelecionadosNaColuna"
-                  class="h-1.5 w-1.5 rounded-sm bg-primary"
-                  aria-hidden="true"
-                />
-              </span>
-            </span>
-            <span class="sr-only">Selecionar todos desta coluna</span>
-          </label>
-          <span
-            class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
-            :style="dotStyle"
-            aria-hidden="true"
+    <!-- Coluna recolhida: faixa estreita -->
+    <template v-if="recolhida">
+      <button
+        type="button"
+        class="mb-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-700 transition-colors hover:bg-white/70 disabled:opacity-50 dark:text-slate-200 dark:hover:bg-slate-800/80"
+        :disabled="toggleRecolhidaPending"
+        :aria-label="`Expandir coluna ${column.nome}`"
+        title="Expandir coluna"
+        @click.stop="toggleRecolhida"
+      >
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
+          keyboard_double_arrow_right
+        </span>
+      </button>
+      <span
+        class="mb-2 rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-700 shadow-sm dark:bg-slate-800/70 dark:text-slate-200"
+      >
+        {{ column.total_cards ?? column.cards.length }}
+      </span>
+      <div
+        class="flex min-h-0 flex-1 cursor-pointer flex-col items-center justify-start overflow-hidden"
+        role="button"
+        tabindex="0"
+        :aria-label="`Expandir ${column.nome}`"
+        @click="toggleRecolhida"
+        @keydown.enter.prevent="toggleRecolhida"
+      >
+        <span
+          class="max-h-full origin-center text-[11px] font-bold tracking-wide text-slate-800 dark:text-dark-on-surface"
+          style="writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);"
+          :title="column.nome"
+        >
+          {{ column.nome }}
+        </span>
+      </div>
+      <!-- Área de drop mesmo recolhida -->
+      <div
+        class="mt-2 h-8 w-full shrink-0 rounded-lg border border-dashed border-outline/40 dark:border-dark-outline/40"
+        :class="isDragOver ? 'ring-2 ring-primary/25' : ''"
+        aria-hidden="true"
+        @dragenter="onDragOver"
+        @dragover="onDragOver"
+        @drop="onDrop"
+      />
+    </template>
+
+    <template v-else>
+    <header class="mb-3 flex min-w-0 flex-col gap-2">
+      <div class="relative flex min-w-0 items-start justify-center">
+        <label
+          v-if="props.forceShowCheckboxes && keysDaColuna.length > 0"
+          class="absolute left-0 top-0 z-10 shrink-0 cursor-pointer"
+          :title="todosSelecionadosNaColuna ? 'Desmarcar todos desta coluna' : 'Selecionar todos desta coluna'"
+          @click.stop
+          @mousedown.stop
+        >
+          <input
+            ref="checkboxSelecionarTodosColuna"
+            type="checkbox"
+            class="peer sr-only"
+            :checked="todosSelecionadosNaColuna"
+            @change="onToggleSelecionarTodosColuna"
           />
-          <div class="min-w-0 flex-1">
-            <div class="flex items-start gap-1">
-              <h2
-                class="min-w-0 flex-1 break-normal font-headline text-sm font-bold leading-snug text-slate-900 dark:text-dark-on-surface"
-                lang="pt-BR"
+          <span
+            class="flex h-7 w-7 items-center justify-center rounded-lg border border-outline/45 bg-white/90 text-slate-700 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/45 dark:bg-slate-950/80 dark:text-slate-200 dark:hover:bg-slate-900"
+            :class="todosSelecionadosNaColuna || algunsSelecionadosNaColuna ? 'ring-2 ring-primary/25' : ''"
+            aria-hidden="true"
+          >
+            <span
+              class="flex h-3.5 w-3.5 items-center justify-center rounded border-2 transition-colors"
+              :class="
+                todosSelecionadosNaColuna
+                  ? 'border-primary bg-primary text-white'
+                  : algunsSelecionadosNaColuna
+                    ? 'border-primary bg-primary/20'
+                    : 'border-slate-300 bg-transparent dark:border-slate-600'
+              "
+            >
+              <svg
+                v-if="todosSelecionadosNaColuna"
+                class="h-3 w-3"
+                viewBox="0 0 20 20"
+                fill="currentColor"
               >
-                {{ column.nome }}
-              </h2>
+                <path
+                  fill-rule="evenodd"
+                  d="M16.704 5.29a1 1 0 0 1 .006 1.414l-7.25 7.31a1 1 0 0 1-1.42-.002l-3.25-3.29a1 1 0 1 1 1.422-1.406l2.54 2.57 6.54-6.59a1 1 0 0 1 1.412-.006Z"
+                  clip-rule="evenodd"
+                />
+              </svg>
               <span
-                v-if="temAgendamentoAutomatico"
-                class="mt-0.5 shrink-0 text-amber-600/80 dark:text-amber-400/80"
-                title="Mensagem automática ativa"
-                role="img"
-                aria-label="Mensagem automática ativa"
-              >
-                <span class="material-symbols-outlined text-[15px] leading-none" aria-hidden="true">
-                  schedule_send
-                </span>
-              </span>
-            </div>
-          </div>
-        </div>
+                v-else-if="algunsSelecionadosNaColuna"
+                class="h-1.5 w-1.5 rounded-sm bg-primary"
+                aria-hidden="true"
+              />
+            </span>
+          </span>
+          <span class="sr-only">Selecionar todos desta coluna</span>
+        </label>
+        <h2
+          class="w-full min-w-0 break-words text-center font-headline font-bold text-slate-900 dark:text-dark-on-surface"
+          :class="nomeTituloClass"
+          lang="pt-BR"
+          :title="column.nome"
+        >
+          {{ column.nome }}
+        </h2>
       </div>
 
-      <div class="flex shrink-0 items-start gap-1 pt-0.5">
+      <div class="flex min-w-0 items-center gap-0.5">
         <span
-          class="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold text-slate-700 shadow-sm dark:bg-slate-800/70 dark:text-slate-200"
+          class="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-slate-700 shadow-sm dark:bg-slate-800/70 dark:text-slate-200 sm:px-2 sm:text-[11px]"
         >
           {{ column.total_cards ?? column.cards.length }}
         </span>
 
-        <button
-          type="button"
-          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-white/60 dark:text-slate-400 dark:hover:bg-slate-800/80"
-          :aria-label="`Adicionar em ${column.nome}`"
-          @click.stop="abrirModalNovoContato"
-        >
-          <span class="material-symbols-outlined text-[22px]" aria-hidden="true">add</span>
-        </button>
-
-        <div class="shrink-0" @click.stop @mousedown.stop>
-          <BaseDropdown
-            title="Etapa"
-            align="right"
-            side="bottom"
-            panel-class="w-72 min-w-[16rem] max-w-[calc(100vw-2rem)]"
-            @open-change="onDropdownOpenChange"
+        <div class="ml-auto flex shrink-0 items-center gap-0.5">
+          <span
+            v-if="temAgendamentoAutomatico"
+            class="flex h-8 w-8 items-center justify-center text-amber-600/80 dark:text-amber-400/80"
+            title="Mensagem automática ativa"
+            role="img"
+            aria-label="Mensagem automática ativa"
           >
-            <template #trigger>
-              <span
-                class="flex h-9 w-9 items-center justify-center rounded-lg transition-colors hover:bg-white/60 dark:hover:bg-slate-800/80"
-              >
+            <span class="material-symbols-outlined text-[18px] leading-none" aria-hidden="true">
+              schedule_send
+            </span>
+          </span>
+
+          <button
+            type="button"
+            class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-600 transition-colors hover:bg-white/60 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800/80"
+            :disabled="toggleRecolhidaPending"
+            :aria-label="`Recolher coluna ${column.nome}`"
+            title="Recolher coluna"
+            @click.stop="toggleRecolhida"
+          >
+            <span class="material-symbols-outlined text-[20px]" aria-hidden="true">
+              keyboard_double_arrow_left
+            </span>
+          </button>
+
+          <div v-if="isAdmin" class="shrink-0" @click.stop @mousedown.stop>
+            <BaseDropdown
+              title="Etapa"
+              align="right"
+              side="bottom"
+              panel-class="w-72 min-w-[16rem] max-w-[calc(100vw-2rem)]"
+              @open-change="onDropdownOpenChange"
+            >
+              <template #trigger>
                 <span
-                  class="material-symbols-outlined text-[22px] text-slate-600 dark:text-slate-400"
-                  aria-hidden="true"
+                  class="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/60 dark:hover:bg-slate-800/80"
                 >
-                  settings
+                  <span
+                    class="material-symbols-outlined text-[20px] text-slate-600 dark:text-slate-400"
+                    aria-hidden="true"
+                  >
+                    settings
+                  </span>
+                  <span class="sr-only">Configurações da etapa</span>
                 </span>
-                <span class="sr-only">Configurações da etapa</span>
-              </span>
-            </template>
+              </template>
 
             <template #default="{ close }">
               <DropdownMensagensProntas
@@ -627,6 +622,7 @@ function onDrop(e: DragEvent) {
                 </button>
 
                 <button
+                  v-if="isAdmin"
                   type="button"
                   role="menuitem"
                   class="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-on-surface transition-colors hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
@@ -662,6 +658,7 @@ function onDrop(e: DragEvent) {
               </template>
             </template>
           </BaseDropdown>
+        </div>
         </div>
       </div>
     </header>
@@ -716,113 +713,7 @@ function onDrop(e: DragEvent) {
       </span>
       <span v-else>Carregar mais</span>
     </button>
-
-    <BaseModal
-      v-model:open="modalNovoContatoAberto"
-      title="Novo contato"
-      :show-close="!criandoContato"
-      panel-class="w-full max-w-md"
-    >
-      <div class="space-y-4">
-        <div>
-          <label
-            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
-            for="kanban-novo-contato-nome"
-          >
-            Nome
-          </label>
-          <BaseInput
-            id="kanban-novo-contato-nome"
-            v-model="nomeContato"
-            name="kanban-novo-contato-nome"
-            placeholder="Nome do contato"
-            autocomplete="name"
-            :disabled="criandoContato"
-          />
-        </div>
-
-        <div>
-          <label
-            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
-            for="kanban-novo-contato-telefone"
-          >
-            Telefone
-          </label>
-          <BaseInput
-            id="kanban-novo-contato-telefone"
-            v-model="telefoneContato"
-            name="kanban-novo-contato-telefone"
-            type="tel"
-            placeholder="DDD + número"
-            autocomplete="tel"
-            :disabled="criandoContato"
-          />
-        </div>
-
-        <div>
-          <label
-            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
-            for="kanban-novo-contato-canal"
-          >
-            Canal
-          </label>
-          <select
-            id="kanban-novo-contato-canal"
-            v-model.number="canalSelecionadoId"
-            class="w-full rounded-xl border border-outline/45 bg-surface-container-lowest/90 px-3.5 py-2.5 text-sm font-medium text-on-surface shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:opacity-60 dark:border-dark-outline/45 dark:bg-dark-surface-container-low/90 dark:text-dark-on-surface"
-            :disabled="criandoContato || carregandoCanaisModal || canaisPending"
-          >
-            <option v-if="canaisItems.length === 0" :value="null" disabled>
-              {{ carregandoCanaisModal || canaisPending ? 'Carregando canais…' : 'Nenhum canal disponível' }}
-            </option>
-            <option v-for="canal in canaisItems" :key="canal.id" :value="canal.id">
-              {{ nomeCanalOpcao(canal) }}
-            </option>
-          </select>
-        </div>
-
-        <div>
-          <label
-            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
-            for="kanban-novo-contato-coluna"
-          >
-            Coluna
-          </label>
-          <select
-            id="kanban-novo-contato-coluna"
-            v-model.number="colunaSelecionadaId"
-            class="w-full rounded-xl border border-outline/45 bg-surface-container-lowest/90 px-3.5 py-2.5 text-sm font-medium text-on-surface shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-outline/45 dark:bg-dark-surface-container-low/90 dark:text-dark-on-surface"
-            :disabled="criandoContato"
-          >
-            <option v-for="col in columns" :key="col.id" :value="col.id">
-              {{ col.nome?.trim() || `Coluna #${col.id}` }}
-            </option>
-          </select>
-        </div>
-      </div>
-
-      <template #footer>
-        <BaseButton
-          variant="secondary"
-          size="sm"
-          :block="false"
-          :disabled="criandoContato"
-          @click="fecharModalNovoContato"
-        >
-          Cancelar
-        </BaseButton>
-        <BaseButton
-          variant="primary"
-          size="sm"
-          :block="false"
-          :loading="criandoContato"
-          :disabled="criandoContato || carregandoCanaisModal || canaisPending || canaisItems.length === 0"
-          @click="criarContato"
-        >
-          Criar
-        </BaseButton>
-      </template>
-    </BaseModal>
+    </template>
 
     <ModalCriarMensagemPronta
       v-model:open="modalMensagemProntaAberto"

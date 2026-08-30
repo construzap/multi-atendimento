@@ -55,6 +55,7 @@ export const useEntregadoresStore = defineStore('entregadores', {
       codigo: string
       nome: string
       ativo?: boolean
+      entregador_premium?: boolean
     }) {
       const created = await $fetch<EntregadorListaItem>('/api/entregadores', {
         method: 'POST',
@@ -63,6 +64,7 @@ export const useEntregadoresStore = defineStore('entregadores', {
           codigo: payload.codigo,
           nome: payload.nome,
           ativo: payload.ativo,
+          entregador_premium: payload.entregador_premium,
         },
       })
       this.items = [...this.items, created].sort((a, b) =>
@@ -77,6 +79,7 @@ export const useEntregadoresStore = defineStore('entregadores', {
       codigo?: string
       nome?: string
       ativo?: boolean
+      entregador_premium?: boolean
     }) {
       const updated = await $fetch<EntregadorListaItem>('/api/entregadores', {
         method: 'PATCH',
@@ -86,6 +89,7 @@ export const useEntregadoresStore = defineStore('entregadores', {
           codigo: payload.codigo,
           nome: payload.nome,
           ativo: payload.ativo,
+          entregador_premium: payload.entregador_premium,
         },
       })
       const idx = this.items.findIndex((i) => i.id === updated.id)

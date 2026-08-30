@@ -6,11 +6,13 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 
 const CANAL_SELECT =
-  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted'
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido'
 
 type CanalRow = Record<string, unknown> & {
   api_key_encrypted?: unknown
   horarios?: unknown
+  loja_aberta?: unknown
+  agenda_pedido?: unknown
 }
 
 function mapCanalPublico(row: CanalRow): Canal {
@@ -25,12 +27,19 @@ function mapCanalPublico(row: CanalRow): Canal {
       : (horariosRaw as Canal['horarios'])
 
   return {
-    ...(rest as Omit<Canal, 'tem_api_key' | 'tem_inteligencia_artificial' | 'horarios'>),
+    ...(rest as Omit<
+      Canal,
+      'tem_api_key' | 'tem_inteligencia_artificial' | 'horarios' | 'loja_aberta' | 'agenda_pedido'
+    >),
     horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
     url: typeof row.url === 'string' ? row.url : null,
     model_name: typeof row.model_name === 'string' ? row.model_name : null,
     tem_api_key: temApiKey,
+    // DB default true; null legado trata como aberta
+    loja_aberta: row.loja_aberta !== false,
+    // DB default false; null legado trata como desligado
+    agenda_pedido: row.agenda_pedido === true,
   }
 }
 

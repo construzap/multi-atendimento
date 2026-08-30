@@ -3,20 +3,11 @@
  * Formato novo (N8N / app) e legado (strings `10X NOME - R$ 54,00`).
  */
 
-export type KanbanNotificacaoProdutoItem = {
-  quantidade: number
-  nome_produto: string
-  preco_vista: number | null
-  preco_prazo: number | null
-  subtotal_vista: number | null
-  subtotal_prazo: number | null
-}
-
-/** Totais jsonb em `notificacoes_ia.total_orcamento`. */
-export type KanbanNotificacaoTotalOrcamento = {
-  total_a_vista: number | null
-  total_a_prazo: number | null
-}
+import type {
+  KanbanNotificacaoIa,
+  KanbanNotificacaoProdutoItem,
+  KanbanNotificacaoTotalOrcamento,
+} from '../types/kanban'
 
 /** Item normalizado para UI / cupom. */
 export type ProdutoNotificacaoLinha = {
@@ -258,4 +249,60 @@ export function subtotalLinhaExibicao(
 export function formatMoedaBr(valor: number | null | undefined): string {
   if (valor == null || !Number.isFinite(Number(valor))) return '—'
   return Number(valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+/** Status inicial de pedidos novos aguardando aceite no kanban. */
+export const ENTREGA_STATUS_SEPARACAO = 'separacao' as const
+
+/** Colunas retornadas ao mapear / selecionar `notificacoes_ia`. */
+export const NOTIFICACAO_IA_SELECT =
+  'id, produtos, total_orcamento, observacoes, forma_pagamento, latitude, longitude, tipo_solicitacao, created_at, updated_at, entrega_ou_retirada, endereco, id_cobranca, pagamento_realizado, token_entrega, entrega_status, nome, fone'
+
+export function normalizeEntregaStatus(raw: unknown): string {
+  const s = raw != null ? String(raw).trim() : ''
+  return s || ENTREGA_STATUS_SEPARACAO
+}
+
+/** Mapeia linha do Supabase → `KanbanNotificacaoIa` (view, APIs). */
+export function mapNotificacaoIaRow(row: Record<string, unknown>): KanbanNotificacaoIa {
+  const forma_pagamento =
+    row.forma_pagamento != null ? String(row.forma_pagamento) : null
+  const produtos = normalizeProdutosRaw(row.produtos)
+  const total_orcamento = normalizeTotalOrcamento(row.total_orcamento)
+  const idCobrancaRaw =
+    row.id_cobranca != null ? String(row.id_cobranca).trim() : ''
+  const tokenRaw =
+    row.token_entrega != null ? String(row.token_entrega).trim().toLowerCase() : ''
+
+  return {
+    id: typeof row.id === 'number' ? row.id : Number(row.id),
+    produtos,
+    total_orcamento,
+    observacoes: row.observacoes != null ? String(row.observacoes) : null,
+    forma_pagamento,
+    latitude:
+      row.latitude != null && Number.isFinite(Number(row.latitude))
+        ? Number(row.latitude)
+        : null,
+    longitude:
+      row.longitude != null && Number.isFinite(Number(row.longitude))
+        ? Number(row.longitude)
+        : null,
+    tipo_solicitacao:
+      row.tipo_solicitacao != null ? String(row.tipo_solicitacao) : null,
+    created_at:
+      row.created_at != null ? String(row.created_at) : new Date().toISOString(),
+    updated_at:
+      row.updated_at != null ? String(row.updated_at) : new Date().toISOString(),
+    entrega_ou_retirada:
+      row.entrega_ou_retirada != null ? String(row.entrega_ou_retirada) : null,
+    entrega_status: normalizeEntregaStatus(row.entrega_status),
+    endereco: (() => {
+      const t = row.endereco != null ? String(row.endereco).trim() : ''
+      return t || null
+    })(),
+    id_cobranca: idCobrancaRaw || null,
+    pagamento_realizado: row.pagamento_realizado === true,
+    token_entrega: tokenRaw || null,
+  }
 }

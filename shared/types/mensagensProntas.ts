@@ -5,12 +5,23 @@ export type MensagemProntaTipo =
   | 'video'
   | 'documento'
   | 'figurinha'
+  | 'ligacao'
+
+/** Limites do tempo que a ligação toca (passo `ligacao`). */
+export const DURACAO_LIGACAO_SEGUNDOS_MIN = 1
+export const DURACAO_LIGACAO_SEGUNDOS_MAX = 60
+export const DURACAO_LIGACAO_SEGUNDOS_DEFAULT = 15
+
+/** Placeholder em `conteudo` (coluna NOT NULL) quando o passo é ligação. */
+export const CONTEUDO_PASSO_LIGACAO = 'ligacao'
 
 export type MensagemProntaPassoInput = {
   ordem: number
   tipo: MensagemProntaTipo
   conteudo: string
   delay_segundos: number
+  /** Só preenchido quando `tipo === 'ligacao'`. */
+  duracao_ligacao_segundos?: number | null
 }
 
 export type MensagemProntaSequenciaResumo = {
@@ -37,6 +48,8 @@ export type MensagemProntaPasso = {
   tipo: MensagemProntaTipo
   conteudo: string
   delay_segundos: number
+  /** Segundos que a ligação toca. `null` nos demais tipos. */
+  duracao_ligacao_segundos: number | null
   created_at: string
 }
 

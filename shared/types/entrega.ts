@@ -29,6 +29,7 @@ export type EntregaPublicaResumo = {
   /** Já tem entregador vinculado. */
   entregador_identificado: boolean
   entregador_nome: string | null
+  entregador_premium: boolean
   loja_nome: string | null
   endereco: string | null
   cliente_nome: string | null

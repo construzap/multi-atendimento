@@ -2,8 +2,10 @@ import { assertMethod, createError, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
 import type { KanbanNotificacaoIa, PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
 import {
+  mapNotificacaoIaRow,
   normalizeProdutosRaw,
   normalizeTotalOrcamento,
+  NOTIFICACAO_IA_SELECT,
 } from '#shared/utils/notificacaoIaProdutos'
 import { requireN8nKanbanApiKey } from '../../utils/requireN8nKanbanApiKey'
 import { triggerKanbanAtualizacao } from '../../utils/pusherServer'
@@ -21,6 +23,8 @@ type ProdutoBody = {
 type Body = {
   workspace_id?: unknown
   conversa_key?: unknown
+  /** Canal do Pusher — preferir enviar para não consultar `conversas`. */
+  canal_id?: unknown
   /** Se informado, atualiza `conversas.coluna_id` / `funil_id` (mesmo se o N8N já gravou). */
   coluna_id?: unknown
   /**
@@ -184,35 +188,10 @@ function temProdutosNoBody(raw: unknown): boolean {
 }
 
 function mapNotificacao(row: Record<string, unknown>): KanbanNotificacaoIa {
-  const forma_pagamento =
-    row.forma_pagamento != null ? String(row.forma_pagamento) : null
-  const produtos = normalizeProdutosRaw(row.produtos)
-  const total_orcamento = normalizeTotalOrcamento(row.total_orcamento)
-
-  return {
-    id: typeof row.id === 'number' ? row.id : Number(row.id),
-    produtos,
-    total_orcamento,
-    observacoes: row.observacoes != null ? String(row.observacoes) : null,
-    forma_pagamento,
-    latitude: row.latitude != null && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null,
-    longitude:
-      row.longitude != null && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null,
-    tipo_solicitacao: row.tipo_solicitacao != null ? String(row.tipo_solicitacao) : null,
-    created_at: row.created_at != null ? String(row.created_at) : new Date().toISOString(),
-    updated_at: row.updated_at != null ? String(row.updated_at) : new Date().toISOString(),
-    entrega_ou_retirada:
-      row.entrega_ou_retirada != null ? String(row.entrega_ou_retirada) : null,
-    concluido: row.concluido === true,
-    endereco: (() => {
-      const t = row.endereco != null ? String(row.endereco).trim() : ''
-      return t || null
-    })(),
-  }
+  return mapNotificacaoIaRow(row)
 }
 
-const NOTIF_SELECT =
-  'id, produtos, total_orcamento, observacoes, forma_pagamento, latitude, longitude, tipo_solicitacao, created_at, updated_at, entrega_ou_retirada, concluido, endereco'
+const NOTIF_SELECT = NOTIFICACAO_IA_SELECT
 
 /**
  * POST /api/public/kanban-atualizacao
@@ -221,6 +200,11 @@ const NOTIF_SELECT =
  * e dispara Pusher `kanban-atualizacao` para quem estiver no workspace com o canal inscrito.
  *
  * Auth: Authorization: Bearer <NUXT_N8N_KANBAN_API_KEY>  ou  x-api-key: <…>
+ *
+ * Body típico (pedido já criado no banco):
+ *   { workspace_id, conversa_key, canal_id, notificacao_id }
+ * Com `canal_id`, não consulta `conversas` só para descobrir o canal.
+ * Som no browser: pedido_pronto; se `id_cobranca` preenchido, só com `pagamento_realizado=true`.
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
@@ -239,6 +223,7 @@ export default defineEventHandler(async (event) => {
 
   const colunaIdOpt = parseOptionalPositiveInt(body.coluna_id)
   const notificacaoIdOpt = parseOptionalPositiveInt(body.notificacao_id)
+  const canalIdBody = parseOptionalPositiveInt(body.canal_id)
   const temProdutos = temProdutosNoBody(body.produtos)
 
   if (colunaIdOpt == null && !temProdutos && notificacaoIdOpt == null) {
@@ -251,51 +236,68 @@ export default defineEventHandler(async (event) => {
 
   const admin = serverSupabaseServiceRole<any>(event)
 
-  const { data: conversa, error: convErr } = await admin
-    .from('conversas')
-    .select('key, workspace_id, id_canal, name, phone, coluna_id, funil_id')
-    .eq('key', conversaKey)
-    .eq('workspace_id', workspaceId)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (convErr) throw createError({ statusCode: 500, statusMessage: convErr.message })
-  if (!conversa) {
-    throw createError({ statusCode: 404, statusMessage: 'Conversa não encontrada neste workspace.' })
-  }
-
-  const idCanal =
-    typeof conversa.id_canal === 'number'
-      ? conversa.id_canal
-      : Number.parseInt(String(conversa.id_canal ?? ''), 10)
-  if (!Number.isFinite(idCanal) || idCanal < 1) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Conversa sem id_canal válido — não é possível notificar o Pusher.',
-    })
-  }
-
-  let colunaIdFinal: number | null =
-    typeof conversa.coluna_id === 'number'
-      ? conversa.coluna_id
-      : conversa.coluna_id != null
-        ? Number.parseInt(String(conversa.coluna_id), 10)
-        : null
-  if (colunaIdFinal != null && (!Number.isFinite(colunaIdFinal) || colunaIdFinal < 1)) {
-    colunaIdFinal = null
-  }
-
-  let funilIdFinal: number | null =
-    typeof conversa.funil_id === 'number'
-      ? conversa.funil_id
-      : conversa.funil_id != null
-        ? Number.parseInt(String(conversa.funil_id), 10)
-        : null
-  if (funilIdFinal != null && (!Number.isFinite(funilIdFinal) || funilIdFinal < 1)) {
-    funilIdFinal = null
-  }
-
+  /**
+   * Com `canal_id` no body: não lê `conversas` só para descobrir o canal.
+   * Ainda atualiza `conversas` se `coluna_id` vier no body.
+   * Sem `canal_id`: fallback legado (SELECT em conversas).
+   */
+  let idCanal = canalIdBody
+  let colunaIdFinal: number | null = colunaIdOpt
+  let funilIdFinal: number | null = null
+  let nomeContato: string | null = strOrNull(body.nome) ?? strOrNull(body.fone)
   let moveuColuna = false
+
+  if (idCanal == null) {
+    const { data: conversa, error: convErr } = await admin
+      .from('conversas')
+      .select('key, workspace_id, id_canal, name, phone, coluna_id, funil_id')
+      .eq('key', conversaKey)
+      .eq('workspace_id', workspaceId)
+      .is('deleted_at', null)
+      .maybeSingle()
+
+    if (convErr) throw createError({ statusCode: 500, statusMessage: convErr.message })
+    if (!conversa) {
+      throw createError({ statusCode: 404, statusMessage: 'Conversa não encontrada neste workspace.' })
+    }
+
+    idCanal =
+      typeof conversa.id_canal === 'number'
+        ? conversa.id_canal
+        : Number.parseInt(String(conversa.id_canal ?? ''), 10)
+    if (!Number.isFinite(idCanal) || idCanal == null || idCanal < 1) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Conversa sem id_canal válido — não é possível notificar o Pusher.',
+      })
+    }
+
+    colunaIdFinal =
+      typeof conversa.coluna_id === 'number'
+        ? conversa.coluna_id
+        : conversa.coluna_id != null
+          ? Number.parseInt(String(conversa.coluna_id), 10)
+          : null
+    if (colunaIdFinal != null && (!Number.isFinite(colunaIdFinal) || colunaIdFinal < 1)) {
+      colunaIdFinal = null
+    }
+
+    funilIdFinal =
+      typeof conversa.funil_id === 'number'
+        ? conversa.funil_id
+        : conversa.funil_id != null
+          ? Number.parseInt(String(conversa.funil_id), 10)
+          : null
+    if (funilIdFinal != null && (!Number.isFinite(funilIdFinal) || funilIdFinal < 1)) {
+      funilIdFinal = null
+    }
+
+    nomeContato =
+      strOrNull(body.nome) ??
+      strOrNull(conversa.name) ??
+      strOrNull(body.fone) ??
+      strOrNull(conversa.phone)
+  }
 
   if (colunaIdOpt != null) {
     const { data: coluna, error: colErr } = await admin
@@ -353,23 +355,23 @@ export default defineEventHandler(async (event) => {
   }
 
   let notificacao: KanbanNotificacaoIa | null = null
+  let notifRowExtra: { nome?: unknown; fone?: unknown } | null = null
 
   if (notificacaoIdOpt != null) {
     const { data: row, error: nErr } = await admin
       .from('notificacoes_ia')
       .select(NOTIF_SELECT)
       .eq('id', notificacaoIdOpt)
-      .eq('workspace_id', workspaceId)
-      .eq('conversa_key', conversaKey)
       .maybeSingle()
 
     if (nErr) throw createError({ statusCode: 500, statusMessage: nErr.message })
     if (!row) {
       throw createError({
         statusCode: 404,
-        statusMessage: 'notificacao_id não encontrada para esta conversa/workspace.',
+        statusMessage: 'notificacao_id não encontrada.',
       })
     }
+    notifRowExtra = row as Record<string, unknown>
     notificacao = mapNotificacao(row as Record<string, unknown>)
   } else if (temProdutos) {
     const formaPagamento = strOrNull(body.forma_pagamento)
@@ -383,8 +385,8 @@ export default defineEventHandler(async (event) => {
     )
 
     const nowIso = new Date().toISOString()
-    const nome = strOrNull(body.nome) ?? strOrNull(conversa.name)
-    const fone = strOrNull(body.fone) ?? strOrNull(conversa.phone)
+    const nome = strOrNull(body.nome) ?? nomeContato
+    const fone = strOrNull(body.fone)
     const observacoes = strOrNull(body.observacoes)
     const entrega = strOrNull(body.entrega_ou_retirada)
     const endereco = strOrNull(body.endereco)
@@ -404,7 +406,7 @@ export default defineEventHandler(async (event) => {
         entrega_ou_retirada: entrega,
         endereco,
         tipo_solicitacao: 'pedido_pronto',
-        concluido: false,
+        pagamento_realizado: false,
         created_at: nowIso,
         updated_at: nowIso,
       })
@@ -415,7 +417,20 @@ export default defineEventHandler(async (event) => {
     if (!created) {
       throw createError({ statusCode: 500, statusMessage: 'Falha ao criar o pedido.' })
     }
+    notifRowExtra = created as Record<string, unknown>
     notificacao = mapNotificacao(created as Record<string, unknown>)
+  }
+
+  if (!nomeContato && notifRowExtra) {
+    nomeContato =
+      strOrNull(notifRowExtra.nome) ?? strOrNull(notifRowExtra.fone) ?? null
+  }
+
+  if (idCanal == null || !Number.isFinite(idCanal) || idCanal < 1) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Informe canal_id válido (ou conversa com id_canal) para notificar o Pusher.',
+    })
   }
 
   const motivo: PusherKanbanAtualizacaoPayload['motivo'] =
@@ -427,7 +442,7 @@ export default defineEventHandler(async (event) => {
     id_canal: idCanal,
     coluna_id: colunaIdFinal,
     funil_id: funilIdFinal,
-    nome_contato: strOrNull(conversa.name) ?? strOrNull(conversa.phone),
+    nome_contato: nomeContato,
     notificacao,
     motivo,
   }

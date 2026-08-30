@@ -27,6 +27,7 @@ export const MSG_SEM_PERMISSAO_PAGINA =
  * Alterar aqui afeta os dois fluxos.
  */
 export const PAGE_ROLES_PADRAO: readonly PageRoleSlug[] = [
+  'kanban',
   'canais',
   'atendentes',
   'entregadores',

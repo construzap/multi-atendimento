@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { KanbanNotificacaoIa } from '#shared/types/kanban'
+import BadgeTempoEsperaPedido from './BadgeTempoEsperaPedido.vue'
 import {
   formatMoedaBr,
+  isPedidoComTempoEspera,
   isPedidoPronto,
+  labelEntregaStatus,
   labelTipoSolicitacao,
+  entregaStatusIndicadorClass,
   parseProdutosNotificacao,
   resolveTotalOrcamento,
 } from './parseProdutosNotificacao'
@@ -24,6 +28,32 @@ const qtdItens = computed(() => parseProdutosNotificacao(props.item.produtos).le
 const totalExibicao = computed(() =>
   resolveTotalOrcamento(props.item.total_orcamento, props.item.forma_pagamento),
 )
+
+const agoraMs = ref(Date.now())
+let tickTimer: ReturnType<typeof setInterval> | null = null
+
+const mostraTempoEspera = computed(() => isPedidoComTempoEspera(props.item))
+
+function syncTickTimer() {
+  if (mostraTempoEspera.value && !tickTimer) {
+    agoraMs.value = Date.now()
+    tickTimer = setInterval(() => {
+      agoraMs.value = Date.now()
+    }, 30_000)
+  } else if (!mostraTempoEspera.value && tickTimer) {
+    clearInterval(tickTimer)
+    tickTimer = null
+  }
+}
+
+onMounted(syncTickTimer)
+onBeforeUnmount(() => {
+  if (tickTimer) {
+    clearInterval(tickTimer)
+    tickTimer = null
+  }
+})
+watch(mostraTempoEspera, () => syncTickTimer())
 
 function formatData(iso: string | null | undefined): string {
   if (!iso) return '—'
@@ -80,7 +110,7 @@ function textoOuTraco(v: string | null | undefined): string {
           >
             <span
               class="h-1.5 w-1.5 rounded-full"
-              :class="erro ? 'bg-red-500' : item.concluido ? 'bg-emerald-500' : 'bg-amber-500'"
+              :class="erro ? 'bg-red-500' : entregaStatusIndicadorClass(item.entrega_status)"
               aria-hidden="true"
             />
             {{ labelTipoSolicitacao(item.tipo_solicitacao) }}
@@ -107,10 +137,10 @@ function textoOuTraco(v: string | null | undefined): string {
               {{ qtdItens === 1 ? 'item' : 'itens' }}
             </span>
             <span
-              v-if="item.concluido"
-              class="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300"
+              v-if="item.entrega_status && item.entrega_status !== 'separacao'"
+              class="rounded-full bg-surface-container-high px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant dark:bg-dark-surface-container-high dark:text-dark-on-surface-variant"
             >
-              Concluído
+              {{ labelEntregaStatus(item.entrega_status) }}
             </span>
           </div>
           <p
@@ -127,12 +157,20 @@ function textoOuTraco(v: string | null | undefined): string {
         </template>
       </div>
 
-      <span
-        class="material-symbols-outlined shrink-0 text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
-        aria-hidden="true"
-      >
-        {{ expandido ? 'expand_less' : 'expand_more' }}
-      </span>
+      <div class="flex shrink-0 flex-col items-end gap-2">
+        <BadgeTempoEsperaPedido
+          v-if="mostraTempoEspera"
+          :created-at="item.created_at"
+          :now-ms="agoraMs"
+          size="md"
+        />
+        <span
+          class="material-symbols-outlined text-[20px] text-on-surface-variant dark:text-dark-on-surface-variant"
+          aria-hidden="true"
+        >
+          {{ expandido ? 'expand_less' : 'expand_more' }}
+        </span>
+      </div>
     </div>
 
     <div

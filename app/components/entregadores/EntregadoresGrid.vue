@@ -21,6 +21,7 @@ const salvando = ref(false)
 const formCodigo = ref('')
 const formNome = ref('')
 const formAtivo = ref(true)
+const formPremium = ref(false)
 
 watch(
   () => props.workspaceId,
@@ -52,6 +53,7 @@ function abrirCriar() {
   formCodigo.value = ''
   formNome.value = ''
   formAtivo.value = true
+  formPremium.value = false
   modalAberto.value = true
 }
 
@@ -60,6 +62,7 @@ function abrirEditar(e: EntregadorListaItem) {
   formCodigo.value = e.codigo
   formNome.value = e.nome
   formAtivo.value = e.ativo
+  formPremium.value = e.entregador_premium === true
   modalAberto.value = true
 }
 
@@ -80,6 +83,7 @@ async function salvar() {
         codigo: formCodigo.value,
         nome: formNome.value,
         ativo: formAtivo.value,
+        entregador_premium: formPremium.value,
       })
       toast.success('Entregador atualizado')
     } else {
@@ -88,6 +92,7 @@ async function salvar() {
         codigo: formCodigo.value,
         nome: formNome.value,
         ativo: formAtivo.value,
+        entregador_premium: formPremium.value,
       })
       toast.success('Entregador criado')
     }
@@ -110,6 +115,21 @@ async function alternarAtivo(e: EntregadorListaItem) {
     toast.success(e.ativo ? 'Entregador desativado' : 'Entregador ativado')
   } catch (err) {
     toast.error(mensagemErroFetch(err, 'Não foi possível atualizar o status.'))
+  }
+}
+
+async function alternarPremium(e: EntregadorListaItem) {
+  try {
+    await store.update({
+      workspaceId: props.workspaceId,
+      id: e.id,
+      entregador_premium: !e.entregador_premium,
+    })
+    toast.success(
+      e.entregador_premium ? 'Premium desativado' : 'Entregador premium ativado',
+    )
+  } catch (err) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível atualizar o premium.'))
   }
 }
 </script>
@@ -167,8 +187,16 @@ async function alternarAtivo(e: EntregadorListaItem) {
       >
         <div class="flex items-start justify-between gap-2">
           <div class="min-w-0">
-            <p class="truncate font-headline text-base font-semibold text-on-surface dark:text-dark-on-surface">
-              {{ e.nome }}
+            <p class="flex min-w-0 items-center gap-1.5">
+              <span class="truncate font-headline text-base font-semibold text-on-surface dark:text-dark-on-surface">
+                {{ e.nome }}
+              </span>
+              <span
+                v-if="e.entregador_premium"
+                class="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+              >
+                Premium
+              </span>
             </p>
             <p class="mt-0.5 font-mono text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
               {{ e.codigo }}
@@ -184,6 +212,29 @@ async function alternarAtivo(e: EntregadorListaItem) {
           >
             {{ e.ativo ? 'Ativo' : 'Inativo' }}
           </span>
+        </div>
+        <div class="mt-3 flex items-center justify-between gap-2">
+          <span class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+            Entregador premium
+          </span>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="e.entregador_premium"
+            :aria-label="e.entregador_premium ? 'Desativar premium' : 'Ativar premium'"
+            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+            :class="
+              e.entregador_premium
+                ? 'bg-amber-500 dark:bg-amber-400'
+                : 'bg-outline/40 dark:bg-dark-outline/50'
+            "
+            @click="alternarPremium(e)"
+          >
+            <span
+              class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+              :class="e.entregador_premium ? 'translate-x-4' : 'translate-x-0.5'"
+            />
+          </button>
         </div>
         <div class="mt-4 flex gap-2">
           <button
@@ -255,6 +306,28 @@ async function alternarAtivo(e: EntregadorListaItem) {
                 :disabled="salvando"
               />
               Ativo
+            </label>
+            <label class="flex items-center justify-between gap-3 text-sm text-on-surface dark:text-dark-on-surface">
+              <span>Entregador premium</span>
+              <span class="relative inline-flex items-center">
+                <input
+                  v-model="formPremium"
+                  type="checkbox"
+                  class="peer sr-only"
+                  role="switch"
+                  :disabled="salvando"
+                  aria-label="Entregador premium"
+                />
+                <span
+                  class="relative h-5 w-9 rounded-full bg-outline/40 transition-colors peer-checked:bg-amber-500 peer-disabled:opacity-60 peer-focus-visible:ring-2 peer-focus-visible:ring-primary-300 dark:bg-dark-outline/50 dark:peer-checked:bg-amber-400"
+                  aria-hidden="true"
+                >
+                  <span
+                    class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform"
+                    :class="formPremium ? 'translate-x-4' : 'translate-x-0'"
+                  />
+                </span>
+              </span>
             </label>
             <div class="flex gap-2 pt-2">
               <button

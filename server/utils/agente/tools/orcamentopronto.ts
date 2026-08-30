@@ -142,5 +142,7 @@ export const orcamentoprontoTool: ToolDef = {
     provedor_pagamentos: ctx.provedor_pagamentos,
     credenciais_encrypted: ctx.credenciais_encrypted,
     taxas_cartao: ctx.taxas_cartao,
+    loja_aberta: ctx.loja_aberta,
+    agenda_pedido: ctx.agenda_pedido,
   }),
 }

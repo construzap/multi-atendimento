@@ -7,10 +7,7 @@ import type {
   KanbanColumnPageResponse,
   KanbanNotificacaoIa,
 } from '#shared/types/kanban'
-import {
-  normalizeProdutosRaw,
-  normalizeTotalOrcamento,
-} from '#shared/utils/notificacaoIaProdutos'
+import { mapNotificacaoIaRow } from '#shared/utils/notificacaoIaProdutos'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 import { assertAdminWorkspaceAtivo } from '../../utils/adminPrompt'
 import { isUserAdmin } from '../../utils/checkAdmin'
@@ -125,28 +122,7 @@ function parseNotificacoesIa(raw: unknown): KanbanNotificacaoIa[] {
     const id = intOrNull(o.id)
     if (id == null) continue
 
-    const forma_pagamento = o.forma_pagamento != null ? String(o.forma_pagamento) : null
-    const produtos = normalizeProdutosRaw(o.produtos)
-    const total_orcamento = normalizeTotalOrcamento(o.total_orcamento)
-
-    out.push({
-      id,
-      produtos,
-      total_orcamento,
-      observacoes: o.observacoes != null ? String(o.observacoes) : null,
-      forma_pagamento,
-      latitude: numberOrNull(o.latitude),
-      longitude: numberOrNull(o.longitude),
-      tipo_solicitacao: o.tipo_solicitacao != null ? String(o.tipo_solicitacao) : null,
-      created_at: o.created_at != null ? String(o.created_at) : '',
-      updated_at: o.updated_at != null ? String(o.updated_at) : '',
-      entrega_ou_retirada: o.entrega_ou_retirada != null ? String(o.entrega_ou_retirada) : null,
-      concluido: o.concluido === true,
-      endereco: (() => {
-        const t = o.endereco != null ? String(o.endereco).trim() : ''
-        return t || null
-      })(),
-    })
+    out.push(mapNotificacaoIaRow({ ...o, id }))
   }
   return out
 }
@@ -477,7 +453,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
 
   const { data: colunasRows, error: colErr } = await admin
     .from('funil_workspace_colunas')
-    .select('id, nome, cor, ordem, id_agendamento_mensagem')
+    .select('id, nome, cor, ordem, id_agendamento_mensagem, recolhida')
     .eq('funil_id', funilId)
     .is('deleted_at', null)
     .order('ordem', { ascending: true })
@@ -492,6 +468,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
     cor: string | null
     ordem: number
     id_agendamento_mensagem: string | null
+    recolhida: boolean | null
   }>
 
   if (colunaIdFilter != null) {
@@ -541,6 +518,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
       cor: c.cor,
       ordem: c.ordem,
       id_agendamento_mensagem: uuidOrNull(c.id_agendamento_mensagem),
+      recolhida: c.recolhida === true,
       cards: page.cards,
       total_cards: page.total_cards,
       has_more: page.has_more,

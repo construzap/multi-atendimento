@@ -42,6 +42,10 @@ export type AgenteResponderBody = {
   credenciais_encrypted?: string | null
   /** Taxas de cartão do canal (objeto tipo { "1x": 0, "2x": 4.5, ... }). */
   taxas_cartao?: Record<string, number> | string | null
+  /** Se a loja está aberta no momento. */
+  loja_aberta?: boolean | null
+  /** Se a loja aceita agendar pedido. */
+  agenda_pedido?: boolean | null
   model?: string | null
   max_tool_rounds?: number | null
 }
@@ -100,6 +104,8 @@ export type AgenteContext = {
   provedor_pagamentos: string | null
   credenciais_encrypted: string | null
   taxas_cartao: Record<string, number> | string | null
+  loja_aberta: boolean | null
+  agenda_pedido: boolean | null
   model: string
   max_tool_rounds: number
   context_window: number

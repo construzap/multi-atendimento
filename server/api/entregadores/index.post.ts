@@ -9,6 +9,7 @@ type Body = {
   codigo?: unknown
   nome?: unknown
   ativo?: unknown
+  entregador_premium?: unknown
 }
 
 function parseWorkspaceId(raw: unknown): number {
@@ -29,7 +30,7 @@ function normalizeCodigo(raw: unknown): string {
 
 /**
  * POST /api/entregadores
- * Body: `{ workspace_id, codigo, nome, ativo? }`
+ * Body: `{ workspace_id, codigo, nome, ativo?, entregador_premium? }`
  */
 export default defineEventHandler(async (event): Promise<EntregadorListaItem> => {
   assertMethod(event, 'POST')
@@ -49,6 +50,7 @@ export default defineEventHandler(async (event): Promise<EntregadorListaItem> =>
   const codigo = normalizeCodigo(body.codigo)
   const nome = String(body.nome ?? '').trim()
   const ativo = body.ativo === false ? false : true
+  const entregadorPremium = body.entregador_premium === true
 
   if (!codigo) {
     throw createError({ statusCode: 400, statusMessage: 'Informe o código do entregador.' })
@@ -74,10 +76,11 @@ export default defineEventHandler(async (event): Promise<EntregadorListaItem> =>
       codigo,
       nome,
       ativo,
+      entregador_premium: entregadorPremium,
       created_at: nowIso,
       updated_at: nowIso,
     })
-    .select('id, codigo, nome, ativo, created_at, updated_at')
+    .select('id, codigo, nome, ativo, entregador_premium, created_at, updated_at')
     .maybeSingle()
 
   if (error) {
@@ -99,6 +102,7 @@ export default defineEventHandler(async (event): Promise<EntregadorListaItem> =>
     codigo: String(data.codigo ?? ''),
     nome: String(data.nome ?? ''),
     ativo: data.ativo !== false,
+    entregador_premium: data.entregador_premium === true,
     created_at: data.created_at != null ? String(data.created_at) : nowIso,
     updated_at: data.updated_at != null ? String(data.updated_at) : nowIso,
   }

@@ -21,6 +21,8 @@ export function parseTokenEntrega(raw: unknown): string {
 export type NotificacaoEntregaRow = {
   id: number
   workspace_id: number
+  canal_id: number | null
+  conversa_key: string
   nome: string | null
   endereco: string | null
   entrega_status: EntregaStatus
@@ -38,7 +40,7 @@ export async function loadNotificacaoByToken(
   const { data, error } = await admin
     .from('notificacoes_ia')
     .select(
-      'id, workspace_id, nome, endereco, entrega_status, entregador_id, codigo_confirmacao, token_entrega',
+      'id, workspace_id, canal_id, conversa_key, nome, endereco, entrega_status, entregador_id, codigo_confirmacao, token_entrega',
     )
     .eq('token_entrega', token)
     .maybeSingle()
@@ -60,6 +62,19 @@ export async function loadNotificacaoByToken(
     throw createError({ statusCode: 500, statusMessage: 'Pedido de entrega inválido.' })
   }
 
+  const canalIdRaw = data.canal_id
+  const canal_id =
+    canalIdRaw == null
+      ? null
+      : typeof canalIdRaw === 'number'
+        ? canalIdRaw
+        : Number.parseInt(String(canalIdRaw), 10)
+
+  const conversa_key = String(data.conversa_key ?? '').trim()
+  if (!conversa_key) {
+    throw createError({ statusCode: 500, statusMessage: 'Pedido sem conversa_key.' })
+  }
+
   const statusRaw = data.entrega_status != null ? String(data.entrega_status) : 'aguardando_entregador'
   const entrega_status: EntregaStatus = isEntregaStatus(statusRaw)
     ? statusRaw
@@ -76,6 +91,9 @@ export async function loadNotificacaoByToken(
   return {
     id,
     workspace_id: workspaceId,
+    canal_id:
+      canal_id != null && Number.isFinite(canal_id) && canal_id >= 1 ? canal_id : null,
+    conversa_key,
     nome: data.nome != null ? String(data.nome).trim() || null : null,
     endereco: data.endereco != null ? String(data.endereco).trim() || null : null,
     entrega_status,
@@ -102,13 +120,15 @@ export async function buildEntregaResumo(
     .maybeSingle()
 
   let entregador_nome: string | null = null
+  let entregador_premium = false
   if (row.entregador_id != null) {
     const { data: ent } = await admin
       .from('entregadores')
-      .select('nome')
+      .select('nome, entregador_premium')
       .eq('id', row.entregador_id)
       .maybeSingle()
     entregador_nome = ent?.nome != null ? String(ent.nome).trim() || null : null
+    entregador_premium = ent?.entregador_premium === true
   }
 
   const pedidoLabel = String(row.id).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
@@ -119,10 +139,31 @@ export async function buildEntregaResumo(
     entrega_status: row.entrega_status,
     entregador_identificado: row.entregador_id != null,
     entregador_nome,
+    entregador_premium,
     loja_nome: ws?.nome != null ? String(ws.nome).trim() || null : null,
     endereco: row.endereco,
     cliente_nome: row.nome,
   }
+}
+
+/** Confere se o entregador vinculado ao pedido é premium. */
+export async function isEntregadorPremiumById(
+  event: H3Event,
+  workspaceId: number,
+  entregadorId: number,
+): Promise<boolean> {
+  const admin = serverSupabaseServiceRole<any>(event)
+  const { data, error } = await admin
+    .from('entregadores')
+    .select('entregador_premium')
+    .eq('id', entregadorId)
+    .eq('workspace_id', workspaceId)
+    .maybeSingle()
+
+  if (error) {
+    throw createError({ statusCode: 500, statusMessage: error.message })
+  }
+  return data?.entregador_premium === true
 }
 
 /** Normaliza código do entregador (trim + uppercase). */

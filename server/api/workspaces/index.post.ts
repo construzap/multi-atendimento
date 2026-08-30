@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, readBody } from 'h3'
 import type { Workspace } from '#shared/types/workspace'
+import { criarMensagensProntasPadraoWorkspace } from '../../utils/criarMensagensProntasPadraoWorkspace'
 import { criarPageRolePadrao } from '../../utils/criarPageRolePadrao'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -17,6 +18,7 @@ type CreateWorkspaceBody = {
  * - Salva: user_id do auth em `workspace`
  * - Insere em `atendentes`: mesmo usuário como admin e atendente do workspace
  * - Insere em `page_roles` com páginas padrão do criador
+ * - Cria funil + colunas padrão e sequências de mensagens prontas vinculadas
  * - Escrita via service role (tabela com RLS)
  */
 export default defineEventHandler(async (event): Promise<Workspace> => {
@@ -118,20 +120,41 @@ export default defineEventHandler(async (event): Promise<Workspace> => {
     if (funilId != null) {
       const nowIso = new Date().toISOString()
       const cols = [
-        { funil_id: funilId, workspace_id: workspaceId, nome: 'Em Atendimento com I.A', cor: '#38BDF8', ordem: 1 },
+        { funil_id: funilId, workspace_id: workspaceId, nome: 'Em atendimento com I.A', cor: '#38BDF8', ordem: 1 },
         { funil_id: funilId, workspace_id: workspaceId, nome: 'Precisa de Atendimento', cor: '#F59E0B', ordem: 2 },
-        { funil_id: funilId, workspace_id: workspaceId, nome: 'Pedido Realizado', cor: '#A855F7', ordem: 3 },
+        { funil_id: funilId, workspace_id: workspaceId, nome: 'Pedidos Novos', cor: '#A855F7', ordem: 3 },
         { funil_id: funilId, workspace_id: workspaceId, nome: 'Em Separação', cor: '#F43F5E', ordem: 4 },
         { funil_id: funilId, workspace_id: workspaceId, nome: 'Entregas em Andamento', cor: '#10B981', ordem: 5 },
+        { funil_id: funilId, workspace_id: workspaceId, nome: 'Entrega Chegou no Destino', cor: '#3B82F6', ordem: 6 },
+        { funil_id: funilId, workspace_id: workspaceId, nome: 'Pedidos Entregues', cor: '#64748B', ordem: 7 },
       ].map((c) => ({ ...c, updated_at: nowIso }))
 
-      const { error: colsErr } = await admin.from('funil_workspace_colunas').insert(cols)
+      const { data: colsInserted, error: colsErr } = await admin
+        .from('funil_workspace_colunas')
+        .insert(cols)
+        .select('id, nome')
+
       if (colsErr) {
         throw createError({ statusCode: 500, statusMessage: colsErr.message })
       }
+
+      const colunas = (Array.isArray(colsInserted) ? colsInserted : [])
+        .map((row) => {
+          const id = typeof row.id === 'number' ? row.id : Number(row.id)
+          const nomeCol = String(row.nome ?? '').trim()
+          if (!Number.isFinite(id) || id < 1 || !nomeCol) return null
+          return { id: Math.trunc(id), nome: nomeCol }
+        })
+        .filter((c): c is { id: number; nome: string } => c != null)
+
+      await criarMensagensProntasPadraoWorkspace({
+        admin,
+        workspaceId,
+        userId,
+        colunas,
+      })
     }
   }
 
   return data as Workspace
 })
-

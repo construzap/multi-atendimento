@@ -4,6 +4,7 @@ export type EntregadorListaItem = {
   codigo: string
   nome: string
   ativo: boolean
+  entregador_premium: boolean
   created_at: string
   updated_at: string
 }
@@ -17,6 +18,7 @@ export type EntregadorCreateBody = {
   codigo: string
   nome: string
   ativo?: boolean
+  entregador_premium?: boolean
 }
 
 export type EntregadorUpdateBody = {
@@ -25,4 +27,5 @@ export type EntregadorUpdateBody = {
   codigo?: string
   nome?: string
   ativo?: boolean
+  entregador_premium?: boolean
 }

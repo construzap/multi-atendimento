@@ -67,16 +67,24 @@ export function parseTaxasCartao(raw: unknown, opts: ParseTaxasCartaoOpts = {}):
 }
 
 /**
- * Normaliza taxas enviadas no POST — apenas parcelas preenchidas,
- * vírgula → ponto, sem defaults 4x/5x/6x com zero.
+ * Normaliza taxas enviadas no POST — apenas parcelas preenchidas (> 0),
+ * vírgula → ponto. Vazio / null / só zeros → null no banco.
  */
-export function parseTaxasCartaoParaSalvar(raw: unknown): CanalTaxasCartao {
-  if (raw === undefined || raw === null) {
+export function parseTaxasCartaoParaSalvar(raw: unknown): CanalTaxasCartao | null {
+  if (raw === undefined) {
     throw createError({ statusCode: 400, statusMessage: 'taxas_cartao é obrigatório.' })
   }
+  if (raw === null) return null
 
   const obj = taxasCartaoRawParaObjeto(raw)
   if (!obj) {
+    // `{}` vazio ou string vazia → limpar taxas
+    if (
+      (typeof raw === 'object' && !Array.isArray(raw) && Object.keys(raw as object).length === 0) ||
+      (typeof raw === 'string' && !raw.trim())
+    ) {
+      return null
+    }
     throw createError({ statusCode: 400, statusMessage: 'taxas_cartao inválido.' })
   }
 
@@ -85,17 +93,11 @@ export function parseTaxasCartaoParaSalvar(raw: unknown): CanalTaxasCartao {
     const key = k.trim().toLowerCase()
     if (!/^\d+x$/.test(key)) continue
     const n = parseTaxaValor(v)
-    if (n !== null) out[key] = n
+    if (n === null || n === 0) continue
+    out[key] = n
   }
 
-  if (Object.keys(out).length === 0) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Informe ao menos uma taxa de parcela válida.',
-    })
-  }
-
-  return out
+  return Object.keys(out).length > 0 ? out : null
 }
 
 export function mapCanalPagamentoRow(
@@ -112,6 +114,9 @@ export function mapCanalPagamentoRow(
     provedor_pagamentos: parseProvedorPagamentos(row.provedor_pagamentos),
     chave_pix: typeof row.chave_pix === 'string' ? row.chave_pix : null,
     tem_credenciais_pagarme: temCred,
-    taxas_cartao: parseTaxasCartao(row.taxas_cartao),
+    taxas_cartao: (() => {
+      const taxas = parseTaxasCartao(row.taxas_cartao)
+      return Object.keys(taxas).length > 0 ? taxas : null
+    })(),
   }
 }

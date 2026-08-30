@@ -7,21 +7,17 @@ import type {
   MensagemProntaTipo,
   WebhookN8nMensagemProntaResponse,
 } from '#shared/types/mensagensProntas'
+import { CONTEUDO_PASSO_LIGACAO } from '#shared/types/mensagensProntas'
 import { resolverMensagemProntaParaEnvio } from '#shared/utils/mensagemProntaVariaveis'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
+import {
+  MENSAGEM_PRONTA_TIPOS,
+  parseDuracaoLigacaoSegundos,
+} from '../../utils/mensagensProntasPassos'
 
 const WEBHOOK_MENSAGEM_PRONTA_N8N =
   'https://nwebhook.construzap.com/webhook/muster-septum-cuddly0-magnesium'
-
-const TIPOS: MensagemProntaTipo[] = [
-  'texto',
-  'audio',
-  'imagem',
-  'video',
-  'documento',
-  'figurinha',
-]
 
 type Body = {
   workspace_id?: unknown
@@ -113,14 +109,18 @@ function parseMensagemPronta(raw: unknown): MensagemProntaComPassos {
     }
     const row = p as Record<string, unknown>
     const tipoRaw = String(row.tipo ?? '').trim().toLowerCase()
-    if (!(TIPOS as string[]).includes(tipoRaw)) {
+    if (!(MENSAGEM_PRONTA_TIPOS as string[]).includes(tipoRaw)) {
       throw createError({
         statusCode: 400,
         statusMessage: `Tipo inválido no passo ${i + 1}.`,
       })
     }
-    const conteudo = String(row.conteudo ?? '').trim()
-    if (!conteudo) {
+    const tipo = tipoRaw as MensagemProntaTipo
+    const isLigacao = tipo === 'ligacao'
+    const conteudo = isLigacao
+      ? (String(row.conteudo ?? '').trim() || CONTEUDO_PASSO_LIGACAO)
+      : String(row.conteudo ?? '').trim()
+    if (!isLigacao && !conteudo) {
       throw createError({
         statusCode: 400,
         statusMessage: `Conteúdo obrigatório no passo ${i + 1}.`,
@@ -130,9 +130,12 @@ function parseMensagemPronta(raw: unknown): MensagemProntaComPassos {
       id: String(row.id ?? `${i + 1}`),
       sequencia_id: String(row.sequencia_id ?? sequenciaId),
       ordem: Number(row.ordem ?? i + 1),
-      tipo: tipoRaw as MensagemProntaTipo,
+      tipo,
       conteudo,
       delay_segundos: Math.max(0, Number(row.delay_segundos ?? 0) || 0),
+      duracao_ligacao_segundos: isLigacao
+        ? parseDuracaoLigacaoSegundos(row.duracao_ligacao_segundos, `Tempo da ligação no passo ${i + 1}`)
+        : null,
       created_at: String(row.created_at ?? new Date().toISOString()),
     })
   }

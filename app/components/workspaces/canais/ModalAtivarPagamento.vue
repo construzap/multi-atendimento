@@ -63,6 +63,9 @@ const provedorLabel = computed(() => {
   return PROVEDORES.find((p) => p.value === provedor.value)?.label ?? provedor.value
 })
 
+/** Chave PIX só para Pagar.me — Asaas não exibe o campo. */
+const mostraChavePix = computed(() => provedor.value === 'pagar.me')
+
 function ordenarChavesParcela(keys: string[]): string[] {
   return [...keys].sort((a, b) => {
     const na = Number.parseInt(a, 10)
@@ -72,36 +75,31 @@ function ordenarChavesParcela(keys: string[]): string[] {
   })
 }
 
-function linhaTaxaVazia(parcela = '1x'): TaxaLinha {
-  return {
-    id: `${parcela}-${Math.random().toString(36).slice(2, 8)}`,
-    parcela,
-    valor: '',
-  }
-}
-
 function formatTaxaValorExibicao(valor: number): string {
   const s = String(valor)
   return s.includes('.') ? s.replace('.', ',') : s
 }
 
-function taxasObjetoParaLinhas(obj: CanalTaxasCartao): TaxaLinha[] {
+function taxasObjetoParaLinhas(obj: CanalTaxasCartao | null | undefined): TaxaLinha[] {
   const keys = ordenarChavesParcela(
-    Object.keys(obj).filter((k) => {
-      const v = obj[k]
+    Object.keys(obj ?? {}).filter((k) => {
+      const v = obj?.[k]
       return v != null && v !== 0
     }),
   )
-  if (keys.length === 0) return [linhaTaxaVazia()]
+  if (keys.length === 0) return []
   return keys.map((parcela) => ({
     id: `${parcela}-${Math.random().toString(36).slice(2, 8)}`,
     parcela,
-    valor: formatTaxaValorExibicao(Number(obj[parcela] ?? 0)),
+    valor: formatTaxaValorExibicao(Number(obj?.[parcela] ?? 0)),
   }))
 }
 
-/** Só parcelas com valor preenchido; vírgula → ponto no número enviado. */
-function linhasParaTaxasObjeto(linhas: TaxaLinha[]): CanalTaxasCartao {
+/**
+ * Só parcelas com valor > 0; vírgula → ponto.
+ * Sem taxas / só zeros → null (grava null no banco).
+ */
+function linhasParaTaxasObjeto(linhas: TaxaLinha[]): CanalTaxasCartao | null {
   const out: CanalTaxasCartao = {}
   for (const linha of linhas) {
     const rawKey = linha.parcela.trim().toLowerCase()
@@ -110,10 +108,10 @@ function linhasParaTaxasObjeto(linhas: TaxaLinha[]): CanalTaxasCartao {
     const valorStr = String(linha.valor).trim()
     if (!valorStr) continue
     const n = Number.parseFloat(valorStr.replace(',', '.'))
-    if (!Number.isFinite(n)) continue
+    if (!Number.isFinite(n) || n === 0) continue
     out[key] = n
   }
-  return out
+  return Object.keys(out).length > 0 ? out : null
 }
 
 function proximaParcelaDisponivel(): string {
@@ -143,10 +141,6 @@ function adicionarTaxa() {
 }
 
 function removerTaxa(id: string) {
-  if (taxasLinhas.value.length <= 1) {
-    toast.warning('Mantenha ao menos uma parcela.')
-    return
-  }
   taxasLinhas.value = taxasLinhas.value.filter((l) => l.id !== id)
 }
 
@@ -236,15 +230,13 @@ function close() {
 
 function validarFormulario(): string | null {
   for (const linha of taxasLinhas.value) {
+    const valorStr = String(linha.valor).trim()
+    if (!valorStr) continue
     const rawKey = linha.parcela.trim().toLowerCase()
     const key = /^\d+$/.test(rawKey) ? `${rawKey}x` : rawKey
     if (!/^\d+x$/.test(key)) {
       return `Parcela inválida: "${linha.parcela}". Use o formato 1x, 2x, 12x…`
     }
-  }
-  const taxas = linhasParaTaxasObjeto(taxasLinhas.value)
-  if (Object.keys(taxas).length === 0) {
-    return 'Informe ao menos uma taxa de parcela válida.'
   }
   return null
 }
@@ -271,7 +263,9 @@ async function onSalvar() {
         workspace_id: workspaceId,
         id: canalId,
         provedor_pagamentos: provedor.value,
-        chave_pix: chavePix.value.trim() || null,
+        ...(provedor.value === 'pagar.me'
+          ? { chave_pix: chavePix.value.trim() || null }
+          : {}),
         taxas_cartao: linhasParaTaxasObjeto(taxasLinhas.value),
         ...(credenciaisPagarme.value.trim()
           ? { credenciais: credenciaisPagarme.value.trim() }
@@ -354,7 +348,7 @@ async function onSalvar() {
         </BaseDropdown>
       </div>
 
-      <div>
+      <div v-if="mostraChavePix">
         <label
           class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface"
           for="canal-pagamento-chave-pix"

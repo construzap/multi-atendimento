@@ -21,6 +21,7 @@ function mapRow(r: Record<string, unknown>): EntregadorListaItem | null {
     codigo: String(r.codigo ?? '').trim(),
     nome: String(r.nome ?? '').trim(),
     ativo: r.ativo !== false,
+    entregador_premium: r.entregador_premium === true,
     created_at: r.created_at != null ? String(r.created_at) : '',
     updated_at: r.updated_at != null ? String(r.updated_at) : '',
   }
@@ -48,7 +49,7 @@ export default defineEventHandler(async (event): Promise<EntregadoresListRespons
   const admin = serverSupabaseServiceRole<any>(event)
   const { data, error } = await admin
     .from('entregadores')
-    .select('id, codigo, nome, ativo, created_at, updated_at')
+    .select('id, codigo, nome, ativo, entregador_premium, created_at, updated_at')
     .eq('workspace_id', workspaceId)
     .order('codigo', { ascending: true })
 

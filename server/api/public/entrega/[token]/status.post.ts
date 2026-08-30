@@ -1,6 +1,8 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, getRouterParam, readBody } from 'h3'
 import type { EntregaPublicaResumoResponse } from '#shared/types/entrega'
+import type { EntregaAoColetarResult } from '../../../../utils/entregaAoColetar'
+import { executarAutomacaoEtapaKanban } from '../../../../utils/entregaAoColetar'
 import {
   buildEntregaResumo,
   loadNotificacaoByToken,
@@ -11,11 +13,18 @@ type Body = {
   acao?: unknown
 }
 
+export type EntregaStatusResponse = EntregaPublicaResumoResponse & {
+  coleta?: EntregaAoColetarResult | null
+  coleta_erro?: string | null
+}
+
 /**
  * POST /api/public/entrega/:token/status
- * Body: `{ acao: 'coletado' | 'no_local' }` — avanço linear.
+ * Body: `{ acao: 'coletado' | 'no_local' }`
+ * - coletado → coluna ordem 5
+ * - no_local → coluna ordem 6
  */
-export default defineEventHandler(async (event): Promise<EntregaPublicaResumoResponse> => {
+export default defineEventHandler(async (event): Promise<EntregaStatusResponse> => {
   assertMethod(event, 'POST')
 
   const token = parseTokenEntrega(getRouterParam(event, 'token'))
@@ -44,6 +53,8 @@ export default defineEventHandler(async (event): Promise<EntregaPublicaResumoRes
 
   const nowIso = new Date().toISOString()
   const patch: Record<string, unknown> = { updated_at: nowIso }
+  let etapaKanban: 'coletado' | 'no_local' | null = null
+  let tambemColetarAntes = false
 
   if (acao === 'coletado') {
     if (row.entrega_status !== 'aguardando_entregador') {
@@ -54,15 +65,24 @@ export default defineEventHandler(async (event): Promise<EntregaPublicaResumoRes
     }
     patch.entrega_status = 'coletado'
     patch.coletado_at = nowIso
+    etapaKanban = 'coletado'
   } else {
-    if (row.entrega_status !== 'coletado') {
+    if (
+      row.entrega_status !== 'coletado' &&
+      row.entrega_status !== 'aguardando_entregador'
+    ) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'Marque a coleta antes de informar chegada no local.',
+        statusMessage: 'Status inválido para informar chegada no local.',
       })
+    }
+    if (row.entrega_status === 'aguardando_entregador') {
+      patch.coletado_at = nowIso
+      tambemColetarAntes = true
     }
     patch.entrega_status = 'no_local'
     patch.no_local_at = nowIso
+    etapaKanban = 'no_local'
   }
 
   const admin = serverSupabaseServiceRole<any>(event)
@@ -78,5 +98,28 @@ export default defineEventHandler(async (event): Promise<EntregaPublicaResumoRes
 
   const updated = await loadNotificacaoByToken(event, token)
   const data = await buildEntregaResumo(event, updated)
-  return { ok: true, data }
+
+  if (!etapaKanban) {
+    return { ok: true, data }
+  }
+
+  let coleta: EntregaAoColetarResult | null = null
+  let coleta_erro: string | null = null
+  try {
+    if (tambemColetarAntes) {
+      await executarAutomacaoEtapaKanban(event, updated, 'coletado')
+    }
+    coleta = await executarAutomacaoEtapaKanban(event, updated, etapaKanban)
+  } catch (e) {
+    coleta_erro =
+      e && typeof e === 'object' && 'statusMessage' in e
+        ? String((e as { statusMessage?: unknown }).statusMessage ?? '')
+        : e instanceof Error
+          ? e.message
+          : 'Falha na automação de kanban (funil/coluna).'
+    if (!coleta_erro) coleta_erro = 'Falha na automação de kanban (funil/coluna).'
+    console.warn('[entrega/status] automação:', coleta_erro)
+  }
+
+  return { ok: true, data, coleta, coleta_erro }
 })

@@ -351,6 +351,8 @@ export const useCanaisStore = defineStore('canais', {
         if (input.api_key !== undefined && input.api_key !== null && input.api_key !== '') {
           body.api_key = input.api_key
         }
+        if (input.loja_aberta !== undefined) body.loja_aberta = input.loja_aberta
+        if (input.agenda_pedido !== undefined) body.agenda_pedido = input.agenda_pedido
 
         const updated = await $fetch<CanalAtualizado>('/api/canais/editarcanal', {
           method: 'POST',
@@ -370,6 +372,116 @@ export const useCanaisStore = defineStore('canais', {
         throw err
       } finally {
         this.pending = false
+      }
+    },
+
+    /**
+     * Atualiza só `loja_aberta` do canal (POST /api/canais/loja-aberta).
+     * Atualiza `items` / `currentCanal` de forma otimista e reverte se falhar.
+     */
+    async setLojaAberta(payload: {
+      workspace_id: number
+      id_canal: number
+      loja_aberta: boolean
+    }): Promise<{ ok: true; id: number; loja_aberta: boolean }> {
+      const idx = this.items.findIndex((c) => c.id === payload.id_canal)
+      const prev =
+        idx !== -1
+          ? this.items[idx].loja_aberta
+          : this.currentCanal?.id === payload.id_canal
+            ? this.currentCanal.loja_aberta
+            : true
+
+      if (idx !== -1) {
+        this.items[idx] = { ...this.items[idx], loja_aberta: payload.loja_aberta }
+      }
+      if (this.currentCanal?.id === payload.id_canal) {
+        this.currentCanal = { ...this.currentCanal, loja_aberta: payload.loja_aberta }
+      }
+
+      try {
+        const data = await $fetch<{ ok: true; id: number; loja_aberta: boolean }>(
+          '/api/canais/loja-aberta',
+          {
+            method: 'POST',
+            body: {
+              workspace_id: payload.workspace_id,
+              id_canal: payload.id_canal,
+              loja_aberta: payload.loja_aberta,
+            },
+          },
+        )
+        if (idx !== -1) {
+          this.items[idx] = { ...this.items[idx], loja_aberta: data.loja_aberta }
+        }
+        if (this.currentCanal?.id === payload.id_canal) {
+          this.currentCanal = { ...this.currentCanal, loja_aberta: data.loja_aberta }
+        }
+        return data
+      } catch (err) {
+        if (idx !== -1) {
+          this.items[idx] = { ...this.items[idx], loja_aberta: prev !== false }
+        }
+        if (this.currentCanal?.id === payload.id_canal) {
+          this.currentCanal = { ...this.currentCanal, loja_aberta: prev !== false }
+        }
+        this.error = mensagemErroFetch(err, 'Falha ao atualizar status da loja.')
+        throw err
+      }
+    },
+
+    /**
+     * Atualiza só `agenda_pedido` do canal (POST /api/canais/agenda-pedido).
+     * Atualiza `items` / `currentCanal` de forma otimista e reverte se falhar.
+     */
+    async setAgendaPedido(payload: {
+      workspace_id: number
+      id_canal: number
+      agenda_pedido: boolean
+    }): Promise<{ ok: true; id: number; agenda_pedido: boolean }> {
+      const idx = this.items.findIndex((c) => c.id === payload.id_canal)
+      const prev =
+        idx !== -1
+          ? this.items[idx].agenda_pedido === true
+          : this.currentCanal?.id === payload.id_canal
+            ? this.currentCanal.agenda_pedido === true
+            : false
+
+      if (idx !== -1) {
+        this.items[idx] = { ...this.items[idx], agenda_pedido: payload.agenda_pedido }
+      }
+      if (this.currentCanal?.id === payload.id_canal) {
+        this.currentCanal = { ...this.currentCanal, agenda_pedido: payload.agenda_pedido }
+      }
+
+      try {
+        const data = await $fetch<{ ok: true; id: number; agenda_pedido: boolean }>(
+          '/api/canais/agenda-pedido',
+          {
+            method: 'POST',
+            body: {
+              workspace_id: payload.workspace_id,
+              id_canal: payload.id_canal,
+              agenda_pedido: payload.agenda_pedido,
+            },
+          },
+        )
+        if (idx !== -1) {
+          this.items[idx] = { ...this.items[idx], agenda_pedido: data.agenda_pedido }
+        }
+        if (this.currentCanal?.id === payload.id_canal) {
+          this.currentCanal = { ...this.currentCanal, agenda_pedido: data.agenda_pedido }
+        }
+        return data
+      } catch (err) {
+        if (idx !== -1) {
+          this.items[idx] = { ...this.items[idx], agenda_pedido: prev }
+        }
+        if (this.currentCanal?.id === payload.id_canal) {
+          this.currentCanal = { ...this.currentCanal, agenda_pedido: prev }
+        }
+        this.error = mensagemErroFetch(err, 'Falha ao atualizar agenda de pedido.')
+        throw err
       }
     },
 

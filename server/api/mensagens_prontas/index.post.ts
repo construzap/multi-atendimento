@@ -3,9 +3,7 @@ import { assertMethod, createError, readBody } from 'h3'
 import type {
   CriarMensagemProntaResponse,
   MensagemProntaPasso,
-  MensagemProntaPassoInput,
   MensagemProntaSequenciaResumo,
-  MensagemProntaTipo,
 } from '#shared/types/mensagensProntas'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
@@ -18,6 +16,12 @@ import {
   parseIaLigadaBody,
   parseOptionalColunaDestinoId,
 } from '../../utils/mensagensProntasColunaDestino'
+import {
+  MENSAGEM_PRONTA_PASSOS_SELECT,
+  mapPassoFromDbRow,
+  parsePassos,
+  passoInsertRow,
+} from '../../utils/mensagensProntasPassos'
 import { parsePositiveInt } from '../../utils/parsePositiveInt'
 
 type Body = {
@@ -29,73 +33,12 @@ type Body = {
   fechar_pedido_em_aberto?: unknown
 }
 
-const TIPOS: MensagemProntaTipo[] = [
-  'texto',
-  'audio',
-  'imagem',
-  'video',
-  'documento',
-  'figurinha',
-]
-
 function strRequired(raw: unknown, label: string): string {
   const s = typeof raw === 'string' ? raw.trim() : String(raw ?? '').trim()
   if (!s) {
     throw createError({ statusCode: 400, statusMessage: `${label} é obrigatório.` })
   }
   return s
-}
-
-function parsePassos(raw: unknown): MensagemProntaPassoInput[] {
-  if (!Array.isArray(raw) || raw.length === 0) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Informe ao menos um passo em passos[].',
-    })
-  }
-
-  const out: MensagemProntaPassoInput[] = []
-
-  for (let i = 0; i < raw.length; i++) {
-    const item = raw[i]
-    if (!item || typeof item !== 'object') {
-      throw createError({ statusCode: 400, statusMessage: `Passo ${i + 1} inválido.` })
-    }
-    const o = item as Record<string, unknown>
-    const tipoRaw = String(o.tipo ?? '').trim().toLowerCase()
-    if (!(TIPOS as string[]).includes(tipoRaw)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Tipo inválido no passo ${i + 1}. Use: ${TIPOS.join(', ')}.`,
-      })
-    }
-    const conteudo = strRequired(o.conteudo, `Conteúdo do passo ${i + 1}`)
-
-    const ordemRaw = o.ordem
-    const ordem =
-      typeof ordemRaw === 'number' && Number.isFinite(ordemRaw)
-        ? Math.trunc(ordemRaw)
-        : Number.parseInt(String(ordemRaw ?? i + 1), 10)
-    if (!Number.isFinite(ordem) || ordem < 1) {
-      throw createError({ statusCode: 400, statusMessage: `Ordem inválida no passo ${i + 1}.` })
-    }
-
-    const delayRaw = o.delay_segundos
-    const delay =
-      typeof delayRaw === 'number' && Number.isFinite(delayRaw)
-        ? Math.max(0, Math.trunc(delayRaw))
-        : Math.max(0, Number.parseInt(String(delayRaw ?? 0), 10) || 0)
-
-    out.push({
-      ordem,
-      tipo: tipoRaw as MensagemProntaTipo,
-      conteudo,
-      delay_segundos: delay,
-    })
-  }
-
-  out.sort((a, b) => a.ordem - b.ordem)
-  return out
 }
 
 /**
@@ -160,18 +103,12 @@ export default defineEventHandler(async (event): Promise<CriarMensagemProntaResp
   }
 
   const sequenciaId = String(sequencia.id)
-  const rowsPassos = passos.map((p) => ({
-    sequencia_id: sequenciaId,
-    ordem: p.ordem,
-    tipo: p.tipo,
-    conteudo: p.conteudo,
-    delay_segundos: p.delay_segundos,
-  }))
+  const rowsPassos = passos.map((p) => passoInsertRow(sequenciaId, p))
 
   const { data: passosCriados, error: passosErr } = await admin
     .from('mensagens_prontas_passos')
     .insert(rowsPassos)
-    .select('id, sequencia_id, ordem, tipo, conteudo, delay_segundos, created_at')
+    .select(MENSAGEM_PRONTA_PASSOS_SELECT)
     .order('ordem', { ascending: true })
 
   if (passosErr) {
@@ -194,15 +131,9 @@ export default defineEventHandler(async (event): Promise<CriarMensagemProntaResp
     fechar_pedido_em_aberto: mapFecharPedidoEmAberto(sequencia.fechar_pedido_em_aberto),
   }
 
-  const passosOut: MensagemProntaPasso[] = (passosCriados ?? []).map((row: Record<string, unknown>) => ({
-    id: String(row.id),
-    sequencia_id: String(row.sequencia_id),
-    ordem: Number(row.ordem),
-    tipo: String(row.tipo) as MensagemProntaTipo,
-    conteudo: String(row.conteudo ?? ''),
-    delay_segundos: Number(row.delay_segundos ?? 0),
-    created_at: String(row.created_at ?? new Date().toISOString()),
-  }))
+  const passosOut: MensagemProntaPasso[] = (passosCriados ?? []).map((row: Record<string, unknown>) =>
+    mapPassoFromDbRow(row),
+  )
 
   return {
     ok: true,

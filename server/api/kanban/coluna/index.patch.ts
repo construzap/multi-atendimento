@@ -9,6 +9,7 @@ type Body = {
   nome?: unknown
   cor?: unknown
   id_agendamento_mensagem?: unknown
+  recolhida?: unknown
 }
 
 const HEX6 = /^#[0-9A-Fa-f]{6}$/
@@ -16,7 +17,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 /**
  * PATCH /api/kanban/coluna
- * Body: `{ workspace_id, coluna_id, nome?, cor?, id_agendamento_mensagem? }`
+ * Body: `{ workspace_id, coluna_id, nome?, cor?, id_agendamento_mensagem?, recolhida? }`
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'PATCH')
@@ -59,7 +60,7 @@ export default defineEventHandler(async (event) => {
 
   const { data: coluna, error: colErr } = await admin
     .from('funil_workspace_colunas')
-    .select('id, funil_id, nome, cor')
+    .select('id, funil_id, nome, cor, recolhida')
     .eq('id', colunaId)
     .is('deleted_at', null)
     .maybeSingle()
@@ -92,6 +93,29 @@ export default defineEventHandler(async (event) => {
       statusCode: 403,
       statusMessage: 'Esta coluna não pertence ao workspace informado.',
     })
+  }
+
+  const nowIso = new Date().toISOString()
+
+  /** Só `recolhida`: atualização leve sem mexer em nome/cor. */
+  if (
+    body.recolhida !== undefined &&
+    body.nome === undefined &&
+    body.cor === undefined &&
+    body.id_agendamento_mensagem === undefined
+  ) {
+    const { error: upOnly } = await admin
+      .from('funil_workspace_colunas')
+      .update({
+        recolhida: body.recolhida === true,
+        updated_at: nowIso,
+      })
+      .eq('id', colunaId)
+
+    if (upOnly) {
+      throw createError({ statusCode: 500, statusMessage: upOnly.message })
+    }
+    return { ok: true as const, recolhida: body.recolhida === true }
   }
 
   const nomeBody = typeof body.nome === 'string' ? body.nome.trim() : ''
@@ -134,8 +158,6 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  const nowIso = new Date().toISOString()
-
   const updatePayload: Record<string, unknown> = {
     nome,
     cor,
@@ -143,6 +165,9 @@ export default defineEventHandler(async (event) => {
   }
   if (idAgendamentoMensagem !== undefined) {
     updatePayload.id_agendamento_mensagem = idAgendamentoMensagem
+  }
+  if (body.recolhida !== undefined) {
+    updatePayload.recolhida = body.recolhida === true
   }
 
   const { error: upErr } = await admin

@@ -1,13 +1,13 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
 import type {
-  KanbanNotificacaoIa,
   KanbanNotificacaoProdutoItem,
   KanbanNotificacaoTotalOrcamento,
 } from '#shared/types/kanban'
 import {
-  normalizeProdutosRaw,
+  mapNotificacaoIaRow,
   normalizeTotalOrcamento,
+  NOTIFICACAO_IA_SELECT,
 } from '#shared/utils/notificacaoIaProdutos'
 import { checkChannel } from '../../../utils/checkChannel'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
@@ -133,34 +133,6 @@ function parseProdutosBody(raw: unknown): {
       total_a_vista: itens.every((i) => i.subtotal_vista == null) ? null : total_a_vista,
       total_a_prazo: itens.every((i) => i.subtotal_prazo == null) ? null : total_a_prazo,
     },
-  }
-}
-
-function mapNotificacao(row: Record<string, unknown>): KanbanNotificacaoIa {
-  const forma_pagamento =
-    row.forma_pagamento != null ? String(row.forma_pagamento) : null
-  const produtos = normalizeProdutosRaw(row.produtos)
-  const total_orcamento = normalizeTotalOrcamento(row.total_orcamento)
-
-  return {
-    id: typeof row.id === 'number' ? row.id : Number(row.id),
-    produtos,
-    total_orcamento,
-    observacoes: row.observacoes != null ? String(row.observacoes) : null,
-    forma_pagamento,
-    latitude: row.latitude != null && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null,
-    longitude:
-      row.longitude != null && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null,
-    tipo_solicitacao: row.tipo_solicitacao != null ? String(row.tipo_solicitacao) : null,
-    created_at: row.created_at != null ? String(row.created_at) : new Date().toISOString(),
-    updated_at: row.updated_at != null ? String(row.updated_at) : new Date().toISOString(),
-    entrega_ou_retirada:
-      row.entrega_ou_retirada != null ? String(row.entrega_ou_retirada) : null,
-    concluido: row.concluido === true,
-    endereco: (() => {
-      const t = row.endereco != null ? String(row.endereco).trim() : ''
-      return t || null
-    })(),
   }
 }
 
@@ -292,13 +264,10 @@ export default defineEventHandler(async (event) => {
       observacoes,
       entrega_ou_retirada: entrega,
       tipo_solicitacao: 'pedido_pronto',
-      concluido: false,
       created_at: nowIso,
       updated_at: nowIso,
     })
-    .select(
-      'id, produtos, total_orcamento, observacoes, forma_pagamento, latitude, longitude, tipo_solicitacao, created_at, updated_at, entrega_ou_retirada, concluido, endereco',
-    )
+    .select(NOTIFICACAO_IA_SELECT)
     .maybeSingle()
 
   if (insErr) {
@@ -308,7 +277,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: 'Falha ao criar o pedido.' })
   }
 
-  const notificacao = mapNotificacao(created as Record<string, unknown>)
+  const notificacao = mapNotificacaoIaRow(created as Record<string, unknown>)
 
   return {
     ok: true as const,

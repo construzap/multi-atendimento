@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import BaseAvatar from '~/components/BaseAvatar.vue'
 import type { KanbanCard as KanbanCardModel } from '#shared/types/kanban'
 import ModalCriarPedido from '~/components/kanban/notificacoes_ia/ModalCriarPedido.vue'
 import ModalPedidoPronto from '~/components/kanban/notificacoes_ia/ModalPedidoPronto.vue'
-import { isPedidoPronto } from '~/components/kanban/notificacoes_ia/parseProdutosNotificacao'
+import {
+  createdAtEsperaMaisAntiga,
+  isPedidoComTempoEspera,
+  isPedidoProntoNaoEntregue,
+} from '~/components/kanban/notificacoes_ia/parseProdutosNotificacao'
+import BadgeTempoEsperaPedido from '~/components/kanban/notificacoes_ia/BadgeTempoEsperaPedido.vue'
 import { useKanbanStore } from '~/stores/kanban'
 
 const props = defineProps<{
@@ -40,7 +45,7 @@ watch(
 const qtdNotificacoesIaPendentes = computed(() => {
   const list = props.card.notificacoes_ia
   if (!Array.isArray(list) || list.length === 0) return 0
-  return list.filter((n) => n.concluido === false && isPedidoPronto(n.tipo_solicitacao)).length
+  return list.filter((n) => isPedidoProntoNaoEntregue(n)).length
 })
 
 const temNotificacoesIaPendentes = computed(() => qtdNotificacoesIaPendentes.value > 0)
@@ -50,6 +55,43 @@ const qtdNotificacoesIaLabel = computed(() => {
   if (n < 1) return ''
   return n > 99 ? '99+' : String(n)
 })
+
+/** Tick para atualizar “há X min” no botão Pedidos. */
+const agoraMs = ref(Date.now())
+let tickTimer: ReturnType<typeof setInterval> | null = null
+
+function syncTickTimer() {
+  const precisa =
+    Array.isArray(props.card.notificacoes_ia) &&
+    props.card.notificacoes_ia.some((n) => isPedidoComTempoEspera(n))
+  if (precisa && !tickTimer) {
+    agoraMs.value = Date.now()
+    tickTimer = setInterval(() => {
+      agoraMs.value = Date.now()
+    }, 30_000)
+  } else if (!precisa && tickTimer) {
+    clearInterval(tickTimer)
+    tickTimer = null
+  }
+}
+
+onMounted(syncTickTimer)
+onBeforeUnmount(() => {
+  if (tickTimer) {
+    clearInterval(tickTimer)
+    tickTimer = null
+  }
+})
+watch(
+  () => props.card.notificacoes_ia,
+  () => syncTickTimer(),
+  { deep: true },
+)
+
+/** Mais antigo entre pedidos em separação / aguardando entregador. */
+const createdAtEsperaPedidos = computed(() =>
+  createdAtEsperaMaisAntiga(props.card.notificacoes_ia),
+)
 
 function abrirNotificacoesIa(e: Event) {
   e.stopPropagation()
@@ -292,18 +334,28 @@ const timeLabel = computed(() => {
           @mousedown.stop
         >
           <button
-            v-if="temNotificacoesIaPendentes"
             type="button"
             class="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-800/50 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950/70"
-            :aria-label="`${qtdNotificacoesIaLabel} pedido${qtdNotificacoesIaPendentes === 1 ? '' : 's'} pendente${qtdNotificacoesIaPendentes === 1 ? '' : 's'}`"
+            :aria-label="temNotificacoesIaPendentes
+              ? `${qtdNotificacoesIaLabel} pedido${qtdNotificacoesIaPendentes === 1 ? '' : 's'} pendente${qtdNotificacoesIaPendentes === 1 ? '' : 's'}`
+              : 'Ver pedidos desta conversa'"
             @click="abrirNotificacoesIa"
           >
             <span class="material-symbols-outlined text-[14px] leading-none" aria-hidden="true">
               receipt_long
             </span>
             <span>Pedidos</span>
-            <span class="tabular-nums">{{ qtdNotificacoesIaLabel }}</span>
+            <span v-if="temNotificacoesIaPendentes" class="tabular-nums">{{ qtdNotificacoesIaLabel }}</span>
           </button>
+
+          <BadgeTempoEsperaPedido
+            v-if="createdAtEsperaPedidos"
+            :created-at="createdAtEsperaPedidos"
+            :now-ms="agoraMs"
+            size="sm"
+            class="ml-0.5"
+            @click.stop="abrirNotificacoesIa"
+          />
 
           <button
             type="button"

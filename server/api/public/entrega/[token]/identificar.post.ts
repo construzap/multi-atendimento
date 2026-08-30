@@ -1,6 +1,8 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, getRouterParam, readBody } from 'h3'
 import type { EntregaPublicaResumoResponse } from '#shared/types/entrega'
+import type { EntregaAoColetarResult } from '../../../../utils/entregaAoColetar'
+import { executarAutomacaoAoColetar } from '../../../../utils/entregaAoColetar'
 import {
   buildEntregaResumo,
   loadNotificacaoByToken,
@@ -12,11 +14,18 @@ type Body = {
   codigo?: unknown
 }
 
+export type EntregaIdentificarResponse = EntregaPublicaResumoResponse & {
+  coleta: EntregaAoColetarResult | null
+  coleta_erro: string | null
+}
+
 /**
  * POST /api/public/entrega/:token/identificar
  * Body: `{ codigo }` — código do entregador (ex. ENT-042).
+ * Após validar, vincula o entregador, marca `entrega_status = coletado`
+ * e executa a automação de funil/coluna/webhook.
  */
-export default defineEventHandler(async (event): Promise<EntregaPublicaResumoResponse> => {
+export default defineEventHandler(async (event): Promise<EntregaIdentificarResponse> => {
   assertMethod(event, 'POST')
 
   const token = parseTokenEntrega(getRouterParam(event, 'token'))
@@ -50,7 +59,7 @@ export default defineEventHandler(async (event): Promise<EntregaPublicaResumoRes
 
   const { data: entregador, error: entErr } = await admin
     .from('entregadores')
-    .select('id, nome, ativo')
+    .select('id, nome, ativo, entregador_premium')
     .eq('workspace_id', row.workspace_id)
     .eq('codigo', codigo)
     .maybeSingle()
@@ -74,6 +83,8 @@ export default defineEventHandler(async (event): Promise<EntregaPublicaResumoRes
     .from('notificacoes_ia')
     .update({
       entregador_id: entregadorId,
+      entrega_status: 'coletado',
+      coletado_at: nowIso,
       updated_at: nowIso,
     })
     .eq('id', row.id)
@@ -85,5 +96,21 @@ export default defineEventHandler(async (event): Promise<EntregaPublicaResumoRes
 
   const updated = await loadNotificacaoByToken(event, token)
   const data = await buildEntregaResumo(event, updated)
-  return { ok: true, data }
+
+  let coleta: EntregaAoColetarResult | null = null
+  let coleta_erro: string | null = null
+  try {
+    coleta = await executarAutomacaoAoColetar(event, updated)
+  } catch (e) {
+    coleta_erro =
+      e && typeof e === 'object' && 'statusMessage' in e
+        ? String((e as { statusMessage?: unknown }).statusMessage ?? '')
+        : e instanceof Error
+          ? e.message
+          : 'Falha na automação de coleta (funil/coluna).'
+    if (!coleta_erro) coleta_erro = 'Falha na automação de coleta (funil/coluna).'
+    console.warn('[entrega/identificar] automação ao coletar:', coleta_erro)
+  }
+
+  return { ok: true, data, coleta, coleta_erro }
 })

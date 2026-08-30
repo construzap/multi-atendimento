@@ -10,6 +10,7 @@ type Body = {
   codigo?: unknown
   nome?: unknown
   ativo?: unknown
+  entregador_premium?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -32,7 +33,7 @@ function normalizeCodigo(raw: unknown): string {
 
 /**
  * PATCH /api/entregadores
- * Body: `{ workspace_id, id, codigo?, nome?, ativo? }`
+ * Body: `{ workspace_id, id, codigo?, nome?, ativo?, entregador_premium? }`
  */
 export default defineEventHandler(async (event): Promise<EntregadorListaItem> => {
   assertMethod(event, 'PATCH')
@@ -83,6 +84,13 @@ export default defineEventHandler(async (event): Promise<EntregadorListaItem> =>
     patch.ativo = body.ativo === true || body.ativo === 'true' || body.ativo === 1
   }
 
+  if (body.entregador_premium !== undefined) {
+    patch.entregador_premium =
+      body.entregador_premium === true ||
+      body.entregador_premium === 'true' ||
+      body.entregador_premium === 1
+  }
+
   if (Object.keys(patch).length <= 1) {
     throw createError({ statusCode: 400, statusMessage: 'Nada para atualizar.' })
   }
@@ -93,7 +101,7 @@ export default defineEventHandler(async (event): Promise<EntregadorListaItem> =>
     .update(patch)
     .eq('id', id)
     .eq('workspace_id', workspaceId)
-    .select('id, codigo, nome, ativo, created_at, updated_at')
+    .select('id, codigo, nome, ativo, entregador_premium, created_at, updated_at')
     .maybeSingle()
 
   if (error) {
@@ -115,6 +123,7 @@ export default defineEventHandler(async (event): Promise<EntregadorListaItem> =>
     codigo: String(data.codigo ?? ''),
     nome: String(data.nome ?? ''),
     ativo: data.ativo !== false,
+    entregador_premium: data.entregador_premium === true,
     created_at: data.created_at != null ? String(data.created_at) : '',
     updated_at: data.updated_at != null ? String(data.updated_at) : '',
   }

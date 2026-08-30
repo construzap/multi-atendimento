@@ -10,7 +10,7 @@ import { useKanbanStore } from '~/stores/kanban'
 import { useKanbanPusherAlertaStore } from '~/stores/kanbanPusherAlerta'
 import { useMensagensStore } from '~/stores/mensagens'
 import { useWorkspacesStore } from '~/stores/workspaces'
-import { isPedidoPronto } from '~/components/kanban/notificacoes_ia/parseProdutosNotificacao'
+import { deveTocarSomPedidoNovo } from '~/components/kanban/notificacoes_ia/parseProdutosNotificacao'
 
 /** Inscreve em `String(id_canal)` conforme `canais.items` + canais dos cards do kanban. */
 export default defineNuxtPlugin(() => {
@@ -106,8 +106,8 @@ export default defineNuxtPlugin(() => {
     // Sync só Pinia (N8N) — sem som / modal de pedido novo.
     if (data.motivo === 'pinia_sync') return
 
-    // Som + alerta só para pedido_pronto (não toca em mudança de coluna).
-    if (!data.notificacao || !isPedidoPronto(data.notificacao.tipo_solicitacao)) return
+    // Som + alerta: pedido_pronto; se tem cobrança, só com pagamento_realizado.
+    if (!data.notificacao || !deveTocarSomPedidoNovo(data.notificacao)) return
 
     const contato = data.nome_contato?.trim() || 'Contato'
     kanbanAlerta.showPedidoNovo(contato, conversaKey)

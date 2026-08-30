@@ -109,7 +109,8 @@ export default defineEventHandler(async (event): Promise<CanalPagamentoInfo> => 
 
   const patch: Record<string, unknown> = {}
   if (provedor !== undefined) patch.provedor_pagamentos = provedor
-  if (chavePix !== undefined) patch.chave_pix = chavePix
+  // Asaas não usa chave PIX no canal — não altera a coluna ao salvar.
+  if (chavePix !== undefined && provedor !== 'asaas') patch.chave_pix = chavePix
   if (taxas !== undefined) patch.taxas_cartao = taxas
 
   if (Object.keys(patch).length === 0 && !credenciaisPlain) {

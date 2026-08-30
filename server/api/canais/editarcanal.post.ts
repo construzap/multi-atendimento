@@ -29,14 +29,18 @@ type EditarCanalBody = {
   model_name?: string | null
   /** Texto plano — criptografado no servidor com pgp_sym_encrypt. */
   api_key?: string | null
+  loja_aberta?: boolean
+  agenda_pedido?: boolean
 }
 
 const CANAL_SELECT =
-  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted'
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido'
 
 type CanalRow = Record<string, unknown> & {
   api_key_encrypted?: unknown
   horarios?: unknown
+  loja_aberta?: unknown
+  agenda_pedido?: unknown
 }
 
 function mapCanalPublico(row: CanalRow): Canal {
@@ -51,12 +55,17 @@ function mapCanalPublico(row: CanalRow): Canal {
       : (horariosRaw as Canal['horarios'])
 
   return {
-    ...(rest as Omit<Canal, 'tem_api_key' | 'tem_inteligencia_artificial' | 'horarios'>),
+    ...(rest as Omit<
+      Canal,
+      'tem_api_key' | 'tem_inteligencia_artificial' | 'horarios' | 'loja_aberta' | 'agenda_pedido'
+    >),
     horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
     url: typeof row.url === 'string' ? row.url : null,
     model_name: typeof row.model_name === 'string' ? row.model_name : null,
     tem_api_key: temApiKey,
+    loja_aberta: row.loja_aberta !== false,
+    agenda_pedido: row.agenda_pedido === true,
   }
 }
 
@@ -206,6 +215,26 @@ export default defineEventHandler(async (event) => {
       })
     }
     patch.tem_inteligencia_artificial = body.tem_inteligencia_artificial
+  }
+
+  if (hasOwn(body, 'loja_aberta')) {
+    if (typeof body.loja_aberta !== 'boolean') {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'loja_aberta inválido.',
+      })
+    }
+    patch.loja_aberta = body.loja_aberta
+  }
+
+  if (hasOwn(body, 'agenda_pedido')) {
+    if (typeof body.agenda_pedido !== 'boolean') {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'agenda_pedido inválido.',
+      })
+    }
+    patch.agenda_pedido = body.agenda_pedido
   }
 
   if (hasOwn(body, 'url')) {

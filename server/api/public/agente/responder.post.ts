@@ -32,6 +32,20 @@ function strOrEmpty(v: unknown): string {
   return strOrNull(v) ?? ''
 }
 
+/** Aceita boolean, "true"/"false", 1/0; null se ausente/inválido. */
+function boolOrNull(v: unknown): boolean | null {
+  if (v === undefined || v === null || v === '') return null
+  if (typeof v === 'boolean') return v
+  if (v === 1 || v === '1') return true
+  if (v === 0 || v === '0') return false
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase()
+    if (s === 'true') return true
+    if (s === 'false') return false
+  }
+  return null
+}
+
 /** Aceita objeto de taxas ou JSON string; null se vazio/inválido. */
 function taxasCartaoOrNull(v: unknown): Record<string, number> | string | null {
   if (v === undefined || v === null) return null
@@ -134,6 +148,8 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
       body.credenciais_encrypted ?? body.credenciais_pagarme_encrypted,
     ),
     taxas_cartao: taxasCartaoOrNull(body.taxas_cartao),
+    loja_aberta: boolOrNull(body.loja_aberta),
+    agenda_pedido: boolOrNull(body.agenda_pedido),
     model: modelOverride || canalCredenciais.model_name || defaultModel,
     max_tool_rounds:
       Number.isFinite(maxRoundsBody) && maxRoundsBody > 0

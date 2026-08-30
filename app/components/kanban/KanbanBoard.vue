@@ -2,8 +2,11 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
-import type { KanbanCard as KanbanCardModel, KanbanColumn as KanbanColumnData } from '#shared/types/kanban'
+import type { KanbanCard as KanbanCardModel, KanbanColumn as KanbanColumnData, KanbanCriarContatoBody, KanbanCriarContatoResponse } from '#shared/types/kanban'
+import { normalizarTelefoneContatoParaGravacao } from '#shared/utils/normalizeWhatsappBr'
+import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
+import BaseModal from '~/components/BaseModal.vue'
 import KanbanColumn from './KanbanColumn.vue'
 import ModalNovaColuna from './ModalNovaColuna.vue'
 import InfoContatoKanban from './InfoContatoKanban/InfoContatoKanban.vue'
@@ -12,7 +15,7 @@ import ModalAlerta from '~/components/ModalAlerta.vue'
 import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
 import SelecaoMultiplaBar from '~/components/kanban/SelecaoMultiplaBar.vue'
 import SeletorFunilKanban from '~/components/kanban/SeletorFunilKanban.vue'
-import { useCanaisStore } from '~/stores/canais'
+import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 import { useProfileStore } from '~/stores/profile'
 
@@ -41,10 +44,20 @@ const {
   filtroCanalId,
 } = storeToRefs(kanban)
 
+const { items: canaisItems, listPending: canaisPending, currentCanalId } = storeToRefs(canaisStore)
+
 const buscaInput = ref('')
 const alternandoOcultarGrupos = ref(false)
 const alternandoFiltroCanal = ref(false)
 let buscaTimer: ReturnType<typeof setTimeout> | null = null
+
+const modalNovoContatoAberto = ref(false)
+const nomeContato = ref('')
+const telefoneContato = ref('')
+const colunaSelecionadaId = ref<number | null>(null)
+const canalSelecionadoId = ref<number | null>(null)
+const criandoContato = ref(false)
+const carregandoCanaisModal = ref(false)
 
 const selectedKeys = ref<string[]>([])
 const selectedCount = computed(() => selectedKeys.value.length)
@@ -85,6 +98,57 @@ const canaisDoWorkspace = computed(() =>
   canaisStore.items.filter((c) => c.id != null && c.id > 0),
 )
 
+const lojaAbertaPendingIds = ref<number[]>([])
+const agendaPedidoPendingIds = ref<number[]>([])
+
+function isLojaAbertaPending(canalId: number): boolean {
+  return lojaAbertaPendingIds.value.includes(canalId)
+}
+
+function isAgendaPedidoPending(canalId: number): boolean {
+  return agendaPedidoPendingIds.value.includes(canalId)
+}
+
+function canalLojaAberta(canal: { loja_aberta?: boolean | null }): boolean {
+  return canal.loja_aberta !== false
+}
+
+function canalAgendaPedido(canal: { agenda_pedido?: boolean | null }): boolean {
+  return canal.agenda_pedido === true
+}
+
+async function onToggleLojaAberta(canalId: number, next: boolean) {
+  if (!props.workspaceId || isLojaAbertaPending(canalId)) return
+  lojaAbertaPendingIds.value = [...lojaAbertaPendingIds.value, canalId]
+  try {
+    await canaisStore.setLojaAberta({
+      workspace_id: props.workspaceId,
+      id_canal: canalId,
+      loja_aberta: next,
+    })
+  } catch (err) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível atualizar o status da loja.'))
+  } finally {
+    lojaAbertaPendingIds.value = lojaAbertaPendingIds.value.filter((id) => id !== canalId)
+  }
+}
+
+async function onToggleAgendaPedido(canalId: number, next: boolean) {
+  if (!props.workspaceId || isAgendaPedidoPending(canalId)) return
+  agendaPedidoPendingIds.value = [...agendaPedidoPendingIds.value, canalId]
+  try {
+    await canaisStore.setAgendaPedido({
+      workspace_id: props.workspaceId,
+      id_canal: canalId,
+      agenda_pedido: next,
+    })
+  } catch (err) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível atualizar a agenda de pedido.'))
+  } finally {
+    agendaPedidoPendingIds.value = agendaPedidoPendingIds.value.filter((id) => id !== canalId)
+  }
+}
+
 const filtroCanalSelect = computed({
   get: () => (filtroCanalId.value != null ? String(filtroCanalId.value) : ''),
   set: (v: string) => {
@@ -94,14 +158,15 @@ const filtroCanalSelect = computed({
 
 onMounted(() => {
   if (props.workspaceId) {
-    void canaisStore.ensureCanaisLoaded(props.workspaceId).catch(() => {})
+    // force: garante `loja_aberta` após deploy (cache antigo do Pinia)
+    void canaisStore.ensureCanaisLoaded(props.workspaceId, { force: true }).catch(() => {})
   }
 })
 
 watch(
   () => props.workspaceId,
   (wid) => {
-    if (wid) void canaisStore.ensureCanaisLoaded(wid).catch(() => {})
+    if (wid) void canaisStore.ensureCanaisLoaded(wid, { force: true }).catch(() => {})
   },
 )
 
@@ -201,19 +266,143 @@ const textoConfirmarExclusao = computed(() => {
 })
 
 const gridStyle = computed(() => {
-  const n = columns.value.length
-  if (n <= 0) {
-    return { gridTemplateColumns: 'minmax(0, 1fr)' }
+  const cols = columns.value
+  if (cols.length <= 0) {
+    return {
+      '--kanban-cols-mobile': 'minmax(0, 1fr)',
+      '--kanban-cols-desktop': 'minmax(0, 1fr)',
+    } as Record<string, string>
   }
+  const mobile = cols
+    .map((c) => (c.recolhida ? '3rem' : 'minmax(260px, 1fr)'))
+    .join(' ')
+  const desktop = cols
+    .map((c) => (c.recolhida ? '3rem' : 'minmax(0, 1fr)'))
+    .join(' ')
   return {
-    gridTemplateColumns: `repeat(${n}, minmax(260px, 1fr))`,
-  }
+    '--kanban-cols-mobile': mobile,
+    '--kanban-cols-desktop': desktop,
+  } as Record<string, string>
 })
 
 function abrirNovaColuna() {
   modalColunaMode.value = 'create'
   colunaEmEdicao.value = null
   modalColunaOpen.value = true
+}
+
+function nomeCanalOpcao(canal: { id: number; nome: string | null }) {
+  const n = canal.nome?.trim()
+  return n || `Canal #${canal.id}`
+}
+
+function canalPadraoId(): number | null {
+  const atual = currentCanalId.value
+  if (atual != null && canaisItems.value.some((c) => c.id === atual)) return atual
+  return canaisItems.value[0]?.id ?? null
+}
+
+async function garantirCanaisNoModal() {
+  if (!props.workspaceId) return
+  carregandoCanaisModal.value = true
+  try {
+    await canaisStore.ensureCanaisLoaded(props.workspaceId)
+    if (
+      canalSelecionadoId.value == null ||
+      !canaisItems.value.some((c) => c.id === canalSelecionadoId.value)
+    ) {
+      canalSelecionadoId.value = canalPadraoId()
+    }
+  } catch (err: unknown) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível carregar os canais.'))
+  } finally {
+    carregandoCanaisModal.value = false
+  }
+}
+
+async function abrirModalNovoContato() {
+  nomeContato.value = ''
+  telefoneContato.value = ''
+  colunaSelecionadaId.value = null
+  canalSelecionadoId.value = canalPadraoId()
+  modalNovoContatoAberto.value = true
+  await garantirCanaisNoModal()
+}
+
+function fecharModalNovoContato() {
+  modalNovoContatoAberto.value = false
+}
+
+watch(modalNovoContatoAberto, (aberto) => {
+  if (!aberto) {
+    nomeContato.value = ''
+    telefoneContato.value = ''
+    colunaSelecionadaId.value = null
+    canalSelecionadoId.value = null
+    criandoContato.value = false
+    carregandoCanaisModal.value = false
+  }
+})
+
+function validarFormularioNovoContato():
+  | { erro: string }
+  | { telefone: string; id_canal: number; coluna_id: number } {
+  if (!nomeContato.value.trim()) return { erro: 'Informe o nome.' }
+
+  const telefone = normalizarTelefoneContatoParaGravacao(telefoneContato.value)
+  if (!telefone) {
+    return {
+      erro: 'Telefone inválido. Use DDD+número (ex: 11 9xxxx xxxx) ou com DDI 55.',
+    }
+  }
+
+  if (colunaSelecionadaId.value == null || colunaSelecionadaId.value < 1) {
+    return { erro: 'Selecione a coluna.' }
+  }
+
+  if (canalSelecionadoId.value == null || canalSelecionadoId.value < 1) {
+    return { erro: 'Selecione o canal.' }
+  }
+
+  return {
+    telefone,
+    id_canal: canalSelecionadoId.value,
+    coluna_id: colunaSelecionadaId.value,
+  }
+}
+
+async function criarContato() {
+  const validacao = validarFormularioNovoContato()
+  if ('erro' in validacao) {
+    toast.error(validacao.erro)
+    return
+  }
+  if (!props.workspaceId) {
+    toast.error('Workspace não informado.')
+    return
+  }
+
+  criandoContato.value = true
+  try {
+    const body: KanbanCriarContatoBody = {
+      workspace_id: props.workspaceId,
+      nome: nomeContato.value.trim(),
+      telefone: validacao.telefone,
+      coluna_id: validacao.coluna_id,
+      id_canal: validacao.id_canal,
+    }
+    await $fetch<KanbanCriarContatoResponse>('/api/kanban/contato', {
+      method: 'POST',
+      body,
+    })
+    fecharModalNovoContato()
+    await kanban.refetchCurrentBoard(props.workspaceId)
+    toast.success('Contato criado.')
+  } catch (err: unknown) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível criar o contato.'))
+  } finally {
+    criandoContato.value = false
+  }
 }
 
 function irDisparoEmMassa() {
@@ -508,6 +697,14 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
         <button
           type="button"
           class="inline-flex items-center gap-2 rounded-xl border border-outline/40 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:hover:bg-dark-surface-container"
+          @click="abrirModalNovoContato"
+        >
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">person_add</span>
+          Novo contato
+        </button>
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-xl border border-outline/40 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:hover:bg-dark-surface-container"
           @click="aoClicarImportarContatos"
         >
           <span class="material-symbols-outlined text-[18px]" aria-hidden="true">file_upload</span>
@@ -533,6 +730,206 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
         </div>
       </div>
     </div>
+
+    <div
+      v-if="canaisDoWorkspace.length > 0"
+      class="mb-4 flex flex-wrap items-center gap-2"
+    >
+      <span
+        class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+      >
+        Loja
+      </span>
+      <div
+        v-for="canal in canaisDoWorkspace"
+        :key="`loja-aberta-${canal.id}`"
+        class="inline-flex max-w-full flex-wrap items-center gap-2 rounded-xl border border-outline/40 bg-white px-3 py-1.5 shadow-sm dark:border-dark-outline/40 dark:bg-dark-surface-container-low"
+        :class="
+          isLojaAbertaPending(canal.id) || isAgendaPedidoPending(canal.id) ? 'opacity-70' : ''
+        "
+      >
+        <span
+          class="max-w-[9rem] truncate text-sm font-medium text-slate-800 dark:text-dark-on-surface sm:max-w-[12rem]"
+          :title="canal.nome?.trim() || `Canal #${canal.id}`"
+        >
+          {{ canal.nome?.trim() || `Canal #${canal.id}` }}
+        </span>
+        <span
+          class="hidden text-[11px] font-medium sm:inline"
+          :class="
+            canalLojaAberta(canal)
+              ? 'text-emerald-600 dark:text-emerald-400'
+              : 'text-slate-400 dark:text-slate-500'
+          "
+        >
+          {{ canalLojaAberta(canal) ? 'Aberta' : 'Fechada' }}
+        </span>
+        <button
+          type="button"
+          role="switch"
+          :aria-checked="canalLojaAberta(canal)"
+          :aria-label="
+            canalLojaAberta(canal)
+              ? `Fechar loja ${canal.nome?.trim() || canal.id}`
+              : `Abrir loja ${canal.nome?.trim() || canal.id}`
+          "
+          :disabled="isLojaAbertaPending(canal.id)"
+          class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:cursor-wait"
+          :class="
+            canalLojaAberta(canal)
+              ? 'bg-emerald-500 dark:bg-emerald-400'
+              : 'bg-outline/40 dark:bg-dark-outline/50'
+          "
+          @click="onToggleLojaAberta(canal.id, !canalLojaAberta(canal))"
+        >
+          <span
+            class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+            :class="canalLojaAberta(canal) ? 'translate-x-4' : 'translate-x-0.5'"
+          />
+        </button>
+
+        <template v-if="!canalLojaAberta(canal)">
+          <span
+            class="hidden h-4 w-px bg-outline/40 sm:inline-block dark:bg-dark-outline/40"
+            aria-hidden="true"
+          />
+          <span class="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+            Agenda pedido
+          </span>
+          <button
+            type="button"
+            role="switch"
+            :aria-checked="canalAgendaPedido(canal)"
+            :aria-label="
+              canalAgendaPedido(canal)
+                ? `Desativar agenda de pedido ${canal.nome?.trim() || canal.id}`
+                : `Ativar agenda de pedido ${canal.nome?.trim() || canal.id}`
+            "
+            :disabled="isAgendaPedidoPending(canal.id)"
+            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:cursor-wait"
+            :class="
+              canalAgendaPedido(canal)
+                ? 'bg-amber-500 dark:bg-amber-400'
+                : 'bg-outline/40 dark:bg-dark-outline/50'
+            "
+            @click="onToggleAgendaPedido(canal.id, !canalAgendaPedido(canal))"
+          >
+            <span
+              class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+              :class="canalAgendaPedido(canal) ? 'translate-x-4' : 'translate-x-0.5'"
+            />
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <BaseModal
+      v-model:open="modalNovoContatoAberto"
+      title="Novo contato"
+      :show-close="!criandoContato"
+      panel-class="w-full max-w-md"
+    >
+      <div class="space-y-4">
+        <div>
+          <label
+            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
+            for="kanban-novo-contato-nome"
+          >
+            Nome
+          </label>
+          <BaseInput
+            id="kanban-novo-contato-nome"
+            v-model="nomeContato"
+            name="kanban-novo-contato-nome"
+            placeholder="Nome do contato"
+            autocomplete="name"
+            :disabled="criandoContato"
+          />
+        </div>
+
+        <div>
+          <label
+            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
+            for="kanban-novo-contato-telefone"
+          >
+            Telefone
+          </label>
+          <BaseInput
+            id="kanban-novo-contato-telefone"
+            v-model="telefoneContato"
+            name="kanban-novo-contato-telefone"
+            type="tel"
+            placeholder="DDD + número"
+            autocomplete="tel"
+            :disabled="criandoContato"
+          />
+        </div>
+
+        <div>
+          <label
+            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
+            for="kanban-novo-contato-canal"
+          >
+            Canal
+          </label>
+          <select
+            id="kanban-novo-contato-canal"
+            v-model.number="canalSelecionadoId"
+            class="w-full rounded-xl border border-outline/45 bg-surface-container-lowest/90 px-3.5 py-2.5 text-sm font-medium text-on-surface shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 disabled:opacity-60 dark:border-dark-outline/45 dark:bg-dark-surface-container-low/90 dark:text-dark-on-surface"
+            :disabled="criandoContato || carregandoCanaisModal || canaisPending"
+          >
+            <option v-if="canaisItems.length === 0" :value="null" disabled>
+              {{ carregandoCanaisModal || canaisPending ? 'Carregando canais…' : 'Nenhum canal disponível' }}
+            </option>
+            <option v-for="canal in canaisItems" :key="canal.id" :value="canal.id">
+              {{ nomeCanalOpcao(canal) }}
+            </option>
+          </select>
+        </div>
+
+        <div>
+          <label
+            class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-dark-on-surface"
+            for="kanban-novo-contato-coluna"
+          >
+            Coluna
+          </label>
+          <select
+            id="kanban-novo-contato-coluna"
+            v-model="colunaSelecionadaId"
+            class="w-full rounded-xl border border-outline/45 bg-surface-container-lowest/90 px-3.5 py-2.5 text-sm font-medium text-on-surface shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] transition-all focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-outline/45 dark:bg-dark-surface-container-low/90 dark:text-dark-on-surface"
+            :disabled="criandoContato"
+          >
+            <option :value="null">Selecione a coluna</option>
+            <option v-for="col in columns" :key="col.id" :value="col.id">
+              {{ col.nome?.trim() || `Coluna #${col.id}` }}
+            </option>
+          </select>
+        </div>
+      </div>
+
+      <template #footer>
+        <BaseButton
+          variant="secondary"
+          size="sm"
+          :block="false"
+          :disabled="criandoContato"
+          @click="fecharModalNovoContato"
+        >
+          Cancelar
+        </BaseButton>
+        <BaseButton
+          variant="primary"
+          size="sm"
+          :block="false"
+          :loading="criandoContato"
+          :disabled="criandoContato || carregandoCanaisModal || canaisPending || canaisItems.length === 0"
+          @click="criarContato"
+        >
+          Criar
+        </BaseButton>
+      </template>
+    </BaseModal>
 
     <ModalNovaColuna
       v-model:open="modalColunaOpen"
@@ -582,7 +979,7 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
 
     <div
       v-if="columns.length > 0"
-      class="grid min-h-0 flex-1 gap-5 overflow-x-auto pb-2"
+      class="kanban-board-cols grid min-h-0 flex-1 gap-5 overflow-x-auto pb-2 md:overflow-x-hidden"
       :style="gridStyle"
     >
       <KanbanColumn
@@ -685,3 +1082,17 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
     </ModalEnvioProdutos>
   </div>
 </template>
+
+<style scoped>
+/* Mobile: colunas abertas com min 260px; recolhidas estreitas. */
+.kanban-board-cols {
+  grid-template-columns: var(--kanban-cols-mobile);
+}
+
+/* Desktop: abertas dividem a tela; recolhidas ficam em 3rem. */
+@media (min-width: 768px) {
+  .kanban-board-cols {
+    grid-template-columns: var(--kanban-cols-desktop);
+  }
+}
+</style>

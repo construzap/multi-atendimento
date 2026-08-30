@@ -6,7 +6,7 @@ import { getAuthUserId } from '../../../utils/getAuthUserId'
 type Body = {
   workspace_id?: unknown
   id?: unknown
-  concluido?: unknown
+  entrega_status?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -20,19 +20,10 @@ function parsePositiveInt(raw: unknown, label: string): number {
   return n
 }
 
-function boolFromUnknown(v: unknown): boolean {
-  if (typeof v === 'boolean') return v
-  if (typeof v === 'number') return v !== 0
-  const s = String(v ?? '').trim().toLowerCase()
-  if (['1', 's', 'sim', 'true', 't', 'on'].includes(s)) return true
-  if (['0', 'n', 'nao', 'não', 'false', 'f', 'off'].includes(s)) return false
-  throw createError({ statusCode: 400, statusMessage: 'concluido inválido.' })
-}
-
 /**
  * PATCH /api/kanban/notificacoes_ia
- * Body: `{ workspace_id, id, concluido }`
- * Atualiza `concluido` (e `updated_at`) de uma linha em `notificacoes_ia`.
+ * Body: `{ workspace_id, id, entrega_status }`
+ * Atualiza `entrega_status` (e `updated_at`) de uma linha em `notificacoes_ia`.
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'PATCH')
@@ -52,7 +43,10 @@ export default defineEventHandler(async (event) => {
   const body = (await readBody(event)) as Body
   const workspaceId = parsePositiveInt(body.workspace_id, 'workspace_id')
   const id = parsePositiveInt(body.id, 'id')
-  const concluido = boolFromUnknown(body.concluido)
+  const entregaStatus = String(body.entrega_status ?? '').trim()
+  if (!entregaStatus) {
+    throw createError({ statusCode: 400, statusMessage: 'entrega_status inválido.' })
+  }
 
   await checkWorkspace(event, workspaceId, userId)
 
@@ -86,12 +80,12 @@ export default defineEventHandler(async (event) => {
   const { data: updated, error: updErr } = await admin
     .from('notificacoes_ia')
     .update({
-      concluido,
+      entrega_status: entregaStatus,
       updated_at: nowIso,
     })
     .eq('id', id)
     .eq('workspace_id', workspaceId)
-    .select('id, concluido, updated_at')
+    .select('id, entrega_status, updated_at')
     .maybeSingle()
 
   if (updErr) {
@@ -104,7 +98,7 @@ export default defineEventHandler(async (event) => {
   return {
     ok: true as const,
     id: typeof updated.id === 'number' ? updated.id : Number(updated.id),
-    concluido: updated.concluido === true,
+    entrega_status: String(updated.entrega_status ?? entregaStatus),
     updated_at: updated.updated_at != null ? String(updated.updated_at) : nowIso,
   }
 })
