@@ -5,8 +5,13 @@ export type ItemSelecaoMultipla = {
 
 export const CONFIG_SELECAO_MULTIPLA = {
   tituloPainel: 'Termos de pesquisa',
+  tituloCriar: 'Criar termo de pesquisa',
+  tituloEditar: 'Editar termo de pesquisa',
+  tituloEliminar: 'Eliminar termo',
+  labelNomeCampo: 'Nome do termo',
+  labelBotaoCriar: 'Criar termo de pesquisa',
   placeholderCelula: 'Selecionar termos…',
-  placeholderFiltro: 'Buscar ou criar termo…',
+  placeholderFiltro: 'Buscar termo…',
   placeholderEdicao: 'Nome do termo',
   apiBase: '/api/produtos/termos-de-pesquisa',
   apiItem: (id: number) => `/api/produtos/termos-de-pesquisa/${id}`,
