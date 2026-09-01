@@ -28,7 +28,9 @@ export const orcamentoprontoTool: ToolDef = {
           properties: {
             id: {
               type: 'string',
-              description: 'Id do produto retornado pela ferramenta <estoque>',
+              description:
+                'Id NUMÉRICO do produto retornado pela ferramenta <estoque> (somente dígitos, ex.: "7203"). ' +
+                'Proibido usar o nome do produto aqui.',
             },
             nome: {
               type: 'string',

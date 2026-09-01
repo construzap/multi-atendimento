@@ -17,7 +17,11 @@ export const estoqueTool: ToolDef = {
     'Quando o cliente informar quantidade e/ou tipo de embalagem/unidade, inclua TUDO no campo produtos_ exatamente como ele pediu — quantidade numérica (ou por extenso convertida), tipo de embalagem/unidade e nome do produto.\n' +
     'Não resuma nem omita a embalagem. Ex.: "4 fardos de Cimento CP II", não apenas "Cimento CP II".\n' +
     'Se o cliente NÃO informou quantidade nem embalagem, envie apenas o nome do produto.\n\n' +
-    'Proibido: enviar listas, múltiplos produtos ou termos genéricos em uma única chamada.',
+    'Proibido: enviar listas, múltiplos produtos ou termos genéricos em uma única chamada.\n\n' +
+    'ID DO PRODUTO (OBRIGATÓRIO PARA ORÇAMENTO/FRETE):\n' +
+    'A resposta da <estoque> inclui o id numérico do produto (ex.: 7203). ' +
+    'Guarde esse número — ele é o único valor válido para o campo id em <orcamentopronto> e <frete>. ' +
+    'Nunca use o nome do produto como id.',
   parameters: {
     type: 'object',
     properties: {

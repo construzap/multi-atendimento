@@ -257,7 +257,10 @@ export async function inserirTermosVinculoLote(
     rows.push(p)
   }
   if (!rows.length) return
-  const { error } = await admin.from('produto_termo_de_pesquisa_vinculo').insert(rows)
+  const { error } = await admin.from('produto_termo_de_pesquisa_vinculo').upsert(rows, {
+    onConflict: 'produto_id,termo_id',
+    ignoreDuplicates: true,
+  })
   if (error) throw error
 }
 

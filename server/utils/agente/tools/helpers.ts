@@ -46,3 +46,51 @@ export function argAny(args: Record<string, unknown>, ...keys: string[]): unknow
   }
   return undefined
 }
+
+type ProdutoComId = { id?: unknown; nome?: unknown; quantidade?: unknown }
+
+/**
+ * Valida que cada produto usa o id numérico retornado por <estoque>, não o nome.
+ * Retorna mensagem de erro para o modelo ou null se ok.
+ */
+export function validateProdutosIdsFromEstoque(
+  produtos: unknown,
+  toolName: 'orcamentopronto' | 'frete',
+): string | null {
+  if (!Array.isArray(produtos) || produtos.length === 0) {
+    return (
+      `ERRO ao chamar <${toolName}>: o array de produtos está vazio ou inválido. ` +
+      'Chame a ferramenta <estoque> para CADA item do pedido (um produto por chamada), ' +
+      'anote o id numérico de cada resposta e só então chame <' +
+      toolName +
+      '>.'
+    )
+  }
+
+  for (let i = 0; i < produtos.length; i++) {
+    const item = produtos[i] as ProdutoComId
+    const id = String(item?.id ?? '').trim()
+    const nome = String(item?.nome ?? '').trim()
+
+    if (!/^\d+$/.test(id)) {
+      const preview = id.length > 80 ? `${id.slice(0, 80)}…` : id
+      return (
+        `ERRO ao chamar <${toolName}>: produto #${i + 1} tem id inválido "${preview}". ` +
+        'O campo id deve ser APENAS o número retornado pela ferramenta <estoque> (ex.: "7203"). ' +
+        'Nunca use o nome do produto como id. ' +
+        'Chame <estoque> um produto por vez, use o id numérico de cada resposta e tente <' +
+        toolName +
+        '> novamente.'
+      )
+    }
+
+    if (nome && id === nome) {
+      return (
+        `ERRO ao chamar <${toolName}>: produto #${i + 1} — id e nome são iguais. ` +
+        'O id deve ser o número da <estoque>, não o nome do produto.'
+      )
+    }
+  }
+
+  return null
+}

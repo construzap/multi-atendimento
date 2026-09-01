@@ -5,9 +5,8 @@ import { executeCalculator } from './calculator'
 import { enviaLocalizacaoTool } from './envia_localizacao'
 import { estoqueTool } from './estoque'
 import { freteTool } from './frete'
-import { argStr, type ToolDef } from './helpers'
+import { argAny, argStr, validateProdutosIdsFromEstoque, type ToolDef } from './helpers'
 import { postToolHttp } from './httpPost'
-import { gravarInfoClienteTool } from './gravarInfoCliente'
 import { orcamentoprontoTool } from './orcamentopronto'
 import { transferirAtendimentoTool } from './transferirAtendimento'
 
@@ -31,7 +30,6 @@ const TOOLS: ToolDef[] = [
   estoqueTool,
   enviaLocalizacaoTool,
   freteTool,
-  gravarInfoClienteTool,
   orcamentoprontoTool,
   transferirAtendimentoTool,
 ]
@@ -82,6 +80,29 @@ export async function executeAgenteTool(
     return {
       result,
       trace: { name, args, result_preview: result },
+    }
+  }
+
+  if (name === 'orcamentopronto') {
+    const validationError = validateProdutosIdsFromEstoque(argAny(args, 'produtos'), 'orcamentopronto')
+    if (validationError) {
+      return {
+        result: validationError,
+        trace: { name, args, result_preview: validationError },
+      }
+    }
+  }
+
+  if (name === 'frete') {
+    const validationError = validateProdutosIdsFromEstoque(
+      argAny(args, 'codigo_dos_produtos_e_quantidade_de_cada_produto'),
+      'frete',
+    )
+    if (validationError) {
+      return {
+        result: validationError,
+        trace: { name, args, result_preview: validationError },
+      }
     }
   }
 
