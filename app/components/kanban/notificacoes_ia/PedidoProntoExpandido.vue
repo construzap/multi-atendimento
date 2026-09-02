@@ -8,6 +8,8 @@ import {
   resolveTotalOrcamento,
   subtotalLinhaExibicao,
 } from './parseProdutosNotificacao'
+import EntregaNavegacaoMapas from '~/components/entregadores/EntregaNavegacaoMapas.vue'
+import { parseCoordenadasValidas } from '#shared/utils/navegacaoMapas'
 
 const STORAGE_KEY = 'kanban.notificacoes_ia.imprimir_ao_aceitar'
 
@@ -30,6 +32,12 @@ const produtos = computed(() => parseProdutosNotificacao(props.item.produtos))
 const totais = computed(() => normalizeTotalOrcamento(props.item.total_orcamento))
 const totalExibicao = computed(() =>
   resolveTotalOrcamento(props.item.total_orcamento, props.item.forma_pagamento),
+)
+
+const enderecoExibicao = computed(() => props.item.endereco?.trim() || null)
+
+const temCoordenadasNavegacao = computed(
+  () => parseCoordenadasValidas(props.item.latitude, props.item.longitude) != null,
 )
 
 function lerPreferenciaImprimir(): boolean {
@@ -133,6 +141,25 @@ function linhaSubtotal(p: (typeof produtos.value)[number]): string {
           {{ item.forma_pagamento?.trim() || '—' }}
         </span>
       </div>
+      <div v-if="enderecoExibicao" class="pt-1">
+        <p class="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+          Endereço
+        </p>
+        <p class="mt-0.5 whitespace-pre-wrap text-sm text-on-surface dark:text-dark-on-surface">
+          {{ enderecoExibicao }}
+        </p>
+      </div>
+    </div>
+
+    <div
+      v-if="temCoordenadasNavegacao"
+      class="border-t border-outline/30 pt-4 dark:border-dark-outline/30"
+    >
+      <EntregaNavegacaoMapas
+        :latitude="item.latitude"
+        :longitude="item.longitude"
+        variant="kanban"
+      />
     </div>
 
     <label

@@ -33,6 +33,8 @@ export type EntregaPublicaResumo = {
   loja_nome: string | null
   endereco: string | null
   cliente_nome: string | null
+  latitude: number | null
+  longitude: number | null
 }
 
 export type EntregaPublicaResumoResponse = {

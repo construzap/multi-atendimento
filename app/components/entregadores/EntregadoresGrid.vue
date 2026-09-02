@@ -3,6 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type { EntregadorListaItem } from '#shared/types/entregadores'
+import BaseButton from '~/components/BaseButton.vue'
+import BaseInput from '~/components/BaseInput.vue'
 import { useEntregadoresStore } from '~/stores/entregadores'
 import { mensagemErroFetch } from '~/stores/canais'
 
@@ -137,22 +139,23 @@ async function alternarPremium(e: EntregadorListaItem) {
 <template>
   <div>
     <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div class="relative w-full sm:max-w-md">
-        <input
+      <div class="w-full sm:max-w-md">
+        <BaseInput
           v-model="pesquisa"
           type="search"
           name="pesquisa-entregadores"
           placeholder="Buscar por nome ou código…"
-          class="w-full rounded-xl border border-outline-variant/40 bg-white py-2.5 pl-4 pr-4 text-sm outline-none focus:border-primary-500 dark:border-dark-outline-variant/40 dark:bg-dark-surface dark:text-dark-on-surface"
+          autocomplete="off"
         />
       </div>
-      <button
+      <BaseButton
         type="button"
-        class="inline-flex items-center justify-center rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700"
+        variant="primary"
+        :block="false"
         @click="abrirCriar"
       >
         Novo entregador
-      </button>
+      </BaseButton>
     </div>
 
     <p
@@ -237,20 +240,26 @@ async function alternarPremium(e: EntregadorListaItem) {
           </button>
         </div>
         <div class="mt-4 flex gap-2">
-          <button
+          <BaseButton
             type="button"
-            class="flex-1 rounded-lg border border-outline-variant/40 px-3 py-2 text-xs font-semibold text-on-surface hover:bg-surface-container dark:border-dark-outline-variant/40 dark:text-dark-on-surface"
+            variant="secondary"
+            size="sm"
+            :block="false"
+            class="flex-1"
             @click="abrirEditar(e)"
           >
             Editar
-          </button>
-          <button
+          </BaseButton>
+          <BaseButton
             type="button"
-            class="flex-1 rounded-lg border border-outline-variant/40 px-3 py-2 text-xs font-semibold text-on-surface hover:bg-surface-container dark:border-dark-outline-variant/40 dark:text-dark-on-surface"
+            variant="secondary"
+            size="sm"
+            :block="false"
+            class="flex-1"
             @click="alternarAtivo(e)"
           >
             {{ e.ativo ? 'Desativar' : 'Ativar' }}
-          </button>
+          </BaseButton>
         </div>
       </li>
     </ul>
@@ -270,34 +279,38 @@ async function alternarPremium(e: EntregadorListaItem) {
             {{ editando ? 'Editar entregador' : 'Novo entregador' }}
           </h2>
           <form class="mt-4 space-y-3" @submit.prevent="salvar">
-            <label class="block">
-              <span class="mb-1 block text-sm font-medium text-on-surface dark:text-dark-on-surface">
+            <div>
+              <label
+                for="entregador-codigo"
+                class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
+              >
                 Código
-              </span>
-              <input
+              </label>
+              <BaseInput
+                id="entregador-codigo"
                 v-model="formCodigo"
-                type="text"
-                required
                 maxlength="40"
                 placeholder="ENT-042"
-                class="w-full rounded-xl border border-outline-variant/40 bg-white px-3 py-2.5 text-sm outline-none focus:border-primary-500 dark:border-dark-outline-variant/40 dark:bg-dark-background dark:text-dark-on-surface"
+                autocomplete="off"
                 :disabled="salvando"
               />
-            </label>
-            <label class="block">
-              <span class="mb-1 block text-sm font-medium text-on-surface dark:text-dark-on-surface">
+            </div>
+            <div>
+              <label
+                for="entregador-nome"
+                class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
+              >
                 Nome
-              </span>
-              <input
+              </label>
+              <BaseInput
+                id="entregador-nome"
                 v-model="formNome"
-                type="text"
-                required
                 maxlength="200"
                 placeholder="Nome do entregador"
-                class="w-full rounded-xl border border-outline-variant/40 bg-white px-3 py-2.5 text-sm outline-none focus:border-primary-500 dark:border-dark-outline-variant/40 dark:bg-dark-background dark:text-dark-on-surface"
+                autocomplete="off"
                 :disabled="salvando"
               />
-            </label>
+            </div>
             <label class="flex items-center gap-2 text-sm text-on-surface dark:text-dark-on-surface">
               <input
                 v-model="formAtivo"
@@ -330,21 +343,27 @@ async function alternarPremium(e: EntregadorListaItem) {
               </span>
             </label>
             <div class="flex gap-2 pt-2">
-              <button
+              <BaseButton
                 type="button"
-                class="flex-1 rounded-xl border border-outline-variant/40 px-4 py-2.5 text-sm font-semibold dark:border-dark-outline-variant/40 dark:text-dark-on-surface"
+                variant="secondary"
+                size="sm"
+                :block="false"
+                class="flex-1"
                 :disabled="salvando"
                 @click="fecharModal"
               >
                 Cancelar
-              </button>
-              <button
+              </BaseButton>
+              <BaseButton
                 type="submit"
-                class="flex-1 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-60"
+                variant="primary"
+                size="sm"
+                :block="false"
+                class="flex-1"
                 :disabled="salvando || !formCodigo.trim() || !formNome.trim()"
               >
                 {{ salvando ? 'Salvando…' : 'Salvar' }}
-              </button>
+              </BaseButton>
             </div>
           </form>
         </div>

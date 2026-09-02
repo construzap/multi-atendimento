@@ -1,4 +1,5 @@
 import type { MensagemProntaComPassos, MensagemProntaPasso } from '#shared/types/mensagensProntas'
+import { filtrarPassosValidosParaEnvio } from '#shared/utils/mensagensProntasPassosEnvio'
 
 /** Token inserido no editor e resolvido no envio. */
 export const VAR_PRIMEIRO_NOME = '{primeiro-nome}'
@@ -97,8 +98,9 @@ export function resolverMensagemProntaParaEnvio(
   name: string | null | undefined,
   agora?: Date,
 ): MensagemProntaComPassos {
+  const passosValidos = filtrarPassosValidosParaEnvio(item.passos, item.sequencia.id)
   return {
     sequencia: { ...item.sequencia },
-    passos: resolverPassosMensagemPronta(item.passos, name, agora),
+    passos: resolverPassosMensagemPronta(passosValidos, name, agora),
   }
 }

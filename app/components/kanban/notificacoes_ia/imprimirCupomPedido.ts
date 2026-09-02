@@ -239,12 +239,6 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
       height: 120px;
       image-rendering: pixelated;
     }
-    .qr-url {
-      margin-top: 6px;
-      font-size: 9px;
-      word-break: break-all;
-      line-height: 1.3;
-    }
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
@@ -298,7 +292,6 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
     <div class="qr-wrap">
       <div class="bold" style="margin-bottom:6px">ENTREGA</div>
       <img src="${esc(input.qrDataUrl)}" alt="QR Code entrega" width="120" height="120" />
-      <div class="qr-url muted">${esc(input.entregaUrl)}</div>
     </div>`
         : ''
     }

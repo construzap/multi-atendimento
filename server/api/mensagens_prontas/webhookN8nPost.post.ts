@@ -2,19 +2,13 @@ import { serverSupabaseClient } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
 import type {
   MensagemProntaComPassos,
-  MensagemProntaPasso,
   MensagemProntaSequenciaResumo,
-  MensagemProntaTipo,
   WebhookN8nMensagemProntaResponse,
 } from '#shared/types/mensagensProntas'
-import { CONTEUDO_PASSO_LIGACAO } from '#shared/types/mensagensProntas'
 import { resolverMensagemProntaParaEnvio } from '#shared/utils/mensagemProntaVariaveis'
+import { coercePassosInput, filtrarPassosValidosParaEnvio } from '#shared/utils/mensagensProntasPassosEnvio'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
-import {
-  MENSAGEM_PRONTA_TIPOS,
-  parseDuracaoLigacaoSegundos,
-} from '../../utils/mensagensProntasPassos'
 
 const WEBHOOK_MENSAGEM_PRONTA_N8N =
   'https://nwebhook.construzap.com/webhook/muster-septum-cuddly0-magnesium'
@@ -94,53 +88,21 @@ function parseMensagemPronta(raw: unknown): MensagemProntaComPassos {
       s.fechar_pedido_em_aberto === '1',
   }
 
-  if (!Array.isArray(o.passos) || o.passos.length === 0) {
+  if (!Array.isArray(o.passos) && coercePassosInput(o.passos).length === 0) {
     throw createError({
       statusCode: 400,
       statusMessage: 'mensagem_pronta.passos deve ter ao menos um passo.',
     })
   }
 
-  const passos: MensagemProntaPasso[] = []
-  for (let i = 0; i < o.passos.length; i++) {
-    const p = o.passos[i]
-    if (!p || typeof p !== 'object') {
-      throw createError({ statusCode: 400, statusMessage: `Passo ${i + 1} inválido.` })
-    }
-    const row = p as Record<string, unknown>
-    const tipoRaw = String(row.tipo ?? '').trim().toLowerCase()
-    if (!(MENSAGEM_PRONTA_TIPOS as string[]).includes(tipoRaw)) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Tipo inválido no passo ${i + 1}.`,
-      })
-    }
-    const tipo = tipoRaw as MensagemProntaTipo
-    const isLigacao = tipo === 'ligacao'
-    const conteudo = isLigacao
-      ? (String(row.conteudo ?? '').trim() || CONTEUDO_PASSO_LIGACAO)
-      : String(row.conteudo ?? '').trim()
-    if (!isLigacao && !conteudo) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Conteúdo obrigatório no passo ${i + 1}.`,
-      })
-    }
-    passos.push({
-      id: String(row.id ?? `${i + 1}`),
-      sequencia_id: String(row.sequencia_id ?? sequenciaId),
-      ordem: Number(row.ordem ?? i + 1),
-      tipo,
-      conteudo,
-      delay_segundos: Math.max(0, Number(row.delay_segundos ?? 0) || 0),
-      duracao_ligacao_segundos: isLigacao
-        ? parseDuracaoLigacaoSegundos(row.duracao_ligacao_segundos, `Tempo da ligação no passo ${i + 1}`)
-        : null,
-      created_at: String(row.created_at ?? new Date().toISOString()),
+  const passos = filtrarPassosValidosParaEnvio(o.passos, sequenciaId)
+  if (passos.length === 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'mensagem_pronta.passos deve ter ao menos um passo válido.',
     })
   }
 
-  passos.sort((a, b) => a.ordem - b.ordem)
   return { sequencia, passos }
 }
 

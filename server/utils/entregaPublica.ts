@@ -25,6 +25,8 @@ export type NotificacaoEntregaRow = {
   conversa_key: string
   nome: string | null
   endereco: string | null
+  latitude: number | null
+  longitude: number | null
   entrega_status: EntregaStatus
   entregador_id: number | null
   codigo_confirmacao: string | null
@@ -40,7 +42,7 @@ export async function loadNotificacaoByToken(
   const { data, error } = await admin
     .from('notificacoes_ia')
     .select(
-      'id, workspace_id, canal_id, conversa_key, nome, endereco, entrega_status, entregador_id, codigo_confirmacao, token_entrega',
+      'id, workspace_id, canal_id, conversa_key, nome, endereco, latitude, longitude, entrega_status, entregador_id, codigo_confirmacao, token_entrega',
     )
     .eq('token_entrega', token)
     .maybeSingle()
@@ -88,6 +90,15 @@ export async function loadNotificacaoByToken(
         ? entregadorIdRaw
         : Number.parseInt(String(entregadorIdRaw), 10)
 
+  const latitude =
+    data.latitude != null && Number.isFinite(Number(data.latitude))
+      ? Number(data.latitude)
+      : null
+  const longitude =
+    data.longitude != null && Number.isFinite(Number(data.longitude))
+      ? Number(data.longitude)
+      : null
+
   return {
     id,
     workspace_id: workspaceId,
@@ -96,6 +107,8 @@ export async function loadNotificacaoByToken(
     conversa_key,
     nome: data.nome != null ? String(data.nome).trim() || null : null,
     endereco: data.endereco != null ? String(data.endereco).trim() || null : null,
+    latitude,
+    longitude,
     entrega_status,
     entregador_id:
       entregador_id != null && Number.isFinite(entregador_id) && entregador_id >= 1
@@ -143,6 +156,8 @@ export async function buildEntregaResumo(
     loja_nome: ws?.nome != null ? String(ws.nome).trim() || null : null,
     endereco: row.endereco,
     cliente_nome: row.nome,
+    latitude: row.latitude,
+    longitude: row.longitude,
   }
 }
 

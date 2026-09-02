@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { EntregaPublicaResumo, EntregaPublicaResumoResponse } from '#shared/types/entrega'
+import { parseCoordenadasValidas } from '#shared/utils/navegacaoMapas'
+import EntregaNavegacaoMapas from '~/components/entregadores/EntregaNavegacaoMapas.vue'
 import { useEntregaColetaStore } from '~/stores/entregaColeta'
 
 definePageMeta({
@@ -34,6 +36,12 @@ const codigoConfirmacaoNormalizado = computed(() =>
 )
 
 const entregadorPremium = computed(() => resumo.value?.entregador_premium === true)
+
+const temCoordenadasNavegacao = computed(() => {
+  const r = resumo.value
+  if (!r) return false
+  return parseCoordenadasValidas(r.latitude, r.longitude) != null
+})
 
 const podeConfirmarEntrega = computed(() => {
   if (submitting.value) return false
@@ -335,6 +343,13 @@ onMounted(() => {
               </dd>
             </div>
           </dl>
+          <EntregaNavegacaoMapas
+            v-if="temCoordenadasNavegacao"
+            class="mt-4 border-t border-slate-100 pt-4"
+            :latitude="resumo.latitude"
+            :longitude="resumo.longitude"
+            variant="entrega"
+          />
         </div>
 
         <p

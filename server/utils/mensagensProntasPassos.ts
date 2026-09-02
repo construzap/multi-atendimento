@@ -9,6 +9,12 @@ import {
   DURACAO_LIGACAO_SEGUNDOS_MAX,
   DURACAO_LIGACAO_SEGUNDOS_MIN,
 } from '#shared/types/mensagensProntas'
+import {
+  coercePassosInput,
+  filtrarPassosValidosParaEnvio,
+} from '#shared/utils/mensagensProntasPassosEnvio'
+
+export { coercePassosInput, filtrarPassosValidosParaEnvio }
 
 export const MENSAGEM_PRONTA_TIPOS: MensagemProntaTipo[] = [
   'texto',
@@ -82,7 +88,8 @@ export function passoInsertRow(sequenciaId: string, p: MensagemProntaPassoInput)
 }
 
 export function parsePassos(raw: unknown): MensagemProntaPassoInput[] {
-  if (!Array.isArray(raw) || raw.length === 0) {
+  const items = coercePassosInput(raw)
+  if (items.length === 0) {
     throw createError({
       statusCode: 400,
       statusMessage: 'Informe ao menos um passo em passos[].',
@@ -91,8 +98,8 @@ export function parsePassos(raw: unknown): MensagemProntaPassoInput[] {
 
   const out: MensagemProntaPassoInput[] = []
 
-  for (let i = 0; i < raw.length; i++) {
-    const item = raw[i]
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
     if (!item || typeof item !== 'object') {
       throw createError({ statusCode: 400, statusMessage: `Passo ${i + 1} inválido.` })
     }
