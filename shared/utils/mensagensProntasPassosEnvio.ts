@@ -1,4 +1,8 @@
-import type { MensagemProntaPasso, MensagemProntaTipo } from '#shared/types/mensagensProntas'
+import type {
+  MensagemProntaComPassos,
+  MensagemProntaPasso,
+  MensagemProntaTipo,
+} from '#shared/types/mensagensProntas'
 import {
   CONTEUDO_PASSO_LIGACAO,
   DURACAO_LIGACAO_SEGUNDOS_MAX,
@@ -17,12 +21,15 @@ const TIPOS: MensagemProntaTipo[] = [
 
 /** Aceita array ou objeto `{ "0": passo, ... }`; ignora chaves soltas (ex.: `duracao_ligacao_segundos`). */
 export function coercePassosInput(raw: unknown): unknown[] {
-  if (Array.isArray(raw)) return raw
+  if (Array.isArray(raw)) {
+    return raw.filter((item) => item != null && typeof item === 'object')
+  }
   if (raw && typeof raw === 'object') {
     return Object.keys(raw as Record<string, unknown>)
       .filter((k) => /^\d+$/.test(k))
       .sort((a, b) => Number(a) - Number(b))
       .map((k) => (raw as Record<string, unknown>)[k])
+      .filter((item) => item != null && typeof item === 'object')
   }
   return []
 }
@@ -84,4 +91,37 @@ export function filtrarPassosValidosParaEnvio(
 
   out.sort((a, b) => a.ordem - b.ordem)
   return out
+}
+
+/** Objeto plain só com campos válidos — evita lixo na serialização JSON. */
+export function passoPlainParaN8n(p: MensagemProntaPasso): MensagemProntaPasso {
+  const row: MensagemProntaPasso = {
+    id: String(p.id),
+    sequencia_id: String(p.sequencia_id),
+    ordem: Number(p.ordem),
+    tipo: p.tipo,
+    conteudo: String(p.conteudo ?? ''),
+    delay_segundos: Math.max(0, Number(p.delay_segundos ?? 0) || 0),
+    duracao_ligacao_segundos: null,
+    created_at: String(p.created_at ?? new Date().toISOString()),
+  }
+  if (p.tipo === 'ligacao') {
+    row.duracao_ligacao_segundos =
+      p.duracao_ligacao_segundos == null ? null : Math.trunc(Number(p.duracao_ligacao_segundos))
+  }
+  return row
+}
+
+/**
+ * Payload final para o N8N: passos filtrados, sem entradas fantasma,
+ * objeto 100% plain (sem proxy / propriedades extras).
+ */
+export function mensagemProntaPlainParaN8n(item: MensagemProntaComPassos): MensagemProntaComPassos {
+  const passos = filtrarPassosValidosParaEnvio(item.passos, item.sequencia.id).map(passoPlainParaN8n)
+  return JSON.parse(
+    JSON.stringify({
+      sequencia: { ...item.sequencia },
+      passos,
+    }),
+  ) as MensagemProntaComPassos
 }

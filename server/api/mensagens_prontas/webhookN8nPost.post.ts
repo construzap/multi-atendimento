@@ -175,18 +175,20 @@ export default defineEventHandler(async (event): Promise<WebhookN8nMensagemPront
 
   await checkWorkspace(event, workspace_id, userId)
 
-  const payload = {
-    workspace_id,
-    canal_id,
-    conversa_key,
-    phone,
-    name,
-    mensagem_pronta,
-    coluna_destino_id,
-    mover_contato,
-    ia_ligada,
-    fechar_pedido_em_aberto,
-  }
+  const payload = JSON.parse(
+    JSON.stringify({
+      workspace_id,
+      canal_id,
+      conversa_key,
+      phone,
+      name,
+      mensagem_pronta,
+      coluna_destino_id,
+      mover_contato,
+      ia_ligada,
+      fechar_pedido_em_aberto,
+    }),
+  )
 
   let res: Response
   try {

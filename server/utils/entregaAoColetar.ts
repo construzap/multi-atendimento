@@ -230,18 +230,20 @@ async function dispararWebhookAgendamento(input: {
 }): Promise<void> {
   const mensagem_pronta = resolverMensagemProntaParaEnvio(input.mensagem, input.name)
   const coluna_destino_id = mensagem_pronta.sequencia.coluna_destino_id ?? null
-  const payload = {
-    workspace_id: input.workspaceId,
-    canal_id: input.canalId,
-    conversa_key: input.conversaKey,
-    phone: input.phone,
-    name: input.name,
-    mensagem_pronta,
-    coluna_destino_id,
-    mover_contato: coluna_destino_id != null,
-    ia_ligada: mensagem_pronta.sequencia.ia_ligada !== false,
-    fechar_pedido_em_aberto: mensagem_pronta.sequencia.fechar_pedido_em_aberto === true,
-  }
+  const payload = JSON.parse(
+    JSON.stringify({
+      workspace_id: input.workspaceId,
+      canal_id: input.canalId,
+      conversa_key: input.conversaKey,
+      phone: input.phone,
+      name: input.name,
+      mensagem_pronta,
+      coluna_destino_id,
+      mover_contato: coluna_destino_id != null,
+      ia_ligada: mensagem_pronta.sequencia.ia_ligada !== false,
+      fechar_pedido_em_aberto: mensagem_pronta.sequencia.fechar_pedido_em_aberto === true,
+    }),
+  )
 
   let res: Response
   try {

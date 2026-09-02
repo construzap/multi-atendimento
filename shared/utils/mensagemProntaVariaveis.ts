@@ -1,5 +1,8 @@
 import type { MensagemProntaComPassos, MensagemProntaPasso } from '#shared/types/mensagensProntas'
-import { filtrarPassosValidosParaEnvio } from '#shared/utils/mensagensProntasPassosEnvio'
+import {
+  filtrarPassosValidosParaEnvio,
+  mensagemProntaPlainParaN8n,
+} from '#shared/utils/mensagensProntasPassosEnvio'
 
 /** Token inserido no editor e resolvido no envio. */
 export const VAR_PRIMEIRO_NOME = '{primeiro-nome}'
@@ -99,8 +102,8 @@ export function resolverMensagemProntaParaEnvio(
   agora?: Date,
 ): MensagemProntaComPassos {
   const passosValidos = filtrarPassosValidosParaEnvio(item.passos, item.sequencia.id)
-  return {
+  return mensagemProntaPlainParaN8n({
     sequencia: { ...item.sequencia },
     passos: resolverPassosMensagemPronta(passosValidos, name, agora),
-  }
+  })
 }
