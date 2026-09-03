@@ -36,7 +36,7 @@ export async function openaiChatCompletions(
     model: string
     messages: OpenAiChatMessage[]
     tools?: OpenAiToolDefinition[]
-    tool_choice?: 'auto' | 'none'
+    tool_choice?: 'auto' | 'none' | 'required'
     temperature?: number
     /** API key do canal (descriptografada). Se omitida, usa NUXT_OPENAI_API_KEY. */
     apiKey?: string

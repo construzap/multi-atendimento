@@ -1,5 +1,6 @@
 import type { ProdutoImportarLinha } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
+import { parseTermosImportacaoCelula } from '#shared/utils/parseTermosImportacaoCelula'
 import type { CampoIaProdutoId } from '~/constants/produtosCamposIa'
 import { CAMPOS_TABELA_IA_PRODUTO } from '~/constants/produtosCamposIa'
 import { cellToString } from '~/utils/planilhaTexto'
@@ -36,20 +37,13 @@ function parseStatus(raw: string): boolean {
   return true
 }
 
-/** Célula inteira vira um termo (trim + maiúsculas, sem split por vírgula). */
-function normalizarTermoImportacao(raw: string | null | undefined): string | null {
-  if (raw == null) return null
-  const t = String(raw).trim()
-  return t.length ? t.toLocaleUpperCase('pt-BR') : null
-}
-
 function valorCelulaParaCampo(field: CampoIaProdutoId, rawCell: unknown): unknown {
   const str = cellToString(rawCell)
   switch (field) {
     case 'nome':
       return str.trim() || null
     case 'termos_pesquisa':
-      return normalizarTermoImportacao(str)
+      return parseTermosImportacaoCelula(str)
     case 'preco': {
       const n = parseDecimalPtBr(str)
       return n ?? 0
@@ -97,6 +91,9 @@ export function construirLinhasImportacaoProduto(
     }
     const nome = (obj.nome ?? '').trim()
     if (!nome) continue
+    const termos = Array.isArray(obj.termos_pesquisa)
+      ? obj.termos_pesquisa
+      : parseTermosImportacaoCelula(obj.termos_pesquisa)
     out.push({
       nome,
       categoria: normalizarTextoCategoriaUnica((obj.categoria as string | null) ?? null),
@@ -110,7 +107,7 @@ export function construirLinhasImportacaoProduto(
       imagem_url: (obj.imagem_url as string | null) ?? null,
       infos_relevantes: (obj.infos_relevantes as string | null) ?? null,
       status: typeof obj.status === 'boolean' ? obj.status : true,
-      termos_pesquisa: normalizarTermoImportacao((obj.termos_pesquisa as string | null) ?? null),
+      termos_pesquisa: termos.length ? termos : null,
     })
   }
 

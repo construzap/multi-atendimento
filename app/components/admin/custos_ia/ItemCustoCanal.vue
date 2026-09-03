@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import type { CustoPorCanalRow } from '#shared/types/adminCustosIa'
+import { custoIaCanalParam } from '~/stores/adminCustosIa'
 
-defineProps<{
+const props = defineProps<{
   item: CustoPorCanalRow
 }>()
 
-function formatBrl(value: number): string {
+const to = computed(() => `/admin/custos-da-ia/${custoIaCanalParam(props.item.canal_id)}`)
+
+function formatBrl(value: number, maxFrac = 4): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
+    maximumFractionDigits: maxFrac,
   }).format(value)
 }
 
@@ -30,8 +33,9 @@ function formatData(iso: string | null | undefined): string {
 </script>
 
 <template>
-  <article
-    class="w-full min-w-0 rounded-2xl border border-outline/40 bg-surface-container-lowest p-4 shadow-sm dark:border-dark-outline/40 dark:bg-dark-surface-container-low md:p-5"
+  <NuxtLink
+    :to="to"
+    class="block w-full min-w-0 rounded-2xl border border-outline/40 bg-surface-container-lowest p-4 shadow-sm transition-colors hover:border-primary-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:hover:border-dark-primary md:p-5"
   >
     <div class="flex min-w-0 flex-wrap items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
@@ -63,6 +67,46 @@ function formatData(iso: string | null | undefined): string {
         </p>
         <p class="mt-1 text-sm text-on-surface dark:text-dark-on-surface">
           {{ formatTokens(item.total_tokens_usados) }}
+        </p>
+      </div>
+      <div class="min-w-0">
+        <p class="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+          Palavras
+        </p>
+        <p class="mt-1 text-sm text-on-surface dark:text-dark-on-surface">
+          {{ formatTokens(item.total_palavras) }}
+        </p>
+      </div>
+      <div class="min-w-0">
+        <p class="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+          Letras
+        </p>
+        <p class="mt-1 text-sm text-on-surface dark:text-dark-on-surface">
+          {{ formatTokens(item.total_letras) }}
+        </p>
+      </div>
+      <div class="min-w-0">
+        <p class="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+          Mensagens
+        </p>
+        <p class="mt-1 text-sm text-on-surface dark:text-dark-on-surface">
+          {{ formatTokens(item.total_mensagens) }}
+        </p>
+      </div>
+      <div class="min-w-0">
+        <p class="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+          Custo por letra
+        </p>
+        <p class="mt-1 text-sm text-on-surface dark:text-dark-on-surface">
+          {{ formatBrl(item.custo_por_letra, 8) }}
+        </p>
+      </div>
+      <div class="min-w-0">
+        <p class="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+          Custo por mensagem
+        </p>
+        <p class="mt-1 text-sm text-on-surface dark:text-dark-on-surface">
+          {{ formatBrl(item.custo_por_mensagem, 6) }}
         </p>
       </div>
     </div>
@@ -108,5 +152,5 @@ function formatData(iso: string | null | undefined): string {
         </p>
       </div>
     </div>
-  </article>
+  </NuxtLink>
 </template>

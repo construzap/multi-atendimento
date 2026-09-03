@@ -313,8 +313,11 @@ export type ProdutoImportarLinha = {
   infos_relevantes?: string | null
   status?: boolean
   envia_foto?: boolean
-  /** Texto integral da célula (um termo por produto); servidor cria no catálogo e salva o ID. */
-  termos_pesquisa?: string | null
+  /**
+   * Termos de pesquisa da célula: string com nomes separados por `,`
+   * ou array já normalizado. Servidor faz find-or-create e vincula N:N.
+   */
+  termos_pesquisa?: string | string[] | null
 }
 
 /** Resposta de um lote `POST /api/produtos/importar`. */

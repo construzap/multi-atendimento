@@ -19,6 +19,11 @@ const {
   error: errorMsg,
   totalCustoBrl,
   totalTokens,
+  totalPalavras,
+  totalLetras,
+  totalMensagens,
+  custoPorLetraLista,
+  custoPorMensagemLista,
 } = storeToRefs(store)
 
 const listaPronta = computed(() => (modo.value === 'erros' ? errosLoaded.value : loaded.value))
@@ -57,12 +62,12 @@ onMounted(() => {
   carregar().catch(() => {})
 })
 
-function formatBrl(value: number): string {
+function formatBrl(value: number, maxFrac = 4): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
     minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
+    maximumFractionDigits: maxFrac,
   }).format(value)
 }
 
@@ -91,7 +96,10 @@ function formatTokens(value: number): string {
             v-if="modo === 'custos' && listaPronta && !pending && items.length > 0"
             class="mt-0.5 text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
           >
-            Total {{ formatBrl(totalCustoBrl) }} · {{ formatTokens(totalTokens) }} tokens
+            Total {{ formatBrl(totalCustoBrl) }} · {{ formatTokens(totalTokens) }} tokens ·
+            {{ formatTokens(totalPalavras) }} palavras · {{ formatTokens(totalLetras) }} letras ·
+            {{ formatTokens(totalMensagens) }} mensagens ·
+            {{ formatBrl(custoPorLetraLista, 8) }}/letra · {{ formatBrl(custoPorMensagemLista, 6) }}/msg
           </p>
           <p
             v-else-if="modo === 'erros' && listaPronta && !pending"

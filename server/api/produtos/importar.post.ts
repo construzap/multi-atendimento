@@ -3,7 +3,7 @@ import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutoImportarLinha, ProdutosImportarLoteResponse } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
 import {
-  normalizarTermoImportacao,
+  parseTermosImportacaoCelula,
   resolverTermosDoLoteImportacao,
   inserirTermosVinculoLote,
 } from '../../utils/produtoTermosPesquisa'
@@ -105,8 +105,10 @@ function normalizarLinha(raw: unknown): ProdutoImportarLinha | null {
     const catNome = normalizarTextoCategoriaUnica(strOrNull(o.categoria))
     if (catNome) linha.categoria = catNome
   }
-  const termo = normalizarTermoImportacao(strOrNull(o.termos_pesquisa))
-  if (termo) linha.termos_pesquisa = termo
+  const termos = Array.isArray(o.termos_pesquisa)
+    ? parseTermosImportacaoCelula(o.termos_pesquisa.join(','))
+    : parseTermosImportacaoCelula(strOrNull(o.termos_pesquisa))
+  if (termos.length) linha.termos_pesquisa = termos
   return linha
 }
 
@@ -166,7 +168,8 @@ async function conjuntoIdsCategoriaValidos(
  * Também serve para criar um único produto (ex.: modal «Novo») com `linhas` de um elemento.
  * Insere em `produtos_workspace` com `codigo` inteiro gerado (maior `codigo` existente no workspace + 1, +2, … neste lote).
  * `categoria_id` explícito (validado) ou texto em `categoria` (nome único, case-insensitive) resolvido para id.
- * `termos_pesquisa`: texto integral da célula → find-or-create em `produto_termo_de_pesquisa` + FK `termo_pesquisa` em `produtos_workspace`.
+ * `termos_pesquisa`: texto da célula separado por `,` → find-or-create cada termo em
+ * `produto_termo_de_pesquisa` + vínculos em `produto_termo_de_pesquisa_vinculo`.
  * Texto com vários valores separados por `;` `,` ou `|` usa só o primeiro (categoria).
  * Não apaga nem atualiza linhas existentes.
  */
@@ -229,9 +232,10 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
 
   const nomesTermosUnicos = [
     ...new Set(
-      normalizadas
-        .map((r) => r.termos_pesquisa?.trim())
-        .filter((n): n is string => Boolean(n?.length)),
+      normalizadas.flatMap((r) => {
+        if (Array.isArray(r.termos_pesquisa)) return r.termos_pesquisa
+        return parseTermosImportacaoCelula(r.termos_pesquisa)
+      }),
     ),
   ]
   const termoIdPorNome =
@@ -287,10 +291,13 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
     const row = inserted![i] as { id?: unknown }
     const produtoId = typeof row.id === 'number' ? row.id : Number(row.id)
     if (!Number.isFinite(produtoId)) continue
-    const termoNome = normalizadas[i]?.termos_pesquisa?.trim() || null
-    if (!termoNome) continue
-    const termoId = termoIdPorNome.get(termoNome.toLowerCase()) ?? null
-    if (termoId) vinculos.push({ produto_id: produtoId, termo_id: termoId })
+    const termosLinha = Array.isArray(normalizadas[i]?.termos_pesquisa)
+      ? (normalizadas[i]!.termos_pesquisa as string[])
+      : parseTermosImportacaoCelula(normalizadas[i]?.termos_pesquisa)
+    for (const termoNome of termosLinha) {
+      const termoId = termoIdPorNome.get(termoNome.toLowerCase()) ?? null
+      if (termoId) vinculos.push({ produto_id: produtoId, termo_id: termoId })
+    }
   }
   await inserirTermosVinculoLote(admin, vinculos)
 

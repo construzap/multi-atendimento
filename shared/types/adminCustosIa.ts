@@ -10,6 +10,11 @@ export interface CustoPorCanalRow {
   nome_canal: string
   custo_total_brl: number
   total_tokens_usados: number
+  total_palavras: number
+  total_letras: number
+  total_mensagens: number
+  custo_por_letra: number
+  custo_por_mensagem: number
   modelos_usados: string[]
   /** MIN(criado_em) — quando começou o uso neste agrupamento. */
   primeiro_uso_em: string | null
@@ -32,4 +37,28 @@ export interface CustoTokenIaErroRow {
 /** Resposta de `GET /api/admin/custos-da-ia/erro`. */
 export interface AdminCustosIaErroResponse {
   items: CustoTokenIaErroRow[]
+}
+
+/** Slug de rota quando `canal_id` é null (custo geral). */
+export const CUSTO_IA_SEM_CANAL_SLUG = 'sem-canal'
+
+/** Resposta de `GET /api/admin/custos-da-ia/por-canal`. */
+export interface AdminCustosIaPorCanalTotais {
+  custo_brl: number
+  total_tokens: number
+  total_palavras: number
+  total_letras: number
+  total_mensagens: number
+  custo_por_letra: number
+  custo_por_mensagem: number
+}
+
+export interface AdminCustosIaPorCanalResponse {
+  workspace_id: number | null
+  workspace_nome: string | null
+  canal_id: number | null
+  nome_canal: string
+  data_inicio: string | null
+  data_final: string | null
+  totais: AdminCustosIaPorCanalTotais
 }

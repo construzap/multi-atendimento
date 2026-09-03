@@ -49,8 +49,9 @@ const emit = defineEmits<{
         Conecte as colunas do seu arquivo aos campos da nossa tabela. Cada produto admite
         <strong class="text-on-surface dark:text-dark-on-surface">uma única categoria</strong>
         — só pode haver uma coluna mapeada para «Categoria».
-        «Termos pesquisa» usa o <strong class="text-on-surface dark:text-dark-on-surface">texto completo da célula</strong>
-        como um único termo (ex.: «tijolinho, tijolao e bloco» vira um termo só).
+        «Termos pesquisa» separa por
+        <strong class="text-on-surface dark:text-dark-on-surface">vírgula (,)</strong>
+        — ex.: «tijolinho, tijolao, bloco» cria/reaproveita 3 termos e vincula todos ao produto.
         <template v-if="total > 0">
           Detectamos <strong class="text-on-surface dark:text-dark-on-surface">{{ total }}</strong> registros.
         </template>

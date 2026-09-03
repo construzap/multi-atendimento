@@ -69,6 +69,24 @@ export type AgenteResponderResponse = {
   }
 }
 
+/**
+ * Resposta dos agentes especializados (sem memória).
+ * `output` espelha o campo do nó LangChain Agent no N8N.
+ */
+export type AgenteEspecializadoResponse = {
+  ok: true
+  reply_text: string
+  output: string
+  model: string
+  tool_trace: AgenteToolTraceItem[]
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+  }
+  /** Só em filtrar-produtos, se o JSON da IA for parseável. */
+  produtos?: unknown
+}
+
 /** Contexto interno após parse/validação do body. */
 export type AgenteContext = {
   workspace_id: number

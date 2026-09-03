@@ -1,5 +1,11 @@
 import type { ProdutoTermoPesquisaItem, ProdutoWorkspaceItem } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
+import {
+  normalizarTermoImportacao,
+  parseTermosImportacaoCelula,
+} from '#shared/utils/parseTermosImportacaoCelula'
+
+export { normalizarTermoImportacao, parseTermosImportacaoCelula }
 
 export function mapTermoPesquisaRow(r: Record<string, unknown>): ProdutoTermoPesquisaItem {
   const id = typeof r.id === 'number' ? r.id : Number(r.id)
@@ -12,13 +18,6 @@ export function mapTermoPesquisaRow(r: Record<string, unknown>): ProdutoTermoPes
 
 export function normalizarNomeTermoPesquisa(raw: string | null | undefined): string | null {
   return normalizarTextoCategoriaUnica(raw)
-}
-
-/** Importação: célula inteira vira um termo (trim + maiúsculas, sem split). */
-export function normalizarTermoImportacao(raw: string | null | undefined): string | null {
-  if (raw == null) return null
-  const t = String(raw).trim()
-  return t.length ? t.toLocaleUpperCase('pt-BR') : null
 }
 
 /** Escapa `%` e `_` para `ilike` corresponder ao texto literal. */
