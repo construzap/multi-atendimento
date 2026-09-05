@@ -9,7 +9,8 @@ export const orcamentoprontoTool: ToolDef = {
     '2) Guarde o id retornado pela <estoque> de cada produto.\n' +
     '3) Só então chame <orcamentopronto>, enviando em produtos um array de objetos {id, nome, quantidade} — usando exatamente o id da <estoque>, o nome do produto e a quantidade escolhida, sem preço unitário.\n\n' +
     'CAMPOS OBRIGATÓRIOS NA CHAMADA:\n' +
-    '- produtos, total_do_orcamento, forma_pagamento, entrega_ou_retirada, observacao\n' +
+    '- produtos, total_do_orcamento, forma_pagamento, entrega_ou_retirada, observacao, frete\n' +
+    '- frete: valor do frete (ex.: "15.00") ou "gratis"/"frete gratis" se for entrega gratuita; use "0" ou "retirada" se for retirada na loja.\n' +
     '- Se for ENTREGA: o campo endereco é OBRIGATÓRIO (não coloque o endereço em observacao).\n' +
     '- Se o cliente informou CPF ou CNPJ: preencha documento com o valor informado.\n' +
     '- Se a forma de pagamento for DINHEIRO: o campo troco_para é OBRIGATÓRIO (valor com que o cliente vai pagar).\n\n' +
@@ -95,6 +96,15 @@ export const orcamentoprontoTool: ToolDef = {
           'Se for retirada: envie string vazia "".\n' +
           'Nunca coloque o endereço em observacao.',
       },
+      frete: {
+        type: 'string',
+        description:
+          'Valor do frete ou indicação de frete grátis.\n' +
+          '- Entrega com frete pago: envie o valor numérico (ex.: "15.00").\n' +
+          '- Frete grátis: envie "gratis" ou "frete gratis".\n' +
+          '- Retirada na loja: envie "0" ou "retirada".\n' +
+          'Use o valor de frete combinado com o cliente na conversa (ou "gratis" / "0" conforme o caso).',
+      },
     },
     required: [
       'produtos',
@@ -105,6 +115,7 @@ export const orcamentoprontoTool: ToolDef = {
       'endereco',
       'documento',
       'troco_para',
+      'frete',
     ],
   },
   urlConfigKey: 'agenteToolOrcamentoProntoUrl',
@@ -120,11 +131,14 @@ export const orcamentoprontoTool: ToolDef = {
     observacao: argStr(args, 'observacao'),
     'key-contact': ctx.conversa_key,
     tempo_pausa: ctxStr(ctx.tempo_pausa),
-    fase_teste: ctxStr(ctx.fase_teste),
+    fase_teste: ctx.fase_teste,
+    url_aplicativo: ctxStr(ctx.url_aplicativo),
+    ngrok_skip_browser_warning: ctx.ngrok_skip_browser_warning,
     tempo_resposta: ctxStr(ctx.tempo_resposta),
     ai_assinatura_enabled: ctxStr(ctx.ai_assinatura_enabled),
     forma_pagamento: argStr(args, 'forma_pagamento'),
     troco_para: argStr(args, 'troco_para'),
+    frete: argStr(args, 'frete'),
     'entrega ou retirada': argStr(args, 'entrega_ou_retirada'),
     workspace_id: String(ctx.workspace_id),
     canal_id: String(ctx.canal_id),
@@ -134,6 +148,7 @@ export const orcamentoprontoTool: ToolDef = {
     email: argStr(args, 'email') || ctxStr(ctx.email),
     documento: argStr(args, 'documento'),
     endereco: argStr(args, 'endereco', 'endereço'),
+    endereco_loja: ctxStr(ctx.endereco_loja),
     status_loja: ctxStr(ctx.status_loja),
     horario_semana: ctxStr(ctx.horario_semana),
     horario_sabado: ctxStr(ctx.horario_sabado),
@@ -146,5 +161,6 @@ export const orcamentoprontoTool: ToolDef = {
     taxas_cartao: ctx.taxas_cartao,
     loja_aberta: ctx.loja_aberta,
     agenda_pedido: ctx.agenda_pedido,
+    produtos_contexto: ctx.produtos_contexto,
   }),
 }

@@ -121,7 +121,7 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     phone: strOrNull(body.phone),
     property_prompt: strOrNull(body.property_prompt),
     status_loja: strOrNull(body.status_loja),
-    endereco: strOrNull(body.endereco),
+    endereco_loja: strOrNull(body.endereco_loja),
     horario_semana: strOrNull(body.horario_semana),
     horario_sabado: strOrNull(body.horario_sabado),
     horario_domingo: strOrNull(body.horario_domingo),
@@ -137,7 +137,9 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     tempo_pausa: strOrNull(body.tempo_pausa),
     tempo_resposta: strOrNull(body.tempo_resposta),
     ai_assinatura_enabled: strOrNull(body.ai_assinatura_enabled),
-    fase_teste: strOrNull(body.fase_teste),
+    fase_teste: boolOrNull(body.fase_teste),
+    url_aplicativo: strOrNull(body.url_aplicativo),
+    ngrok_skip_browser_warning: boolOrNull(body.ngrok_skip_browser_warning),
     telefone: strOrNull(body.telefone),
     email: strOrNull(body.email),
     chave_pix_aleatoria: strOrNull(
@@ -150,6 +152,7 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     taxas_cartao: taxasCartaoOrNull(body.taxas_cartao),
     loja_aberta: boolOrNull(body.loja_aberta),
     agenda_pedido: boolOrNull(body.agenda_pedido),
+    produtos_contexto: strOrNull(body.produtos_contexto),
     model: modelOverride || canalCredenciais.model_name || defaultModel,
     max_tool_rounds:
       Number.isFinite(maxRoundsBody) && maxRoundsBody > 0

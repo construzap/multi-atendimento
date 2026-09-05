@@ -3,7 +3,7 @@ import { argStr, ctxStr, type ToolDef } from './helpers'
 export const estoqueTool: ToolDef = {
   name: 'estoque',
   description:
-    'Chame essa ferramenta sempre que precisar consultar preço e disponibilidade de produtos.\n\n' +
+    'Chame essa ferramenta quando precisar  de informações sobre nossos produtos. \n\n' +
     'Lembrete: Caso o cliente solicite uma lista de produtos, busque sempre um produto de cada vez.\n\n' +
     'Atenção: caso tenha mais de um produto, chame para cada produto individual!\n\n' +
     '## Quando o cliente perguntar sobre qualquer produto, chame e acione imediatamente a ferramenta <estoque>!\n\n' +
@@ -62,5 +62,10 @@ export const estoqueTool: ToolDef = {
     'key-contact': ctx.conversa_key,
     id_canal: String(ctx.canal_id),
     workspace_id: String(ctx.workspace_id),
+    fase_teste: ctx.fase_teste,
+    url_aplicativo: ctxStr(ctx.url_aplicativo),
+    ngrok_skip_browser_warning: ctx.ngrok_skip_browser_warning,
+    endereco_loja: ctxStr(ctx.endereco_loja),
+    produtos_contexto: ctx.produtos_contexto,
   }),
 }

@@ -24,7 +24,7 @@ Headers:
   "phone": "{{ DADOS_CLIENTE_BANCO1.phone }}",
   "property_prompt": "{{ property_prompt }}",
   "status_loja": "{{ WORKSPACE - EMPRESA.status_loja }}",
-  "endereco": "{{ DADOS_CANAL.endereco }}",
+  "endereco_loja": "{{ DADOS_CANAL.endereco }}",
   "horario_semana": "{{ WORKSPACE - EMPRESA.horario_semana }}",
   "horario_sabado": "{{ WORKSPACE - EMPRESA.horario_sabado }}",
   "horario_domingo": "{{ WORKSPACE - EMPRESA.horario_domingo }}",

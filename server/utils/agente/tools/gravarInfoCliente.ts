@@ -39,5 +39,10 @@ export const gravarInfoClienteTool: ToolDef = {
     phone: ctxStr(ctx.phone) || ctxStr(ctx.telefone) || ctxStr(ctx.numero),
     endereco_entrega: argStr(args, 'endereco_entrega', 'endereço_entrega'),
     forma_pagamento: argStr(args, 'forma_pagamento'),
+    fase_teste: ctx.fase_teste,
+    url_aplicativo: ctxStr(ctx.url_aplicativo),
+    ngrok_skip_browser_warning: ctx.ngrok_skip_browser_warning,
+    endereco_loja: ctxStr(ctx.endereco_loja),
+    produtos_contexto: ctx.produtos_contexto,
   }),
 }

@@ -64,5 +64,10 @@ export const freteTool: ToolDef = {
     'codigo dos produtos e quantidade de cada produto':
       argAny(args, 'codigo_dos_produtos_e_quantidade_de_cada_produto') ?? [],
     'bairro ou cep': argStr(args, 'bairro_ou_cep'),
+    fase_teste: ctx.fase_teste,
+    url_aplicativo: ctxStr(ctx.url_aplicativo),
+    ngrok_skip_browser_warning: ctx.ngrok_skip_browser_warning,
+    endereco_loja: ctxStr(ctx.endereco_loja),
+    produtos_contexto: ctx.produtos_contexto,
   }),
 }

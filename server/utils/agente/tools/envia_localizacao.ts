@@ -24,5 +24,10 @@ export const enviaLocalizacaoTool: ToolDef = {
     longitude: ctxStr(ctx.longitude),
     latitude: ctxStr(ctx.latitude),
     conversa_key: ctx.conversa_key,
+    fase_teste: ctx.fase_teste,
+    url_aplicativo: ctxStr(ctx.url_aplicativo),
+    ngrok_skip_browser_warning: ctx.ngrok_skip_browser_warning,
+    endereco_loja: ctxStr(ctx.endereco_loja),
+    produtos_contexto: ctx.produtos_contexto,
   }),
 }

@@ -40,7 +40,7 @@ export async function loadPromptPrincipalTexto(
  * property_prompt + bloco contato/endereço + regras de status_loja.
  */
 export function buildSystemPrompt(ctx: AgenteContext, promptBase: string): string {
-  const endereco = str(ctx.endereco, '(endereço não informado)')
+  const endereco = str(ctx.endereco_loja, '(endereço não informado)')
   const hs = str(ctx.horario_semana, '—')
   const hsab = str(ctx.horario_sabado, '—')
   const hdom = str(ctx.horario_domingo, '—')

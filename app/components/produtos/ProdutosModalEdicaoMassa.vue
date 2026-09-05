@@ -37,6 +37,7 @@ type CampoMassa =
   | 'preco_custo'
   | 'preco_prazo'
   | 'preco_promocional'
+  | 'peso_kg'
   | 'infos_relevantes'
 
 const CAMPOS: { id: CampoMassa; label: string }[] = [
@@ -47,6 +48,7 @@ const CAMPOS: { id: CampoMassa; label: string }[] = [
   { id: 'preco_custo', label: 'Preço de custo (R$)' },
   { id: 'preco_prazo', label: 'Preço a prazo (R$)' },
   { id: 'preco_promocional', label: 'Preço promocional (R$)' },
+  { id: 'peso_kg', label: 'Peso (kg)' },
   { id: 'infos_relevantes', label: 'Informações relevantes' },
   { id: 'status', label: 'Status' },
   { id: 'envia_foto', label: 'Enviar foto na conversa' },
@@ -62,6 +64,7 @@ const precoVista = ref('')
 const precoCusto = ref('')
 const precoPrazo = ref('')
 const precoPromocional = ref('')
+const pesoKg = ref('')
 const infosRelevantes = ref('')
 
 const subtitulo = computed(() => {
@@ -81,6 +84,7 @@ function limparValores() {
   precoCusto.value = ''
   precoPrazo.value = ''
   precoPromocional.value = ''
+  pesoKg.value = ''
   infosRelevantes.value = ''
 }
 
@@ -178,6 +182,16 @@ function montarPatch(): ProdutoWorkspacePatch | null {
         return null
       }
       return { preco_promocional: n }
+    }
+    case 'peso_kg': {
+      const t = pesoKg.value.trim()
+      if (!t.length) return { peso_kg: null }
+      const n = parseDecimalPtBr(t)
+      if (n == null || n < 0) {
+        toast.error('Peso inválido.')
+        return null
+      }
+      return { peso_kg: n }
     }
     case 'infos_relevantes':
       return { infos_relevantes: strOuNull(infosRelevantes.value) }
@@ -287,6 +301,19 @@ function fechar() {
           Preço promocional (R$)
         </label>
         <BaseInput id="edicao-massa-promo" v-model="precoPromocional" type="text" inputmode="decimal" placeholder="Ex: 99,90 (vazio = limpar)" />
+      </div>
+
+      <div v-else-if="campoSelecionado === 'peso_kg'">
+        <label for="edicao-massa-peso" class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface">
+          Peso (kg)
+        </label>
+        <BaseInput
+          id="edicao-massa-peso"
+          v-model="pesoKg"
+          type="text"
+          inputmode="decimal"
+          placeholder="Ex: 25,5 (vazio = limpar)"
+        />
       </div>
 
       <div v-else-if="campoSelecionado === 'infos_relevantes'">

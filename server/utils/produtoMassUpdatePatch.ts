@@ -11,6 +11,7 @@ export const PRODUTO_MASS_PATCH_ALLOWED = new Set([
   'preco_custo',
   'preco_promocional',
   'preco_prazo',
+  'peso_kg',
   'infos_relevantes',
   'status',
   'envia_foto',
@@ -151,6 +152,14 @@ export async function buildProdutoMassUpdateFromPatch(
   if (p.preco_prazo !== undefined) {
     const v = numOrNull(p.preco_prazo)
     update.preco_prazo = v != null && v >= 0 ? v : null
+  }
+
+  if (p.peso_kg !== undefined) {
+    const v = numOrNull(p.peso_kg)
+    if (v != null && v < 0) {
+      throw createError({ statusCode: 400, statusMessage: 'Peso inválido.' })
+    }
+    update.peso_kg = v != null && v >= 0 ? v : null
   }
 
   if (p.status !== undefined) {

@@ -92,8 +92,7 @@ async function aoEnviar(e: Event) {
               for="frete-bairro"
               class="block font-body text-sm font-semibold leading-snug text-on-surface dark:text-dark-on-surface"
             >
-              Bairro
-            </label>
+Região            </label>
             <BaseInput
               id="frete-bairro"
               v-model="bairro"

@@ -13,7 +13,8 @@ export type AgenteResponderBody = {
   /** Override; se omitido, o app lê `prompt_principal` no DB. */
   property_prompt?: string | null
   status_loja?: string | null
-  endereco?: string | null
+  /** Endereço da loja/canal (N8N envia `endereco_loja`). */
+  endereco_loja?: string | null
   horario_semana?: string | null
   horario_sabado?: string | null
   horario_domingo?: string | null
@@ -30,7 +31,12 @@ export type AgenteResponderBody = {
   tempo_pausa?: string | number | null
   tempo_resposta?: string | number | null
   ai_assinatura_enabled?: boolean | string | null
-  fase_teste?: string | number | boolean | null
+  /** Se o workspace está em fase de teste. */
+  fase_teste?: boolean | null
+  /** URL base do aplicativo (N8N → webhook orçamento). */
+  url_aplicativo?: string | null
+  /** Header ngrok skip browser warning. */
+  ngrok_skip_browser_warning?: boolean | null
   /** telefone remoto (orcamentopronto) */
   telefone?: string | null
   email?: string | null
@@ -46,6 +52,8 @@ export type AgenteResponderBody = {
   loja_aberta?: boolean | null
   /** Se a loja aceita agendar pedido. */
   agenda_pedido?: boolean | null
+  /** Contexto de produtos da conversa (texto livre; pode ser null). */
+  produtos_contexto?: string | null
   model?: string | null
   max_tool_rounds?: number | null
 }
@@ -98,7 +106,7 @@ export type AgenteContext = {
   phone: string | null
   property_prompt: string | null
   status_loja: string | null
-  endereco: string | null
+  endereco_loja: string | null
   horario_semana: string | null
   horario_sabado: string | null
   horario_domingo: string | null
@@ -114,7 +122,9 @@ export type AgenteContext = {
   tempo_pausa: string | null
   tempo_resposta: string | null
   ai_assinatura_enabled: string | null
-  fase_teste: string | null
+  fase_teste: boolean | null
+  url_aplicativo: string | null
+  ngrok_skip_browser_warning: boolean | null
   telefone: string | null
   email: string | null
   /** Chave Pix aleatória; null se o workspace não tiver. */
@@ -124,6 +134,8 @@ export type AgenteContext = {
   taxas_cartao: Record<string, number> | string | null
   loja_aberta: boolean | null
   agenda_pedido: boolean | null
+  /** Contexto de produtos da conversa; null se não enviado. */
+  produtos_contexto: string | null
   model: string
   max_tool_rounds: number
   context_window: number

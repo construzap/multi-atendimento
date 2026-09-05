@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import type { DocumentMetadata, ProdutoEmbeddingPayload } from '#shared/types/vectorStore'
 
 const SELECT_VIEW =
-  'id, workspace_id, nome, codigo, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, imagens, status, envia_foto, descricao, termos_pesquisa, termos_pesquisa_busca, preco_custo, preco_promocional, codigo_barras_ean, parent_id, tem_variacoes, atributos, categoria, variacoes'
+  'id, workspace_id, nome, codigo, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, imagens, status, envia_foto, descricao, termos_pesquisa, termos_pesquisa_busca, preco_custo, preco_promocional, codigo_barras_ean, largura, altura, comprimento, parent_id, tem_variacoes, atributos, categoria, variacoes'
 
 export { SELECT_VIEW as SELECT_VIEW_PRODUTOS_EMBEDDING }
 
@@ -79,13 +79,17 @@ export function parseEnviaFoto(raw: unknown): boolean {
   return Boolean(raw)
 }
 
-/** Entrada do SHA-256: content + campos de metadata que disparam reindexação no sync. */
+/** Entrada do SHA-256: content + campos que disparam reindexação (mesmo fora do content). */
 function buildContentHashInput(
   content: string,
   workspaceId: number,
   termosPesquisa: string | null,
   imagensUrls: string[],
   enviaFoto: boolean,
+  pesoKg: string,
+  largura: string,
+  altura: string,
+  comprimento: string,
 ): string {
   return [
     content,
@@ -93,6 +97,10 @@ function buildContentHashInput(
     `workspace_id:${String(workspaceId)}`,
     `imagens_urls:${imagensUrls.join('|')}`,
     `envia_foto:${enviaFoto ? '1' : '0'}`,
+    `peso_kg:${pesoKg}`,
+    `largura:${largura}`,
+    `altura:${altura}`,
+    `comprimento:${comprimento}`,
   ].join('\n')
 }
 
@@ -123,9 +131,23 @@ export function buildProdutoEmbeddingPayload(
 
   const imagensUrls = extrairImagensUrls(row)
   const enviaFoto = parseEnviaFoto(row.envia_foto)
+  const pesoKg = formatValor(row.peso_kg)
+  const largura = formatValor(row.largura)
+  const altura = formatValor(row.altura)
+  const comprimento = formatValor(row.comprimento)
   const contentHash = createHash('sha256')
     .update(
-      buildContentHashInput(content, workspaceId, termoPesquisa, imagensUrls, enviaFoto),
+      buildContentHashInput(
+        content,
+        workspaceId,
+        termoPesquisa,
+        imagensUrls,
+        enviaFoto,
+        pesoKg,
+        largura,
+        altura,
+        comprimento,
+      ),
     )
     .digest('hex')
 
