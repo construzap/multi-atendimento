@@ -36,6 +36,7 @@ const emit = defineEmits<{
   iniciarEdicao: [item: ItemSelecaoMultipla]
   eliminar: [item: ItemSelecaoMultipla]
   abrirCriar: []
+  abrirGerenciar: []
   hoverDestaque: [idx: number]
 }>()
 </script>
@@ -69,7 +70,16 @@ const emit = defineEmits<{
   <div v-if="buscando" class="px-4 py-3 text-sm text-slate-400">A procurar…</div>
 
   <template v-else>
-    <div class="shrink-0 border-b border-slate-700/60 px-3 py-2">
+    <div class="shrink-0 space-y-2 border-b border-slate-700/60 px-3 py-2">
+      <button
+        type="button"
+        class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-sky-500/70 bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-sky-400 disabled:opacity-60"
+        :disabled="disabled"
+        @mousedown.prevent="emit('abrirGerenciar')"
+      >
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">manage_search</span>
+        {{ config.labelBotaoGerenciar }}
+      </button>
       <button
         type="button"
         class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/70 bg-amber-200/95 px-4 py-2.5 text-sm font-semibold text-slate-900 hover:bg-amber-300 disabled:opacity-60"

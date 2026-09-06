@@ -63,7 +63,7 @@ export async function loadCanalAgenteCredenciais(
     throw createError({
       statusCode: 400,
       statusMessage:
-        'Canal sem api_key_encrypted configurada (ou descriptografia vazia).',
+        'API key da OpenAI não cadastrada neste canal. Configure a API key na página de Canais.',
     })
   }
 
@@ -80,6 +80,55 @@ export async function loadCanalAgenteCredenciais(
     api_key: apiKey,
     model_name: modelName,
     url,
+  }
+}
+
+/**
+ * Resolve credenciais OpenAI a partir do workspace:
+ * busca canais ativos e usa um que tenha `api_key_encrypted`.
+ * Se nenhum tiver, orienta configurar na página de Canais.
+ */
+export async function loadWorkspaceOpenAiCredenciais(
+  event: H3Event,
+  workspaceId: number,
+): Promise<CanalAgenteCredenciais & { canal_id: number }> {
+  const admin = serverSupabaseServiceRole<any>(event)
+  const { data, error } = await admin
+    .from('canais')
+    .select('id, api_key_encrypted')
+    .eq('workspace_id', workspaceId)
+    .is('deleted_at', null)
+    .order('id', { ascending: true })
+
+  if (error) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: `Falha ao listar canais do workspace: ${error.message}`,
+    })
+  }
+
+  const rows = (data ?? []) as Array<{ id: number; api_key_encrypted: string | null }>
+  const comKey = rows.filter(
+    (r) => typeof r.api_key_encrypted === 'string' && r.api_key_encrypted.trim().length > 0,
+  )
+
+  if (comKey.length === 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage:
+        'Nenhum canal deste workspace tem API key da OpenAI cadastrada. Configure a API key na página de Canais.',
+    })
+  }
+
+  const escolhido = comKey[0]!
+  const credenciais = await loadCanalAgenteCredenciais(event, {
+    workspace_id: workspaceId,
+    canal_id: escolhido.id,
+  })
+
+  return {
+    ...credenciais,
+    canal_id: escolhido.id,
   }
 }
 

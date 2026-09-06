@@ -14,6 +14,7 @@ import {
   countProdutosIndexaveis,
   fetchProdutosIndexaveisChunk,
 } from '../../../utils/enviarParaIa/produtosIndexaveis'
+import { loadWorkspaceOpenAiCredenciais } from '../../../utils/agente/loadCanalCredenciais'
 
 type Body = {
   workspace_id?: unknown
@@ -45,7 +46,7 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
 
   await checkWorkspace(event, workspaceId, userId)
 
-  const config = useRuntimeConfig(event)
+  const credenciais = await loadWorkspaceOpenAiCredenciais(event, workspaceId)
   const total = await countProdutosIndexaveis(event, workspaceId)
   const rows = await fetchProdutosIndexaveisChunk(event, workspaceId, offset, limit)
 
@@ -75,7 +76,7 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
   if (toEmbed.length) {
     try {
       const embeddings = await createEmbeddings(
-        String(config.openaiApiKey ?? ''),
+        credenciais.api_key,
         toEmbed.map((p) => p!.content),
         event,
       )

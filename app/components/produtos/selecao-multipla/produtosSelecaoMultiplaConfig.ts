@@ -10,6 +10,7 @@ export const CONFIG_SELECAO_MULTIPLA = {
   tituloEliminar: 'Eliminar termo',
   labelNomeCampo: 'Nome do termo',
   labelBotaoCriar: 'Criar termo de pesquisa',
+  labelBotaoGerenciar: 'Gerenciar termos',
   placeholderCelula: 'Selecionar termos…',
   placeholderFiltro: 'Buscar termo…',
   placeholderEdicao: 'Nome do termo',

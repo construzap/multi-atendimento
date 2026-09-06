@@ -38,19 +38,18 @@ export async function openaiChatCompletions(
     tools?: OpenAiToolDefinition[]
     tool_choice?: 'auto' | 'none' | 'required'
     temperature?: number
-    /** API key do canal (descriptografada). Se omitida, usa NUXT_OPENAI_API_KEY. */
+    /** API key do canal (descriptografada). Obrigatória — sem fallback de env. */
     apiKey?: string
     /** URL do canal (base ou endpoint completo). */
     baseUrl?: string | null
   },
 ): Promise<OpenAiChatCompletionResponse> {
-  const config = useRuntimeConfig(event)
-  const apiKey = String(params.apiKey ?? config.openaiApiKey ?? '').trim()
+  const apiKey = String(params.apiKey ?? '').trim()
   if (!apiKey) {
     throw createError({
-      statusCode: 500,
+      statusCode: 400,
       statusMessage:
-        'API key do agente ausente (canal.api_key_encrypted ou NUXT_OPENAI_API_KEY).',
+        'API key da OpenAI não cadastrada neste canal. Configure a API key na página de Canais.',
     })
   }
 

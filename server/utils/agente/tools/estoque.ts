@@ -3,10 +3,16 @@ import { argStr, ctxStr, type ToolDef } from './helpers'
 export const estoqueTool: ToolDef = {
   name: 'estoque',
   description:
-    'Chame essa ferramenta quando precisar  de informações sobre nossos produtos. \n\n' +
+    'Chame essa ferramenta quando precisar de informações sobre nossos produtos.\n\n' +
+    '## Quando o cliente perguntar sobre qualquer produto, chame e acione imediatamente a ferramenta <estoque>!\n\n' +
+    'REGRA CRÍTICA — NÃO INVENTAR QUANTIDADE:\n' +
+    'Nunca coloque "1", "um", "uma" ou qualquer número no campo produtos_ se o cliente NÃO disse quantidade.\n' +
+    'Pergunta de preço/valor ("qual o valor...", "quanto custa...", "tem o preço do...") = SEM quantidade.\n' +
+    'Ex.: cliente: "qual o valor do latão de Brahma" → envie exatamente "latão de Brahma" (NÃO "1 latão de Brahma").\n' +
+    'Ex.: cliente: "quanto custa a Brahma" → envie "Brahma" (NÃO "1 Brahma").\n' +
+    'Só inclua quantidade se o cliente falou número ou por extenso (ex.: "2", "dois", "meio").\n\n' +
     'Lembrete: Caso o cliente solicite uma lista de produtos, busque sempre um produto de cada vez.\n\n' +
     'Atenção: caso tenha mais de um produto, chame para cada produto individual!\n\n' +
-    '## Quando o cliente perguntar sobre qualquer produto, chame e acione imediatamente a ferramenta <estoque>!\n\n' +
     'REGRA CRÍTICA DE PROCESSAMENTO: UM POR UM\n' +
     'Ao receber um pedido com múltiplos itens, siga o protocolo de Chamada Individual Obrigatória. A ferramenta <estoque> só processa um (1) único produto por vez.\n\n' +
     'Protocolo de Execução:\n' +
@@ -16,11 +22,12 @@ export const estoqueTool: ToolDef = {
     'REGRA DE QUANTIDADE E EMBALAGEM:\n' +
     'Quando o cliente informar quantidade e/ou tipo de embalagem/unidade, inclua TUDO no campo produtos_ exatamente como ele pediu — quantidade numérica (ou por extenso convertida), tipo de embalagem/unidade e nome do produto.\n' +
     'Não resuma nem omita a embalagem. Ex.: "4 fardos de Cimento CP II", não apenas "Cimento CP II".\n' +
-    'Se o cliente NÃO informou quantidade nem embalagem, envie apenas o nome do produto.\n\n' +
-    'Proibido: enviar listas, múltiplos produtos ou termos genéricos em uma única chamada.\n\n' +
-    'ID DO PRODUTO (OBRIGATÓRIO PARA ORÇAMENTO/FRETE):\n' +
+    'Se o cliente NÃO informou quantidade: NÃO invente "1" — envie embalagem+nome ou só o nome.\n\n' +
+    'Proibido: enviar listas, múltiplos produtos ou termos genéricos em uma única chamada.\n' +
+    'Proibido: inventar quantidade (incluindo "1" / "um") quando o cliente não informou.\n\n' +
+    'ID DO PRODUTO (OBRIGATÓRIO PARA ORÇAMENTO):\n' +
     'A resposta da <estoque> inclui o id numérico do produto (ex.: 7203). ' +
-    'Guarde esse número — ele é o único valor válido para o campo id em <orcamentopronto> e <frete>. ' +
+    'Guarde esse número — ele é o único valor válido para o campo id em <orcamentopronto>. ' +
     'Nunca use o nome do produto como id.',
   parameters: {
     type: 'object',
@@ -28,26 +35,27 @@ export const estoqueTool: ToolDef = {
       produtos_: {
         type: 'string',
         description:
-          'Um único produto por chamada, com quantidade e embalagem/unidade quando o cliente informou.\n\n' +
-          'Formato: "{quantidade} {embalagem/unidade} de {nome do produto}" ou "{quantidade} {nome do produto}".\n\n' +
-          'Inclua quantidade E tipo de embalagem/unidade sempre que o cliente mencionar. Preserve abreviações comuns expandindo quando necessário (cx = caixa, pk/pek/pack = pack, fd = fardo, etc.).\n\n' +
-          'Exemplos de como o cliente pode pedir (envie nesse espírito):\n' +
-          '- "um milheiro de {produto}"\n' +
-          '- "4 fardos de {produto}" / "1 fardo de {produto}" / "quarenta fardinhos de {produto}"\n' +
-          '- "2 caixas de {produto}" / "uma caixa de {produto}" / "3 cx de {produto}"\n' +
-          '- "5 {produto}" / "um {produto}" / "4{produto}" (sem espaço)\n' +
-          '- "2 litros de {produto}" / "35 litrinho de {produto}"\n' +
-          '- "um pack de {produto}" / "3 pek de {produto}"\n' +
-          '- "latao de {produto}"\n' +
-          '- "meio metro de {produto}"\n' +
-          '- "0,5 de {produto}" / "metade de {produto}"\n\n' +
-          'Regras:\n' +
-          '- Se informou quantidade + embalagem: envie os três (ex.: "4 fardos de Cimento CP II").\n' +
-          '- Se informou só quantidade: envie quantidade + produto (ex.: "5 Parafuso 6x40").\n' +
-          '- Se informou só embalagem/unidade sem número: envie como disse (ex.: "latao de Tinta Branca").\n' +
-          '- Se NÃO informou quantidade nem embalagem: envie só o nome do produto.\n' +
-          '- Nunca invente quantidade ou embalagem que o cliente não disse.\n\n' +
-          'Coloque o preço do produto se foi de cartão (a prazo) ou à vista, quando aplicável.',
+          'Um único produto por chamada. COPIE o que o cliente pediu; NÃO complete com quantidade inventada.\n\n' +
+          'Formatos permitidos (escolha o que o cliente realmente disse):\n' +
+          '- Só nome: "{produto}"\n' +
+          '- Só embalagem/unidade + nome: "{embalagem} de {produto}" (ex.: "latão de Brahma")\n' +
+          '- Quantidade + embalagem + nome: "{quantidade} {embalagem} de {produto}" — SÓ se o cliente disse a quantidade\n' +
+          '- Quantidade + nome: "{quantidade} {produto}" — SÓ se o cliente disse a quantidade\n\n' +
+          'Exemplos CORRETOS (consulta de preço / sem quantidade):\n' +
+          '- Cliente: "qual o valor do latão de Brahma" → "latão de Brahma"\n' +
+          '- Cliente: "quanto custa a Heineken" → "Heineken"\n' +
+          '- Cliente: "tem preço do pack de Amstel?" → "pack de Amstel"\n\n' +
+          'Exemplos CORRETOS (com quantidade dita pelo cliente):\n' +
+          '- "4 fardos de Cimento CP II"\n' +
+          '- "2 caixas de {produto}" / "3 cx de {produto}"\n' +
+          '- "5 Parafuso 6x40"\n' +
+          '- "2 litros de {produto}"\n' +
+          '- "meio metro de {produto}" / "0,5 de {produto}"\n\n' +
+          'Exemplos ERRADOS (proibido):\n' +
+          '- Cliente não disse quantidade → NÃO envie "1 latão de Brahma" nem "um latão de Brahma"\n' +
+          '- Cliente não disse quantidade → NÃO envie "1 Brahma"\n\n' +
+          'Preserve abreviações comuns expandindo quando necessário (cx = caixa, pk/pek/pack = pack, fd = fardo, etc.).\n' +
+          'Nunca invente quantidade ou embalagem que o cliente não disse.',
       },
     },
     required: ['produtos_'],

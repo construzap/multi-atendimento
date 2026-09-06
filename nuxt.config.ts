@@ -41,8 +41,8 @@ export default defineNuxtConfig({
     // --- Pusher — só servidor (override: NUXT_PUSHER_SECRET) ---
     pusherSecret: '',
 
-    // --- OpenAI — embeddings (override: NUXT_OPENAI_*) ---
-    openaiApiKey: '',
+    // --- OpenAI — embeddings (override: NUXT_OPENAI_EMBEDDING_MODEL) ---
+    // API key vem do canal (api_key_encrypted), não de env global.
     openaiEmbeddingModel: 'text-embedding-3-small',
 
     // --- Supabase Vector — 2º banco pgvector (override: NUXT_VECTOR_*) ---

@@ -240,6 +240,30 @@ export type ProdutoTermoPesquisaItem = {
   nome: string
 }
 
+/** Produto resumido em `view_termos_pesquisa_detalhada.produtos`. */
+export type ProdutoTermoPesquisaDetalhadoProduto = {
+  id: number
+  nome: string
+}
+
+/** Linha de `public.view_termos_pesquisa_detalhada`. */
+export type ProdutoTermoPesquisaDetalhado = {
+  id: number
+  nome: string
+  workspace_id: number
+  total_usos: number
+  produtos: ProdutoTermoPesquisaDetalhadoProduto[]
+  em_uso: boolean
+}
+
+/** Resposta de `GET /api/produtos/termos-de-pesquisa/detalhados`. */
+export type ProdutosTermosPesquisaDetalhadosResponse = {
+  data: ProdutoTermoPesquisaDetalhado[]
+  has_more: boolean
+  offset: number
+  limit: number
+}
+
 /** Resposta de `GET /api/produtos/termos-de-pesquisa`. */
 export type ProdutosTermosPesquisaListaResponse = {
   data: ProdutoTermoPesquisaItem[]

@@ -23,7 +23,7 @@ export async function createEmbeddings(
   if (!key) {
     throw createError({
       statusCode: 500,
-      statusMessage: 'OpenAI API key não configurada (NUXT_OPENAI_API_KEY).',
+      statusMessage: 'API key da OpenAI não cadastrada. Configure a API key na página de Canais.',
     })
   }
 

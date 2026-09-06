@@ -1,5 +1,6 @@
 import type { H3Event } from 'h3'
 import type { VectorSearchResult } from '#shared/types/vectorStore'
+import { loadWorkspaceOpenAiCredenciais } from '../agente/loadCanalCredenciais'
 import { searchSimilar } from './documentsVectorStore'
 import { createEmbedding } from './openaiEmbeddings'
 import type { BuscarParams } from './parseBuscarParams'
@@ -8,9 +9,9 @@ export async function executeVectorSearch(
   event: H3Event,
   params: BuscarParams,
 ): Promise<VectorSearchResult> {
-  const config = useRuntimeConfig(event)
+  const credenciais = await loadWorkspaceOpenAiCredenciais(event, params.workspaceId)
   const queryEmbedding = await createEmbedding(
-    String(config.openaiApiKey ?? ''),
+    credenciais.api_key,
     params.query,
     event,
   )

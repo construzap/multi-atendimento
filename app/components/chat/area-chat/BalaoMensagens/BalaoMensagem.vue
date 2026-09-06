@@ -58,6 +58,13 @@ const isLocation = computed(
   () => t.value === 'locationMessage' || t.value === 'liveLocationMessage'
 )
 
+/** Mídia persistida sem URL (ex.: falha no upload B2) — orientar a ver no WhatsApp. */
+const midiaSemUrl = computed(() => {
+  if (isText.value || isLocation.value) return false
+  if (!(isImage.value || isVideo.value || isDoc.value || isAudio.value || isSticker.value)) return false
+  return !(props.mensagem.media_url ?? '').trim()
+})
+
 const ehIaEnvio = computed(() => Boolean(props.mensagem.from_ia && props.mensagem.from_me))
 
 const mensagensStore = useMensagensStore()
@@ -103,6 +110,11 @@ function onResponder() {
         :mensagem-citada="mensagemCitada"
       />
       <MessageLocation v-else-if="isLocation" :mensagem="mensagem" />
+      <MessageUnsupported
+        v-else-if="midiaSemUrl"
+        :mensagem="mensagem"
+        motivo="midia_sem_url"
+      />
       <MessageImage v-else-if="isImage" :mensagem="mensagem" />
       <MessageVideo v-else-if="isVideo" :mensagem="mensagem" />
       <MessageDocument v-else-if="isDoc" :mensagem="mensagem" />

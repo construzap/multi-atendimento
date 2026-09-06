@@ -12,6 +12,7 @@ import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
+import ModalGerenciarTermos from './ModalGerenciarTermos.vue'
 import ProdutosSelecaoMultiplaPainel from './ProdutosSelecaoMultiplaPainel.vue'
 import { CONFIG_SELECAO_MULTIPLA, type ItemSelecaoMultipla } from './produtosSelecaoMultiplaConfig'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
@@ -50,6 +51,7 @@ const criando = ref(false)
 const itemEmEdicao = ref<ItemSelecaoMultipla | null>(null)
 const nomeModal = ref('')
 const modalFormAberto = ref(false)
+const modalGerenciarAberto = ref(false)
 const modoModal = ref<'criar' | 'editar'>('criar')
 const itemAEliminar = ref<ItemSelecaoMultipla | null>(null)
 const alertaEliminarAberto = ref(false)
@@ -179,7 +181,7 @@ function detachScrollListeners() {
 
 function onDocumentMouseDown(ev: MouseEvent) {
   if (!painelAberto.value || props.disabled) return
-  if (modalFormAberto.value || alertaEliminarAberto.value) return
+  if (modalFormAberto.value || alertaEliminarAberto.value || modalGerenciarAberto.value) return
   const t = ev.target as Node
   if (rootRef.value?.contains(t) || painelDropdownRef.value?.contains(t)) return
   painelAberto.value = false
@@ -289,6 +291,12 @@ function abrirCriar() {
   itemEmEdicao.value = null
   nomeModal.value = filtro.value.trim()
   modalFormAberto.value = true
+}
+
+function abrirGerenciar() {
+  if (props.disabled) return
+  painelAberto.value = false
+  modalGerenciarAberto.value = true
 }
 
 function iniciarEdicao(item: ItemSelecaoMultipla) {
@@ -494,11 +502,17 @@ const itemSugestaoClass = (idx: number, selecionado: boolean) =>
           @iniciar-edicao="iniciarEdicao"
           @eliminar="pedirEliminar"
           @abrir-criar="abrirCriar"
+          @abrir-gerenciar="abrirGerenciar"
           @hover-destaque="hoverDestaque"
         />
       </div>
     </Teleport>
   </div>
+
+  <ModalGerenciarTermos
+    v-model:open="modalGerenciarAberto"
+    :workspace-id="workspaceId"
+  />
 
   <BaseModal
     v-model:open="modalFormAberto"

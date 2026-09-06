@@ -1,16 +1,27 @@
 import { defineStore } from 'pinia'
 import type {
+  ProdutoTermoPesquisaDetalhado,
   ProdutoTermoPesquisaItem,
+  ProdutosTermosPesquisaDetalhadosResponse,
   ProdutosTermosPesquisaListaResponse,
 } from '#shared/types/produtos'
 
 const LIMITE_LISTA_COMPLETA = 2000
 const LIMITE_TYPEAHEAD = 30
+const PAGE_TODOS_TERMOS = 20
 
 export const useProdutoTermosPesquisaStore = defineStore('produtoTermosPesquisa', {
   state: () => ({
     listaCompletaPorWorkspaceId: {} as Record<number, ProdutoTermoPesquisaItem[] | undefined>,
     fetchesEmCurso: {} as Record<number, Promise<void>>,
+    /** Lista detalhada do modal «Gerenciar termos» (paginada). */
+    todos_termos: [] as ProdutoTermoPesquisaDetalhado[],
+    todosTermosWorkspaceId: null as number | null,
+    todosTermosOffset: 0,
+    todosTermosHasMore: false,
+    todosTermosPending: false,
+    /** Filtro de nome ativo na listagem detalhada (`q` da API). */
+    todosTermosQ: '' as string,
   }),
 
   actions: {
@@ -92,9 +103,115 @@ export const useProdutoTermosPesquisaStore = defineStore('produtoTermosPesquisa'
       this.listaCompletaPorWorkspaceId[workspaceId] = lista
     },
 
-    invalidarWorkspace(workspaceId: number) {
+    limparCache(workspaceId: number) {
       delete this.listaCompletaPorWorkspaceId[workspaceId]
       delete this.fetchesEmCurso[workspaceId]
+    },
+
+    limparTodosTermos() {
+      this.todos_termos = []
+      this.todosTermosWorkspaceId = null
+      this.todosTermosOffset = 0
+      this.todosTermosHasMore = false
+      this.todosTermosPending = false
+      this.todosTermosQ = ''
+    },
+
+    atualizarNomeTodosTermos(termoId: number, nome: string) {
+      this.todos_termos = this.todos_termos.map((t) =>
+        t.id === termoId ? { ...t, nome } : t,
+      )
+    },
+
+    removerTodosTermos(termoId: number) {
+      this.todos_termos = this.todos_termos.filter((t) => t.id !== termoId)
+      if (this.todosTermosOffset > 0) this.todosTermosOffset = Math.max(0, this.todosTermosOffset - 1)
+    },
+
+    /**
+     * Após transferir vínculos e eliminar a origem: remove o termo de origem
+     * e funde os produtos no destino (se estiver na lista carregada).
+     */
+    aposTransferirTodosTermos(
+      origemId: number,
+      destinoId: number,
+      produtosOrigem: ProdutoTermoPesquisaDetalhado['produtos'],
+    ) {
+      const produtos = Array.isArray(produtosOrigem) ? produtosOrigem : []
+      this.todos_termos = this.todos_termos
+        .filter((t) => t.id !== origemId)
+        .map((t) => {
+          if (t.id !== destinoId) return t
+          const ids = new Set(t.produtos.map((p) => p.id))
+          const novos = produtos.filter((p) => p.id > 0 && !ids.has(p.id))
+          const merged = [...t.produtos, ...novos]
+          return {
+            ...t,
+            produtos: merged,
+            total_usos: merged.length,
+            em_uso: merged.length > 0,
+          }
+        })
+      if (this.todosTermosOffset > 0) this.todosTermosOffset = Math.max(0, this.todosTermosOffset - 1)
+    },
+
+    /**
+     * Carrega página de `view_termos_pesquisa_detalhada` (20 itens).
+     * `append: false` reinicia a lista; `true` acrescenta a próxima página.
+     * `q` filtra por nome (vazio = listagem padrão).
+     */
+    async carregarTodosTermos(
+      workspaceId: number,
+      opts?: { append?: boolean; q?: string },
+    ): Promise<void> {
+      if (workspaceId < 1) return
+
+      const append = opts?.append === true
+      if (append && this.todosTermosPending) return
+      if (append && !this.todosTermosHasMore) return
+
+      const q =
+        opts?.q !== undefined
+          ? String(opts.q).trim()
+          : append
+            ? this.todosTermosQ
+            : ''
+
+      if (!append) {
+        this.todos_termos = []
+        this.todosTermosOffset = 0
+        this.todosTermosHasMore = false
+        this.todosTermosWorkspaceId = workspaceId
+        this.todosTermosQ = q
+      }
+
+      const offset = append ? this.todosTermosOffset : 0
+      this.todosTermosPending = true
+      try {
+        const query: Record<string, string | number> = {
+          workspace_id: workspaceId,
+          offset,
+        }
+        if (q.length > 0) query.q = q
+
+        const res = await $fetch<ProdutosTermosPesquisaDetalhadosResponse>(
+          '/api/produtos/termos-de-pesquisa/detalhados',
+          { query },
+        )
+        const batch = res.data ?? []
+        this.todos_termos = append ? [...this.todos_termos, ...batch] : batch
+        this.todosTermosOffset = offset + batch.length
+        this.todosTermosHasMore = Boolean(res.has_more)
+        this.todosTermosWorkspaceId = workspaceId
+      } finally {
+        this.todosTermosPending = false
+      }
+    },
+
+    async carregarMaisTodosTermos(): Promise<void> {
+      const wid = this.todosTermosWorkspaceId
+      if (wid == null || wid < 1) return
+      await this.carregarTodosTermos(wid, { append: true })
     },
   },
 })

@@ -86,9 +86,12 @@ function onCancelar() {
       </div>
     </template>
 
-    <p class="font-body text-sm leading-relaxed text-on-surface-variant dark:text-dark-on-surface-variant">
-      {{ texto }}
-    </p>
+    <div class="space-y-4">
+      <p class="font-body text-sm leading-relaxed text-on-surface-variant dark:text-dark-on-surface-variant">
+        {{ texto }}
+      </p>
+      <slot />
+    </div>
 
     <template #footer>
       <div v-if="mostrarCancelar" class="w-full sm:w-40">

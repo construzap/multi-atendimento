@@ -119,6 +119,11 @@ function formatarData(iso: string | null | undefined): string {
                 <span v-if="etapa.ms != null"> · {{ etapa.ms }} ms</span>
               </span>
             </div>
+            <pre
+              v-if="etapa.detalhe && Object.keys(etapa.detalhe).length"
+              class="mt-2 overflow-x-auto rounded-lg bg-slate-950/90 p-2 text-[11px] text-slate-100"
+              :class="!etapa.ok ? 'border border-red-500/40' : ''"
+            >{{ formatarJson(etapa.detalhe) }}</pre>
           </li>
         </ul>
       </div>
