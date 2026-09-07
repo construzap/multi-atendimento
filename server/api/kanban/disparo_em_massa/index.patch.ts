@@ -455,25 +455,36 @@ async function buscarConversasKeys(
   fonteCanaisIds: number[],
   enviaParaGrupo: boolean,
 ): Promise<string[]> {
-  let query = admin
-    .from(VIEW_KANBAN_CONVERSAS)
-    .select('conversa_key')
-    .eq('workspace_id', workspaceId)
-    .in('coluna_id', colunaIds)
-    .in('id_canal', fonteCanaisIds)
-
-  query = aplicarFiltroIsGroupDestinatarios(query, enviaParaGrupo)
-
-  const { data, error } = await query
-
-  if (error) {
-    throw createError({ statusCode: 500, statusMessage: error.message })
-  }
-
+  const pageSize = 1000
+  let from = 0
   const keys = new Set<string>()
-  for (const row of (data ?? []) as Array<{ conversa_key?: unknown }>) {
-    const key = String(row.conversa_key ?? '').trim()
-    if (key) keys.add(key)
+
+  while (true) {
+    let query = admin
+      .from(VIEW_KANBAN_CONVERSAS)
+      .select('conversa_key')
+      .eq('workspace_id', workspaceId)
+      .in('coluna_id', colunaIds)
+      .in('id_canal', fonteCanaisIds)
+
+    query = aplicarFiltroIsGroupDestinatarios(query, enviaParaGrupo)
+
+    const { data, error } = await query
+      .order('conversa_key', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (error) {
+      throw createError({ statusCode: 500, statusMessage: error.message })
+    }
+
+    const chunk = (data ?? []) as Array<{ conversa_key?: unknown }>
+    for (const row of chunk) {
+      const key = String(row.conversa_key ?? '').trim()
+      if (key) keys.add(key)
+    }
+
+    if (chunk.length < pageSize) break
+    from += pageSize
   }
 
   return [...keys]
