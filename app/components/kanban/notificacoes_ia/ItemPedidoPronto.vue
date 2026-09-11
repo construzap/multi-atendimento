@@ -9,8 +9,8 @@ import {
   labelEntregaStatus,
   labelTipoSolicitacao,
   entregaStatusIndicadorClass,
+  normalizeTotalOrcamento,
   parseProdutosNotificacao,
-  resolveTotalOrcamento,
 } from './parseProdutosNotificacao'
 
 const props = defineProps<{
@@ -25,9 +25,7 @@ const emit = defineEmits<{
 
 const qtdItens = computed(() => parseProdutosNotificacao(props.item.produtos).length)
 
-const totalExibicao = computed(() =>
-  resolveTotalOrcamento(props.item.total_orcamento, props.item.forma_pagamento),
-)
+const totais = computed(() => normalizeTotalOrcamento(props.item.total_orcamento))
 
 const agoraMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | null = null
@@ -123,8 +121,13 @@ function textoOuTraco(v: string | null | undefined): string {
 
         <template v-if="isPedidoPronto(item.tipo_solicitacao)">
           <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-            <span class="font-semibold tabular-nums text-on-surface dark:text-dark-on-surface">
-              {{ formatMoedaBr(totalExibicao) }}
+            <span class="tabular-nums text-on-surface dark:text-dark-on-surface">
+              <span class="text-on-surface-variant dark:text-dark-on-surface-variant">À vista:</span>
+              <span class="ml-1 font-semibold">{{ formatMoedaBr(totais.total_a_vista) }}</span>
+            </span>
+            <span class="tabular-nums text-on-surface dark:text-dark-on-surface">
+              <span class="text-on-surface-variant dark:text-dark-on-surface-variant">Prazo:</span>
+              <span class="ml-1 font-semibold">{{ formatMoedaBr(totais.total_a_prazo) }}</span>
             </span>
             <span class="text-on-surface-variant dark:text-dark-on-surface-variant">
               {{ textoOuTraco(item.forma_pagamento) }}

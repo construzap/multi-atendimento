@@ -7,6 +7,7 @@ import BaseInput from '~/components/BaseInput.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
+import { resolverPrecoPrazo } from '#shared/utils/resolverPrecoPrazo'
 import { mensagemErroFetch } from '~/stores/canais'
 import { parseDecimalPtBr } from '~/utils/mapearLinhasImportacaoProduto'
 
@@ -71,8 +72,17 @@ function strOuNull(v: string): string | null {
   return t.length ? t : null
 }
 
-function montarLinha(): ProdutoImportarLinha {
-  const precoN = parseDecimalPtBr(preco.value) ?? 0
+function montarLinha(): ProdutoImportarLinha | null {
+  const precoRaw = preco.value.trim()
+  let precoN: number | null = null
+  if (precoRaw.length) {
+    const n = parseDecimalPtBr(precoRaw)
+    if (n == null || n < 0) {
+      toast.error('Preço à vista inválido.')
+      return null
+    }
+    precoN = n
+  }
   const precoPrazoN = parseDecimalPtBr(precoPrazo.value)
   const pesoN = parseDecimalPtBr(pesoKg.value)
   const linha: ProdutoImportarLinha = {
@@ -81,7 +91,7 @@ function montarLinha(): ProdutoImportarLinha {
     unidade_venda: strOuNull(unidadeVenda.value),
     marca: strOuNull(marca.value),
     preco: precoN,
-    preco_prazo: precoPrazoN,
+    preco_prazo: resolverPrecoPrazo(precoN, precoPrazoN),
     peso_kg: pesoN,
     estoque: null,
     imagem_url: strOuNull(imagemUrl.value),
@@ -105,13 +115,16 @@ async function salvar() {
     return
   }
 
+  const linha = montarLinha()
+  if (!linha) return
+
   salvando.value = true
   try {
     await $fetch<ProdutosImportarLoteResponse>('/api/produtos/importar', {
       method: 'POST',
       body: {
         workspace_id: wid,
-        linhas: [montarLinha()],
+        linhas: [linha],
       },
     })
     toast.success('Produto criado.')

@@ -6,9 +6,12 @@ import BaseButton from '~/components/BaseButton.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import ModalEnvioProdutos from '~/components/ModalEnvioProdutos.vue'
-import ProdutosSelecaoUnica from '~/components/produtos/selecao-unica/ProdutosSelecaoUnica.vue'
-import type { ItemSelecaoUnica } from '~/components/produtos/selecao-unica/produtosSelecaoUnicaConfig'
-import type { ProdutoOportunidadeVendaItem, ProdutoWorkspacePatch } from '#shared/types/produtos'
+import ProdutosSelecaoMultipla from '~/components/produtos/selecao-multipla/ProdutosSelecaoMultipla.vue'
+import type {
+  ProdutoOportunidadeVendaItem,
+  ProdutoTermoPesquisaItem,
+  ProdutoWorkspacePatch,
+} from '#shared/types/produtos'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
 import { useProdutosStore } from '~/stores/produtos'
@@ -43,8 +46,9 @@ const cadastrouNestaAbertura = ref(false)
 const itemEmCadastroChave = ref<string | null>(null)
 const nomeDraft = ref('')
 const precoVistaDraft = ref('')
-/** Termo de pesquisa (`ProdutosSelecaoUnica` / catalogo termos) — id → `termo_pesquisa`. */
-const termoSelecao = ref<ItemSelecaoUnica | null>(null)
+const unidadeVendaDraft = ref('')
+/** Termos de pesquisa (seleção múltipla, como na tabela). */
+const termosSelecionados = ref<ProdutoTermoPesquisaItem[]>([])
 const cadastrando = ref(false)
 const limiteAtingidoAberto = ref(false)
 const limiteAtingidoMensagem = ref('')
@@ -189,27 +193,23 @@ function cancelarCadastroInline() {
   itemEmCadastroChave.value = null
   nomeDraft.value = ''
   precoVistaDraft.value = ''
-  termoSelecao.value = null
+  unidadeVendaDraft.value = ''
+  termosSelecionados.value = []
   cadastrando.value = false
 }
 
 /** Mesmo contrato da tabela (`@commit` com `termos_pesquisa_ids`). */
-function aoCommitTermo(patch: ProdutoWorkspacePatch) {
+function aoCommitTermos(patch: ProdutoWorkspacePatch) {
   const ids = patch.termos_pesquisa_ids ?? []
-  const id = ids[0]
-  if (id == null || !Number.isFinite(id) || id < 1) {
-    termoSelecao.value = null
+  const wid = props.workspaceId
+  if (wid == null || wid < 1 || !ids.length) {
+    termosSelecionados.value = []
     return
   }
-  const tid = Math.trunc(id)
-  const wid = props.workspaceId
-  const nome =
-    (wid != null && wid >= 1
-      ? termosStore.getListaCompletaCopia(wid).find((t) => t.id === tid)?.nome
-      : null) ??
-    (termoSelecao.value?.id === tid ? termoSelecao.value.nome : null) ??
-    ''
-  termoSelecao.value = nome ? { id: tid, nome } : { id: tid, nome: String(tid) }
+  const lista = termosStore.getListaCompletaCopia(wid)
+  termosSelecionados.value = ids
+    .map((id) => lista.find((t) => t.id === id))
+    .filter((t): t is ProdutoTermoPesquisaItem => t != null)
 }
 
 async function carregarMais() {
@@ -225,7 +225,8 @@ function iniciarCadastro(item: ProdutoOportunidadeVendaItem) {
   itemEmCadastroChave.value = chaveItem(item)
   nomeDraft.value = String(item.produto_sugerido ?? '').trim()
   precoVistaDraft.value = ''
-  termoSelecao.value = null
+  unidadeVendaDraft.value = ''
+  termosSelecionados.value = []
   limiteAtingidoAberto.value = false
 }
 
@@ -340,7 +341,7 @@ async function confirmarCadastro(item: ProdutoOportunidadeVendaItem) {
   }
 
   const precoRaw = precoVistaDraft.value.trim()
-  let preco = 0
+  let preco: number | null = null
   if (precoRaw.length) {
     const n = parseDecimalPtBr(precoRaw)
     if (n == null || n < 0) {
@@ -358,7 +359,8 @@ async function confirmarCadastro(item: ProdutoOportunidadeVendaItem) {
       item,
       nome,
       preco,
-      termoPesquisaId: termoSelecao.value?.id ?? null,
+      unidadeVenda: unidadeVendaDraft.value.trim() || null,
+      termosPesquisaIds: termosSelecionados.value.map((t) => t.id),
     })
     cadastrouNestaAbertura.value = true
     cancelarCadastroInline()
@@ -552,16 +554,27 @@ async function confirmarCadastro(item: ProdutoOportunidadeVendaItem) {
             </div>
             <div>
               <label class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+                Unidade de venda
+              </label>
+              <input
+                v-model="unidadeVendaDraft"
+                type="text"
+                autocomplete="off"
+                placeholder="Ex: UNIDADE, SACO, FARDO, KG"
+                class="w-full rounded-xl border border-outline/40 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface placeholder:text-outline/50 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500/30 dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface"
+                :disabled="cadastrando"
+                @keydown.enter.prevent="confirmarCadastro(item)"
+              />
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
                 Categoria / Termo de pesquisa
               </label>
-              <ProdutosSelecaoUnica
-                catalogo="termos_pesquisa"
-                variant="celula"
+              <ProdutosSelecaoMultipla
                 :workspace-id="workspaceId"
-                :termo-id="termoSelecao?.id ?? null"
-                :termo-nome="termoSelecao?.nome ?? null"
+                :termos="termosSelecionados"
                 :disabled="cadastrando"
-                @commit="aoCommitTermo"
+                @commit="aoCommitTermos"
               />
             </div>
             <div class="flex flex-wrap items-center justify-end gap-2">

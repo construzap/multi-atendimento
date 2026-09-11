@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import type { KanbanCard as KanbanCardModel, KanbanColumn as KanbanColumnData, KanbanCriarContatoBody, KanbanCriarContatoResponse } from '#shared/types/kanban'
@@ -161,12 +161,23 @@ onMounted(() => {
     // force: garante `loja_aberta` após deploy (cache antigo do Pinia)
     void canaisStore.ensureCanaisLoaded(props.workspaceId, { force: true }).catch(() => {})
   }
+  void nextTick(() => setupBoardScrollSync())
 })
 
 watch(
   () => props.workspaceId,
   (wid) => {
     if (wid) void canaisStore.ensureCanaisLoaded(wid, { force: true }).catch(() => {})
+  },
+)
+
+watch(
+  () => columns.value.map((c) => `${c.id}:${c.recolhida ? 1 : 0}`).join('|'),
+  () => {
+    void nextTick(() => {
+      medirBoardScroll()
+      setupBoardScrollSync()
+    })
   },
 )
 
@@ -221,6 +232,8 @@ async function onFiltroCanalChange(raw: string) {
 
 onUnmounted(() => {
   if (buscaTimer) clearTimeout(buscaTimer)
+  boardResizeObserver?.disconnect()
+  boardResizeObserver = null
 })
 
 const dragging = ref<DragState>(null)
@@ -265,25 +278,83 @@ const textoConfirmarExclusao = computed(() => {
   return `Tem certeza que deseja excluir a etapa "${n}"? Esta ação não pode ser desfeita.`
 })
 
+/** Largura mínima padrão da coluna aberta (cabe o conteúdo do KanbanCard). */
+const COLUNA_ABERTA_MIN_PX = 280
+
 const gridStyle = computed(() => {
   const cols = columns.value
   if (cols.length <= 0) {
     return {
-      '--kanban-cols-mobile': 'minmax(0, 1fr)',
-      '--kanban-cols-desktop': 'minmax(0, 1fr)',
+      '--kanban-cols': 'minmax(0, 1fr)',
     } as Record<string, string>
   }
-  const mobile = cols
-    .map((c) => (c.recolhida ? '3rem' : 'minmax(260px, 1fr)'))
-    .join(' ')
-  const desktop = cols
-    .map((c) => (c.recolhida ? '3rem' : 'minmax(0, 1fr)'))
+  // Aberto: min fixo (não encolhe) + 1fr se sobrar espaço; senão scroll horizontal.
+  const track = cols
+    .map((c) =>
+      c.recolhida ? '3rem' : `minmax(${COLUNA_ABERTA_MIN_PX}px, 1fr)`,
+    )
     .join(' ')
   return {
-    '--kanban-cols-mobile': mobile,
-    '--kanban-cols-desktop': desktop,
+    '--kanban-cols': track,
   } as Record<string, string>
 })
+
+/** Scroll horizontal: barra no topo (abaixo da Loja) sincronizada com o board. */
+const boardScrollRef = ref<HTMLElement | null>(null)
+const scrollTopRef = ref<HTMLElement | null>(null)
+const boardScrollWidthPx = ref(0)
+const boardClientWidthPx = ref(0)
+const precisaScrollHorizontal = computed(
+  () => boardScrollWidthPx.value > boardClientWidthPx.value + 1,
+)
+let syncingScroll = false
+let boardResizeObserver: ResizeObserver | null = null
+
+function medirBoardScroll() {
+  const el = boardScrollRef.value
+  if (!el) {
+    boardScrollWidthPx.value = 0
+    boardClientWidthPx.value = 0
+    return
+  }
+  boardScrollWidthPx.value = el.scrollWidth
+  boardClientWidthPx.value = el.clientWidth
+}
+
+function onBoardScroll() {
+  if (syncingScroll) return
+  const board = boardScrollRef.value
+  const top = scrollTopRef.value
+  if (!board || !top) return
+  syncingScroll = true
+  top.scrollLeft = board.scrollLeft
+  syncingScroll = false
+}
+
+function onTopScroll() {
+  if (syncingScroll) return
+  const board = boardScrollRef.value
+  const top = scrollTopRef.value
+  if (!board || !top) return
+  syncingScroll = true
+  board.scrollLeft = top.scrollLeft
+  syncingScroll = false
+}
+
+function setupBoardScrollSync() {
+  boardResizeObserver?.disconnect()
+  boardResizeObserver = null
+  const el = boardScrollRef.value
+  if (!el || typeof ResizeObserver === 'undefined') {
+    medirBoardScroll()
+    return
+  }
+  boardResizeObserver = new ResizeObserver(() => {
+    medirBoardScroll()
+  })
+  boardResizeObserver.observe(el)
+  medirBoardScroll()
+}
 
 function abrirNovaColuna() {
   modalColunaMode.value = 'create'
@@ -977,10 +1048,27 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
       :workspace-id="workspaceId"
     />
 
+    <!-- Barra de rolagem horizontal: abaixo da Loja, acima das colunas -->
+    <div
+      v-if="columns.length > 0 && precisaScrollHorizontal"
+      ref="scrollTopRef"
+      class="kanban-scroll-top mb-2 shrink-0 overflow-x-auto overflow-y-hidden"
+      aria-label="Rolagem horizontal das colunas"
+      @scroll="onTopScroll"
+    >
+      <div
+        class="h-px"
+        :style="{ width: `${Math.max(boardScrollWidthPx, 0)}px` }"
+        aria-hidden="true"
+      />
+    </div>
+
     <div
       v-if="columns.length > 0"
-      class="kanban-board-cols grid min-h-0 flex-1 gap-5 overflow-x-auto pb-2 md:overflow-x-hidden"
+      ref="boardScrollRef"
+      class="kanban-board-cols grid min-h-0 flex-1 gap-5 overflow-x-auto pb-2"
       :style="gridStyle"
+      @scroll="onBoardScroll"
     >
       <KanbanColumn
         v-for="(c, i) in columns"
@@ -1084,15 +1172,36 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
 </template>
 
 <style scoped>
-/* Mobile: colunas abertas com min 260px; recolhidas estreitas. */
+/* Colunas: min 280px (não encolhem); se não couber, scroll horizontal. */
 .kanban-board-cols {
-  grid-template-columns: var(--kanban-cols-mobile);
+  grid-template-columns: var(--kanban-cols);
+  /* Scroll no board; a barra visível fica no topo (`.kanban-scroll-top`). */
+  scrollbar-width: none;
+}
+.kanban-board-cols::-webkit-scrollbar {
+  display: none;
 }
 
-/* Desktop: abertas dividem a tela; recolhidas ficam em 3rem. */
-@media (min-width: 768px) {
-  .kanban-board-cols {
-    grid-template-columns: var(--kanban-cols-desktop);
-  }
+/* Barra espelho no topo — só a scrollbar fica visível. */
+.kanban-scroll-top {
+  height: 14px;
+  scrollbar-gutter: stable;
+}
+.kanban-scroll-top::-webkit-scrollbar {
+  height: 10px;
+}
+.kanban-scroll-top::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.45);
+  border-radius: 999px;
+}
+.kanban-scroll-top::-webkit-scrollbar-track {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+}
+:global(.dark) .kanban-scroll-top::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+}
+:global(.dark) .kanban-scroll-top::-webkit-scrollbar-track {
+  background: rgba(51, 65, 85, 0.45);
 }
 </style>

@@ -8,6 +8,13 @@ export const orcamentoprontoTool: ToolDef = {
     '1) Com o orçamento completo (todos os produtos e quantidades definidos), chame primeiro a ferramenta <estoque> para CADA produto do orçamento (um por vez).\n' +
     '2) Guarde o id retornado pela <estoque> de cada produto.\n' +
     '3) Só então chame <orcamentopronto>, enviando em produtos um array de objetos {id, nome, quantidade} — usando exatamente o id da <estoque>, o nome do produto e a quantidade escolhida, sem preço unitário.\n\n' +
+    'ITENS INTEIROS vs COMBINAÇÃO (metade/metade, 3 sabores, etc.):\n' +
+    '- Item inteiro: apenas {id, nome, quantidade}. NÃO envie grupo nem partes.\n' +
+    '- Combinação (ex.: pizza meio a meio): uma linha por sabor, TODAS com o MESMO grupo (ex.: "g1") e o mesmo partes (2, 3 ou 4).\n' +
+    '- Em cada linha da combinação, quantidade deve ser 1 (é 1 unidade combinada, NÃO use 0.5).\n' +
+    '- Ex. metade/metade:\n' +
+    '  [{id:"7203",nome:"Calabresa",quantidade:1,grupo:"g1",partes:2},{id:"7208",nome:"Mussarela",quantidade:1,grupo:"g1",partes:2}]\n' +
+    '- Se houver 2 pizzas meio a meio diferentes, use grupos distintos (g1, g2, …).\n\n' +
     'CAMPOS OBRIGATÓRIOS NA CHAMADA:\n' +
     '- produtos, total_do_orcamento, forma_pagamento, entrega_ou_retirada, observacao, frete\n' +
     '- frete: valor do frete (ex.: "15.00") ou "gratis"/"frete gratis" se for entrega gratuita; use "0" ou "retirada" se for retirada na loja.\n' +
@@ -16,6 +23,7 @@ export const orcamentoprontoTool: ToolDef = {
     '- Se a forma de pagamento for DINHEIRO: o campo troco_para é OBRIGATÓRIO (valor com que o cliente vai pagar).\n\n' +
     'Proibido: chamar <orcamentopronto> sem ter obtido os ids via <estoque>.\n' +
     'Proibido: inventar id, enviar array vazio ou incluir preço unitário no array de produtos.\n' +
+    'Proibido: usar quantidade fracionária (0.5) — use grupo + partes com quantidade 1 em cada sabor.\n' +
     'Proibido: colocar endereço, forma de pagamento, troco_para ou "entrega/retirada" dentro de observacao.',
   parameters: {
     type: 'object',
@@ -23,7 +31,10 @@ export const orcamentoprontoTool: ToolDef = {
       produtos: {
         type: 'array',
         description:
-          'Array com um objeto por produto do orçamento. Cada item DEVE usar o id retornado pela ferramenta <estoque>, o nome do produto e a quantidade escolhida. Formato: [{id, nome, quantidade}]. Não inclua preço.',
+          'Array com um objeto por produto do orçamento. Cada item DEVE usar o id da <estoque>, o nome e a quantidade. ' +
+          'Formato base: [{id, nome, quantidade}]. ' +
+          'Se for combinação (metade/metade, 3 sabores…), adicione grupo (mesmo id nas partes) e partes (2, 3 ou 4). ' +
+          'Sem grupo = item inteiro. Não inclua preço.',
         items: {
           type: 'object',
           properties: {
@@ -39,7 +50,22 @@ export const orcamentoprontoTool: ToolDef = {
             },
             quantidade: {
               type: 'number',
-              description: 'Quantidade escolhida desse produto no orçamento',
+              description:
+                'Quantidade do item. Em combinação (mesmo grupo), use sempre 1 em cada linha (1 unidade combinada). ' +
+                'Não use frações como 0.5.',
+            },
+            grupo: {
+              type: 'string',
+              description:
+                'OPCIONAL. Só em combinação: identificador do grupo (ex.: "g1"). ' +
+                'Todas as partes da mesma unidade devem ter o MESMO grupo. ' +
+                'Omita em item inteiro.',
+            },
+            partes: {
+              type: 'number',
+              description:
+                'OPCIONAL. Só em combinação: em quantos pedaços a unidade foi dividida (2, 3 ou 4). ' +
+                'Deve ser igual em todas as linhas do mesmo grupo. Omita em item inteiro.',
             },
           },
           required: ['id', 'nome', 'quantidade'],
@@ -162,5 +188,6 @@ export const orcamentoprontoTool: ToolDef = {
     loja_aberta: ctx.loja_aberta,
     agenda_pedido: ctx.agenda_pedido,
     produtos_contexto: ctx.produtos_contexto,
+    user_id: ctxStr(ctx.user_id),
   }),
 }

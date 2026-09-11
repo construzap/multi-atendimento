@@ -9,6 +9,7 @@ import { useKanbanStore } from '~/stores/kanban'
 import { useWorkspacesStore } from '~/stores/workspaces'
 import { formatMoedaBr } from './parseProdutosNotificacao'
 import { imprimirCupomPedido } from './imprimirCupomPedido'
+import { parseLatLngTexto } from '#shared/utils/navegacaoMapas'
 
 export type LinhaPedidoCriar = {
   key: string
@@ -42,6 +43,8 @@ const STORAGE_IMPRIMIR = 'kanban.notificacoes_ia.imprimir_ao_criar'
 
 const linhas = ref<LinhaPedidoCriar[]>([])
 const formaPagamento = ref('')
+const endereco = ref('')
+const coordenadas = ref('')
 const imprimirAoCriar = ref(false)
 const criando = ref(false)
 
@@ -104,6 +107,8 @@ function lerPreferenciaImprimir(): boolean {
 function resetForm() {
   linhas.value = []
   formaPagamento.value = ''
+  endereco.value = ''
+  coordenadas.value = ''
   buscaTexto.value = ''
   buscaItens.value = []
   painelBuscaAberto.value = false
@@ -223,6 +228,12 @@ async function criarPedido() {
   const key = props.conversaKey?.trim()
   if (!wsId || !canalId || !key || !podeCriar.value) return
 
+  const coordsParsed = parseLatLngTexto(coordenadas.value)
+  if (coordsParsed === undefined) {
+    toast.error('Coordenadas inválidas. Use o formato: latitude, longitude')
+    return
+  }
+
   criando.value = true
   try {
     const res = await kanban.criarNotificacaoPedidoPronto({
@@ -241,6 +252,10 @@ async function criarPedido() {
       formaPagamento: formaPagamento.value.trim(),
       nome: props.clienteNome ?? null,
       fone: props.clienteTelefone ?? null,
+      endereco: endereco.value.trim() || null,
+      coordenadas: coordenadas.value.trim() || null,
+      latitude: coordsParsed?.lat ?? null,
+      longitude: coordsParsed?.lng ?? null,
     })
 
     toast.success('Pedido em preparação', {
@@ -375,10 +390,10 @@ async function criarPedido() {
             </span>
           </div>
           <div class="flex items-baseline justify-between gap-3">
-            <span class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+            <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
               Total a prazo
             </span>
-            <span class="text-sm font-semibold tabular-nums text-on-surface dark:text-dark-on-surface">
+            <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
               {{ formatMoedaBr(totalPrazo) }}
             </span>
           </div>
@@ -415,6 +430,39 @@ async function criarPedido() {
           >
             {{ sug }}
           </button>
+        </div>
+      </div>
+
+      <!-- Endereço + coordenadas -->
+      <div class="space-y-3">
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+            Endereço
+          </label>
+          <textarea
+            v-model="endereco"
+            rows="2"
+            autocomplete="street-address"
+            placeholder="Rua, número, bairro, cidade…"
+            class="w-full resize-y rounded-xl border border-outline/45 bg-surface-container-lowest px-3.5 py-2.5 text-sm text-on-surface placeholder:text-on-surface-variant/60 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-outline/45 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+            :disabled="criando"
+          />
+        </div>
+        <div class="space-y-2">
+          <label class="block text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+            Latitude, longitude
+          </label>
+          <input
+            v-model="coordenadas"
+            type="text"
+            autocomplete="off"
+            placeholder="-12.890773090476822, -38.30699684520398"
+            class="w-full rounded-xl border border-outline/45 bg-surface-container-lowest px-3.5 py-2.5 font-mono text-sm text-on-surface placeholder:text-on-surface-variant/60 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-dark-outline/45 dark:bg-dark-surface-container-low dark:text-dark-on-surface"
+            :disabled="criando"
+          />
+          <p class="text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+            Cole no formato: latitude, longitude (separados por vírgula).
+          </p>
         </div>
       </div>
 

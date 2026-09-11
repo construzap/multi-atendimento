@@ -22,6 +22,14 @@ export type KanbanNotificacaoProdutoItem = {
   preco_prazo: number | null
   subtotal_vista: number | null
   subtotal_prazo: number | null
+  /**
+   * Agrupamento opcional (metade/metade, 3 sabores…).
+   * Mesmo `grupo` = mesmas linhas formam 1 unidade combinada.
+   * Ausente = item inteiro.
+   */
+  grupo?: string | null
+  /** Em quantos pedaços a unidade foi dividida (2, 3, 4). Só com `grupo`. */
+  partes?: number | null
 }
 
 /** Totais em `notificacoes_ia.total_orcamento` (jsonb). */
@@ -82,7 +90,11 @@ export type PusherKanbanAtualizacaoPayload = {
    * Preferir em vez de `notificacao` completa quando não houver insert/update no banco.
    */
   notificacao_id?: number | null
-  notificacao_entrega_status?: string | null
+  /**
+   * Patch parcial de notificação já existente no Pinia (sync N8N).
+   * Só campos presentes são aplicados; se o id não estiver no board, o client ignora.
+   */
+  notificacao_patch?: Partial<KanbanNotificacaoIa> | null
   /** Motivo para o toast / comportamento no client. */
   motivo: 'coluna' | 'pedido' | 'ambos' | 'pinia_sync'
 }

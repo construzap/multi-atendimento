@@ -1,6 +1,7 @@
 import type { ProdutoImportarLinha } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
 import { parseTermosImportacaoCelula } from '#shared/utils/parseTermosImportacaoCelula'
+import { resolverPrecoPrazo } from '#shared/utils/resolverPrecoPrazo'
 import type { CampoIaProdutoId } from '~/constants/produtosCamposIa'
 import { CAMPOS_TABELA_IA_PRODUTO } from '~/constants/produtosCamposIa'
 import { cellToString } from '~/utils/planilhaTexto'
@@ -100,8 +101,11 @@ export function construirLinhasImportacaoProduto(
       sku: (obj.sku as string | null) ?? null,
       unidade_venda: (obj.unidade_venda as string | null) ?? null,
       marca: (obj.marca as string | null) ?? null,
-      preco: typeof obj.preco === 'number' ? obj.preco : 0,
-      preco_prazo: typeof obj.preco_prazo === 'number' ? obj.preco_prazo : null,
+      preco: typeof obj.preco === 'number' ? obj.preco : null,
+      preco_prazo: resolverPrecoPrazo(
+        typeof obj.preco === 'number' ? obj.preco : null,
+        typeof obj.preco_prazo === 'number' ? obj.preco_prazo : null,
+      ),
       peso_kg: typeof obj.peso_kg === 'number' ? obj.peso_kg : null,
       estoque: typeof obj.estoque === 'number' ? obj.estoque : null,
       imagem_url: (obj.imagem_url as string | null) ?? null,

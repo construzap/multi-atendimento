@@ -90,8 +90,8 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
   const produtos = parseProdutosNotificacao(item.produtos)
   const totais = normalizeTotalOrcamento(item.total_orcamento)
   const soma = somaProdutos(item)
-  const totalResolvido = resolveTotalOrcamento(item.total_orcamento, item.forma_pagamento)
-  const total = totalResolvido != null ? totalResolvido : soma
+  const totalVista = totais.total_a_vista != null ? totais.total_a_vista : soma
+  const totalPrazo = totais.total_a_prazo != null ? totais.total_a_prazo : soma
   const entrega = item.entrega_ou_retirada?.trim() || ''
   const endereco = item.endereco?.trim() || ''
   const pagamento = item.forma_pagamento?.trim() || '—'
@@ -123,7 +123,7 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
         .join('')
     : `<tr><td colspan="3" class="muted">Nenhum produto listado</td></tr>`
 
-  const splitBase = total > 0 ? total : 0
+  const splitBase = totalVista > 0 ? totalVista : 0
   const split = [2, 3, 4, 5]
     .map((n) => {
       const parte = splitBase / n
@@ -276,10 +276,8 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
     <hr class="sep" />
 
     <div class="totais">
-      <div class="linha"><span>Soma (pagamento):</span><span>${esc(formatMoedaBr(soma))}</span></div>
-      <div class="linha"><span>Total à vista:</span><span>${esc(formatMoedaBr(totais.total_a_vista))}</span></div>
-      <div class="linha"><span>Total a prazo:</span><span>${esc(formatMoedaBr(totais.total_a_prazo))}</span></div>
-      <div class="linha total-final"><span>Total a pagar:</span><span>${esc(formatMoedaBr(totalResolvido ?? total))}</span></div>
+      <div class="linha total-final"><span>Total à vista:</span><span>${esc(formatMoedaBr(totalVista))}</span></div>
+      <div class="linha total-final"><span>Total a prazo:</span><span>${esc(formatMoedaBr(totalPrazo))}</span></div>
     </div>
 
     <hr class="sep" />

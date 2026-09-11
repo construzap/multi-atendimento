@@ -2,6 +2,7 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutoAtualizarResponse } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
+import { resolverPrecoPrazo } from '#shared/utils/resolverPrecoPrazo'
 import { mapProdutoWorkspaceRow, SELECT_PRODUTO_WORKSPACE_EMBED } from '../../utils/produtoWorkspaceRow'
 import { conjuntoIdsTermoValidos, parseTermosPesquisaIdsInput, sincronizarTermosVinculo, termosDoProduto } from '../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../utils/checkWorkspace'
@@ -171,7 +172,7 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
 
   const { data: existente, error: exErr } = await admin
     .from('produtos_workspace')
-    .select('id')
+    .select('id, preco')
     .eq('id', produtoId)
     .eq('workspace_id', workspaceId)
     .maybeSingle()
@@ -182,6 +183,8 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
   if (!existente) {
     throw createError({ statusCode: 404, statusMessage: 'Produto não encontrado neste workspace.' })
   }
+
+  const precoExistente = numOrNull((existente as { preco?: unknown }).preco)
 
   const update: Record<string, unknown> = {}
 
@@ -231,11 +234,15 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
   }
 
   if (p.preco !== undefined) {
-    const preco = numOrNull(p.preco)
-    if (preco == null || preco < 0) {
-      throw createError({ statusCode: 400, statusMessage: 'Preço inválido.' })
+    if (p.preco === null || p.preco === '') {
+      update.preco = null
+    } else {
+      const preco = numOrNull(p.preco)
+      if (preco == null || preco < 0) {
+        throw createError({ statusCode: 400, statusMessage: 'Preço inválido.' })
+      }
+      update.preco = preco
     }
-    update.preco = preco
   }
 
   if (p.preco_custo !== undefined) {
@@ -253,7 +260,9 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
 
   if (p.preco_prazo !== undefined) {
     const v = numOrNull(p.preco_prazo)
-    update.preco_prazo = v != null && v >= 0 ? v : null
+    const precoEfetivo =
+      update.preco !== undefined ? (update.preco as number | null) : precoExistente
+    update.preco_prazo = resolverPrecoPrazo(precoEfetivo, v)
   }
 
   if (p.peso_kg !== undefined) {

@@ -390,7 +390,7 @@ onMounted(() => {
               autocomplete="off"
               autocapitalize="characters"
               placeholder="Ex: ENT-042"
-              class="entrega-input w-full rounded-xl border border-slate-200 px-4 py-3.5 text-base outline-none focus:border-slate-400 sm:py-3.5"
+              class="entrega-input w-full rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-base text-slate-900 outline-none focus:border-slate-400 sm:py-3.5"
               :disabled="submitting"
             />
           </label>
@@ -451,7 +451,7 @@ onMounted(() => {
               autocomplete="one-time-code"
               placeholder="Código do pedido"
               maxlength="64"
-              class="entrega-input w-full rounded-xl border border-slate-200 px-3 py-3.5 text-center text-lg font-semibold tracking-wide outline-none focus:border-slate-400 sm:px-4 sm:text-xl"
+              class="entrega-input w-full rounded-xl border border-slate-200 bg-white px-3 py-3.5 text-center text-lg font-semibold tracking-wide text-slate-900 outline-none focus:border-slate-400 sm:px-4 sm:text-xl"
               :disabled="submitting"
               @input="onCodigoConfirmacaoInput"
             />
@@ -478,6 +478,25 @@ onMounted(() => {
   /* 16px+ evita zoom automático no iOS */
   font-size: 16px;
   min-height: 48px;
+  /* Mobile (Safari/Chrome) aplica cinza nativo sem fundo explícito */
+  background-color: #fff !important;
+  color: #0f172a;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.entrega-input:disabled {
+  background-color: #fff !important;
+  opacity: 1;
+}
+
+.entrega-input:-webkit-autofill,
+.entrega-input:-webkit-autofill:hover,
+.entrega-input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #fff inset;
+  box-shadow: 0 0 0 1000px #fff inset;
+  -webkit-text-fill-color: #0f172a;
+  transition: background-color 99999s ease-out;
 }
 
 .entrega-btn {

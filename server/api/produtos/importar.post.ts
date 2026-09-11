@@ -2,6 +2,7 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutoImportarLinha, ProdutosImportarLoteResponse } from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
+import { resolverPrecoPrazo } from '#shared/utils/resolverPrecoPrazo'
 import {
   parseTermosImportacaoCelula,
   resolverTermosDoLoteImportacao,
@@ -85,13 +86,15 @@ function normalizarLinha(raw: unknown): ProdutoImportarLinha | null {
   const nome = strOrNull(o.nome)
   if (!nome) return null
   const cid = intOrNull(o.categoria_id)
+  const preco = numOrNull(o.preco)
+  const precoFinal = preco != null && preco >= 0 ? preco : null
   const linha: ProdutoImportarLinha = {
     nome,
     sku: strOrNull(o.sku),
     unidade_venda: strOrNull(o.unidade_venda),
     marca: strOrNull(o.marca),
-    preco: numOrNull(o.preco) ?? 0,
-    preco_prazo: numOrNull(o.preco_prazo),
+    preco: precoFinal,
+    preco_prazo: resolverPrecoPrazo(precoFinal, numOrNull(o.preco_prazo)),
     peso_kg: numOrNull(o.peso_kg),
     estoque: numOrNull(o.estoque),
     imagem_url: strOrNull(o.imagem_url),
@@ -269,7 +272,7 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
       sku: r.sku ?? null,
       unidade_venda: r.unidade_venda ?? null,
       marca: r.marca ?? null,
-      preco: r.preco ?? 0,
+      preco: r.preco ?? null,
       preco_prazo: r.preco_prazo ?? null,
       peso_kg: r.peso_kg ?? null,
       estoque: r.estoque ?? null,

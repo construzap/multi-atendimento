@@ -1093,7 +1093,7 @@ export const useConversasStore = defineStore('conversas', {
         const prev = bucket.items[idx]!
         bucket.items[idx] = {
           ...prev,
-          coluna_id: colunaId,
+          ...(colunaId != null ? { coluna_id: colunaId } : {}),
           funil_id: payload.funil_id !== undefined ? funilId : prev.funil_id,
         }
       }

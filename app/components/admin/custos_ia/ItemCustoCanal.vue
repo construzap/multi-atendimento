@@ -8,13 +8,18 @@ const props = defineProps<{
 
 const to = computed(() => `/admin/custos-da-ia/${custoIaCanalParam(props.item.canal_id)}`)
 
-function formatBrl(value: number, maxFrac = 4): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
+function formatBrl(value: number | string | null | undefined, maxFrac = 4): string {
+  const n =
+    typeof value === 'number'
+      ? value
+      : Number(String(value ?? '').trim().replace(/\s/g, '').replace(',', '.'))
+  if (!Number.isFinite(n)) return '—'
+  // Evita style:'currency' com muitas casas (gera NaN em alguns browsers para microvalores).
+  const formatted = n.toLocaleString('pt-BR', {
+    minimumFractionDigits: Math.min(2, maxFrac),
     maximumFractionDigits: maxFrac,
-  }).format(value)
+  })
+  return `R$ ${formatted}`
 }
 
 function formatTokens(value: number): string {
@@ -91,6 +96,14 @@ function formatData(iso: string | null | undefined): string {
         </p>
         <p class="mt-1 text-sm text-on-surface dark:text-dark-on-surface">
           {{ formatTokens(item.total_mensagens) }}
+        </p>
+      </div>
+      <div class="min-w-0">
+        <p class="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+          Custo por token
+        </p>
+        <p class="mt-1 text-sm text-on-surface dark:text-dark-on-surface">
+          {{ formatBrl(item.custo_por_token, 8) }}
         </p>
       </div>
       <div class="min-w-0">

@@ -9,6 +9,7 @@ import {
   normalizeTotalOrcamento,
   NOTIFICACAO_IA_SELECT,
 } from '#shared/utils/notificacaoIaProdutos'
+import { parseCoordenadasValidas, parseLatLngTexto } from '#shared/utils/navegacaoMapas'
 import { checkChannel } from '../../../utils/checkChannel'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
@@ -24,6 +25,11 @@ type Body = {
   entrega_ou_retirada?: unknown
   nome?: unknown
   fone?: unknown
+  endereco?: unknown
+  latitude?: unknown
+  longitude?: unknown
+  /** Alternativa: `"lat, lng"` — se enviado, tem prioridade sobre latitude/longitude soltos. */
+  coordenadas?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -249,6 +255,39 @@ export default defineEventHandler(async (event) => {
   const fone = strOrNull(body.fone) ?? strOrNull(conversa.phone)
   const observacoes = strOrNull(body.observacoes)
   const entrega = strOrNull(body.entrega_ou_retirada)
+  const endereco = strOrNull(body.endereco)
+
+  let latitude: number | null = null
+  let longitude: number | null = null
+
+  const coordsTexto = parseLatLngTexto(body.coordenadas)
+  if (coordsTexto === undefined) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'coordenadas inválidas. Use o formato: latitude, longitude',
+    })
+  }
+  if (coordsTexto) {
+    latitude = coordsTexto.lat
+    longitude = coordsTexto.lng
+  } else {
+    const coordsSeparadas = parseCoordenadasValidas(body.latitude, body.longitude)
+    if (
+      (body.latitude != null && String(body.latitude).trim() !== '') ||
+      (body.longitude != null && String(body.longitude).trim() !== '')
+    ) {
+      if (!coordsSeparadas) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'latitude/longitude inválidas.',
+        })
+      }
+    }
+    if (coordsSeparadas) {
+      latitude = coordsSeparadas.lat
+      longitude = coordsSeparadas.lng
+    }
+  }
 
   const { data: created, error: insErr } = await admin
     .from('notificacoes_ia')
@@ -263,6 +302,9 @@ export default defineEventHandler(async (event) => {
       forma_pagamento: formaPagamento,
       observacoes,
       entrega_ou_retirada: entrega,
+      endereco,
+      latitude,
+      longitude,
       tipo_solicitacao: 'pedido_pronto',
       created_at: nowIso,
       updated_at: nowIso,

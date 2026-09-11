@@ -2,7 +2,7 @@
 import GerenciarAssinaturasPainel from '~/components/admin/gerenciar_assinaturas/GerenciarAssinaturasPainel.vue'
 
 definePageMeta({
-  layout: 'admin-seletor-empresa',
+  layout: 'layout-seletor-profiles',
 })
 </script>
 

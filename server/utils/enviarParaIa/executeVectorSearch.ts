@@ -14,6 +14,7 @@ export async function executeVectorSearch(
     credenciais.api_key,
     params.query,
     event,
+    params.workspaceId,
   )
 
   const hits = await searchSimilar(

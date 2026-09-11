@@ -9,7 +9,10 @@ import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 function parseNum(raw: unknown): number | null {
   if (raw == null || raw === '') return null
-  const n = typeof raw === 'number' ? raw : Number.parseFloat(String(raw))
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+  const s = String(raw).trim().replace(/\s/g, '').replace(',', '.')
+  if (!s) return null
+  const n = Number(s)
   return Number.isFinite(n) ? n : null
 }
 
@@ -23,7 +26,11 @@ function parseDataYmd(raw: unknown): string | null {
   const s = String(raw ?? '').trim()
   if (!s) return null
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null
-  const [y, m, d] = s.split('-').map(Number)
+  const parts = s.split('-')
+  const y = Number(parts[0])
+  const m = Number(parts[1])
+  const d = Number(parts[2])
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null
   const dt = new Date(Date.UTC(y, m - 1, d))
   if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null
   return s
@@ -32,16 +39,22 @@ function parseDataYmd(raw: unknown): string | null {
 /** Início inclusive do dia `inicioYmd` e fim exclusivo (dia seguinte a `fimYmd`), America/Sao_Paulo. */
 function rangePeriodoBrasil(inicioYmd: string, fimYmd: string): { startIso: string; endIso: string } {
   const start = new Date(`${inicioYmd}T00:00:00.000-03:00`)
-  const [y, m, d] = fimYmd.split('-').map(Number)
+  const parts = fimYmd.split('-')
+  const y = Number(parts[0])
+  const m = Number(parts[1])
+  const d = Number(parts[2])
   const next = new Date(Date.UTC(y, m - 1, d + 1))
   const endYmd = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, '0')}-${String(next.getUTCDate()).padStart(2, '0')}`
   const end = new Date(`${endYmd}T00:00:00.000-03:00`)
   return { startIso: start.toISOString(), endIso: end.toISOString() }
 }
 
-function comMedias(base: Omit<AdminCustosIaPorCanalTotais, 'custo_por_letra' | 'custo_por_mensagem'>): AdminCustosIaPorCanalTotais {
+function comMedias(
+  base: Omit<AdminCustosIaPorCanalTotais, 'custo_por_token' | 'custo_por_letra' | 'custo_por_mensagem'>,
+): AdminCustosIaPorCanalTotais {
   return {
     ...base,
+    custo_por_token: base.total_tokens > 0 ? base.custo_brl / base.total_tokens : 0,
     custo_por_letra: base.total_letras > 0 ? base.custo_brl / base.total_letras : 0,
     custo_por_mensagem: base.total_mensagens > 0 ? base.custo_brl / base.total_mensagens : 0,
   }
@@ -179,13 +192,18 @@ export default defineEventHandler(async (event): Promise<AdminCustosIaPorCanalRe
       throw createError({ statusCode: 500, statusMessage: aggResult.error.message })
     }
 
-    somas = (fallbackRows ?? []).reduce(
+    type SomasAcc = {
+      custo_brl: number
+      total_tokens: number
+      total_palavras: number
+      total_letras: number
+    }
+    somas = ((fallbackRows ?? []) as Record<string, unknown>[]).reduce<SomasAcc>(
       (acc, row) => {
-        const r = row as Record<string, unknown>
-        acc.custo_brl += parseNum(r.custo_brl) ?? 0
-        acc.total_tokens += parseIntOrNull(r.total_tokens) ?? 0
-        acc.total_palavras += parseIntOrNull(r.quantidade_palavras) ?? 0
-        acc.total_letras += parseIntOrNull(r.quantidade_letras) ?? 0
+        acc.custo_brl += parseNum(row.custo_brl) ?? 0
+        acc.total_tokens += parseIntOrNull(row.total_tokens) ?? 0
+        acc.total_palavras += parseIntOrNull(row.quantidade_palavras) ?? 0
+        acc.total_letras += parseIntOrNull(row.quantidade_letras) ?? 0
         return acc
       },
       { custo_brl: 0, total_tokens: 0, total_palavras: 0, total_letras: 0 },

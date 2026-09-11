@@ -220,7 +220,7 @@ function mapCamposProduto(r: Record<string, unknown>): ProdutoWorkspaceCampos {
 
 
 
-  const preco = parseNum(r.preco, 0)
+  const preco = parseNumOrNull(r.preco)
 
   const preco_custo = parseNum(r.preco_custo, 0)
 

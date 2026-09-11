@@ -57,7 +57,7 @@ export type ProdutoWorkspaceCampos = {
   sku: string | null
   unidade_venda: string | null
   marca: string | null
-  preco: number
+  preco: number | null
   preco_custo: number
   preco_promocional: number | null
   preco_prazo: number | null
@@ -105,7 +105,7 @@ export type ProdutoWorkspacePatch = {
   sku?: string | null
   unidade_venda?: string | null
   marca?: string | null
-  preco?: number
+  preco?: number | null
   preco_custo?: number
   preco_promocional?: number | null
   preco_prazo?: number | null
@@ -206,7 +206,7 @@ export type ProdutoCriarEmMassaLinha = {
   sku?: string | null
   unidade_venda?: string | null
   marca?: string | null
-  preco?: number
+  preco?: number | null
   preco_custo?: number
   preco_promocional?: number | null
   preco_prazo?: number | null
@@ -329,7 +329,7 @@ export type ProdutoImportarLinha = {
   sku?: string | null
   unidade_venda?: string | null
   marca?: string | null
-  preco?: number
+  preco?: number | null
   preco_prazo?: number | null
   peso_kg?: number | null
   estoque?: number | null

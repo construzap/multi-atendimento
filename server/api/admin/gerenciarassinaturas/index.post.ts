@@ -2,7 +2,7 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { assertMethod, createError, readBody } from 'h3'
 import type {
   AdminAtualizarPerfilBody,
-  AdminGerenciarAssinaturasResponse,
+  AdminGerenciarAssinaturasItemResponse,
 } from '#shared/types/adminGerenciarAssinaturas'
 import { checkAdmin } from '../../../utils/checkAdmin'
 import {
@@ -12,14 +12,18 @@ import {
   parseInteiroNaoNegativo,
   parseOptionalText,
   parseUserId,
+  parseUserRole,
 } from '../../../utils/adminGerenciarAssinaturas'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 /**
  * POST /api/admin/gerenciarassinaturas
  * Atualiza campos editáveis em `public.profiles` e retorna o perfil consolidado.
+ *
+ * Campos atualizáveis: email, full_name, data_expiracao, whatsapp, customer,
+ * subscription_id, canais, role, limite_ias, limite_mensal_token.
  */
-export default defineEventHandler(async (event): Promise<AdminGerenciarAssinaturasResponse> => {
+export default defineEventHandler(async (event): Promise<AdminGerenciarAssinaturasItemResponse> => {
   assertMethod(event, 'POST')
 
   const client = await serverSupabaseClient(event)
@@ -46,6 +50,18 @@ export default defineEventHandler(async (event): Promise<AdminGerenciarAssinatur
   const subscriptionId = parseOptionalText(body?.subscription_id)
   const canais = parseInteiroNaoNegativo(body?.canais, 'canais')
   const limiteIas = parseInteiroNaoNegativo(body?.limite_ias, 'limite_ias')
+  const limiteMensalToken = parseInteiroNaoNegativo(
+    body?.limite_mensal_token,
+    'limite_mensal_token',
+  )
+  const role = parseUserRole(body?.role)
+
+  if (userId === authUserId && role !== 'ADMIN') {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Você não pode remover o próprio acesso de administrador.',
+    })
+  }
 
   const admin = serverSupabaseServiceRole<any>(event)
 
@@ -73,7 +89,9 @@ export default defineEventHandler(async (event): Promise<AdminGerenciarAssinatur
       customer,
       subscription_id: subscriptionId,
       canais,
+      role,
       limite_ias: limiteIas,
+      limite_mensal_token: limiteMensalToken,
     })
     .eq('user_id', userId)
 

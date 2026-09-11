@@ -1,5 +1,7 @@
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
+import { getWorkspaceOwnerUserId } from '../checkIA'
+import { assertPodeUsarTokens } from '../checkLimiteTokens'
 
 const MAX_BATCH = 100
 const MAX_RETRIES = 3
@@ -17,7 +19,8 @@ function getEmbeddingModel(event?: H3Event): string {
 export async function createEmbeddings(
   apiKey: string,
   texts: string[],
-  event?: H3Event,
+  event: H3Event,
+  workspaceId: number,
 ): Promise<number[][]> {
   const key = apiKey.trim()
   if (!key) {
@@ -28,6 +31,9 @@ export async function createEmbeddings(
   }
 
   if (!texts.length) return []
+
+  const ownerUserId = await getWorkspaceOwnerUserId(event, workspaceId)
+  await assertPodeUsarTokens(event, ownerUserId)
 
   const model = getEmbeddingModel(event)
   const results: number[][] = new Array(texts.length)
@@ -46,9 +52,10 @@ export async function createEmbeddings(
 export async function createEmbedding(
   apiKey: string,
   text: string,
-  event?: H3Event,
+  event: H3Event,
+  workspaceId: number,
 ): Promise<number[]> {
-  const [embedding] = await createEmbeddings(apiKey, [text], event)
+  const [embedding] = await createEmbeddings(apiKey, [text], event, workspaceId)
   if (!embedding) {
     throw createError({ statusCode: 500, statusMessage: 'Falha ao gerar embedding.' })
   }

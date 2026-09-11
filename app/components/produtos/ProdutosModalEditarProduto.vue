@@ -16,6 +16,7 @@ import ProdutosSelecaoMultipla from '~/components/produtos/selecao-multipla/Prod
 import { mensagemErroFetch } from '~/stores/canais'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
 import { parseDecimalPtBr } from '~/utils/mapearLinhasImportacaoProduto'
+import { resolverPrecoPrazo } from '#shared/utils/resolverPrecoPrazo'
 
 const open = defineModel<boolean>('open', { default: false })
 
@@ -136,8 +137,6 @@ const podeSalvar = computed(() => {
   if (salvando.value) return false
   if (!nome.value.trim()) return false
   if (termosSelecionados.value.length === 0) return false
-  if (!unidadeVenda.value.trim()) return false
-  if (!precoVista.value.trim()) return false
   return true
 })
 
@@ -159,21 +158,7 @@ function strOuNull(v: string): string | null {
   return t.length ? t : null
 }
 
-/** Preço obrigatório: vazio ou inválido → null (erro). */
-function parsePrecoObrigatorio(raw: string, label: string): number | null {
-  const t = raw.trim()
-  if (!t.length) {
-    toast.error(`Informe o ${label.toLowerCase()}.`)
-    return null
-  }
-  const n = parseDecimalPtBr(t)
-  if (n == null || n < 0) {
-    toast.error(`${label} inválido.`)
-    return null
-  }
-  return n
-}
-
+/** Preço opcional: vazio → null; inválido → undefined (erro). */
 function parsePrecoOpcional(raw: string, label: string): number | null | undefined {
   const t = raw.trim()
   if (!t.length) return null
@@ -206,14 +191,11 @@ function montarPatch(): ProdutoWorkspacePatch | null {
     toast.error('Selecione ao menos uma categoria / termo de pesquisa.')
     return null
   }
-  const unidade = unidadeVenda.value.trim()
-  if (!unidade) {
-    toast.error('Informe a unidade de venda.')
-    return null
-  }
 
-  const preco = parsePrecoObrigatorio(precoVista.value, 'Preço à vista')
-  if (preco == null) return null
+  const unidade = unidadeVenda.value.trim() || null
+
+  const preco = parsePrecoOpcional(precoVista.value, 'Preço à vista')
+  if (preco === undefined) return null
   const precoCustoN = parsePrecoOpcional(precoCusto.value, 'Preço de custo')
   if (precoCustoN === undefined) return null
   const precoPrazoN = parsePrecoOpcional(precoPrazo.value, 'Preço a prazo')
@@ -243,9 +225,9 @@ function montarPatch(): ProdutoWorkspacePatch | null {
     nome: n,
     unidade_venda: unidade,
     marca: strOuNull(marca.value),
-    preco,
+    preco: preco ?? null,
     preco_custo: precoCustoN ?? 0,
-    preco_prazo: precoPrazoN,
+    preco_prazo: resolverPrecoPrazo(preco ?? null, precoPrazoN),
     preco_promocional: precoPromoN,
     peso_kg: pesoN,
     largura: larguraN,
@@ -263,13 +245,14 @@ function montarPatch(): ProdutoWorkspacePatch | null {
 }
 
 function patchParaLinhaCriar(patch: ProdutoWorkspacePatch): ProdutoCriarEmMassaLinha {
+  const preco = patch.preco ?? null
   return {
     nome: patch.nome!,
     unidade_venda: patch.unidade_venda ?? null,
     marca: patch.marca ?? null,
-    preco: patch.preco,
+    preco,
     preco_custo: patch.preco_custo,
-    preco_prazo: patch.preco_prazo ?? null,
+    preco_prazo: resolverPrecoPrazo(preco, patch.preco_prazo),
     preco_promocional: patch.preco_promocional ?? null,
     peso_kg: patch.peso_kg ?? null,
     infos_relevantes: patch.infos_relevantes ?? null,
@@ -374,7 +357,7 @@ function fechar() {
           for="produto-edit-unidade"
           class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
         >
-          Unidade de venda <span class="text-red-600 dark:text-red-400">*</span>
+          Unidade de venda
         </label>
         <BaseInput
           id="produto-edit-unidade"
@@ -404,7 +387,7 @@ function fechar() {
           for="produto-edit-vista"
           class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
         >
-          Preço à vista (R$) <span class="text-red-600 dark:text-red-400">*</span>
+          Preço à vista (R$)
         </label>
         <BaseInput
           id="produto-edit-vista"

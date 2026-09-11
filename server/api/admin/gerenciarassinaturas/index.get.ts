@@ -1,18 +1,15 @@
 import { serverSupabaseClient } from '#supabase/server'
-import { assertMethod, createError, getQuery } from 'h3'
-import type { AdminGerenciarAssinaturasResponse } from '#shared/types/adminGerenciarAssinaturas'
+import { assertMethod, createError } from 'h3'
+import type { AdminGerenciarAssinaturasListaResponse } from '#shared/types/adminGerenciarAssinaturas'
 import { checkAdmin } from '../../../utils/checkAdmin'
-import {
-  fetchPerfilConsolidadoPorUserId,
-  parseUserId,
-} from '../../../utils/adminGerenciarAssinaturas'
+import { fetchTodosPerfisConsolidados } from '../../../utils/adminGerenciarAssinaturas'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 /**
- * GET /api/admin/gerenciarassinaturas?user_id=
- * Perfil consolidado do dono do workspace (`vw_perfil_consolidado`), somente admin.
+ * GET /api/admin/gerenciarassinaturas
+ * Lista todos os perfis de `vw_perfil_consolidado` (somente admin).
  */
-export default defineEventHandler(async (event): Promise<AdminGerenciarAssinaturasResponse> => {
+export default defineEventHandler(async (event): Promise<AdminGerenciarAssinaturasListaResponse> => {
   assertMethod(event, 'GET')
 
   const client = await serverSupabaseClient(event)
@@ -29,9 +26,6 @@ export default defineEventHandler(async (event): Promise<AdminGerenciarAssinatur
 
   await checkAdmin(event, authUserId)
 
-  const query = getQuery(event)
-  const userId = parseUserId(query.user_id)
-
-  const perfil = await fetchPerfilConsolidadoPorUserId(event, userId)
-  return { perfil }
+  const perfis = await fetchTodosPerfisConsolidados(event)
+  return { perfis }
 })

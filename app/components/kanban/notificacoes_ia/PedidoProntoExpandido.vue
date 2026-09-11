@@ -5,7 +5,6 @@ import {
   formatMoedaBr,
   normalizeTotalOrcamento,
   parseProdutosNotificacao,
-  resolveTotalOrcamento,
   subtotalLinhaExibicao,
 } from './parseProdutosNotificacao'
 import EntregaNavegacaoMapas from '~/components/entregadores/EntregaNavegacaoMapas.vue'
@@ -30,9 +29,6 @@ const emSeparacao = computed(
 
 const produtos = computed(() => parseProdutosNotificacao(props.item.produtos))
 const totais = computed(() => normalizeTotalOrcamento(props.item.total_orcamento))
-const totalExibicao = computed(() =>
-  resolveTotalOrcamento(props.item.total_orcamento, props.item.forma_pagamento),
-)
 
 const enderecoExibicao = computed(() => props.item.endereco?.trim() || null)
 
@@ -121,17 +117,19 @@ function linhaSubtotal(p: (typeof produtos.value)[number]): string {
     <div class="space-y-2 border-t border-outline/30 pt-4 dark:border-dark-outline/30">
       <div class="flex items-baseline justify-between gap-4">
         <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
-          Total
+          Total à vista
         </span>
         <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-          {{ formatMoedaBr(totalExibicao) }}
+          {{ formatMoedaBr(totais.total_a_vista) }}
         </span>
       </div>
-      <div
-        class="flex flex-wrap justify-end gap-x-4 gap-y-0.5 text-[11px] tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant"
-      >
-        <span>À vista: {{ formatMoedaBr(totais.total_a_vista) }}</span>
-        <span>Prazo: {{ formatMoedaBr(totais.total_a_prazo) }}</span>
+      <div class="flex items-baseline justify-between gap-4">
+        <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
+          Total a prazo
+        </span>
+        <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
+          {{ formatMoedaBr(totais.total_a_prazo) }}
+        </span>
       </div>
       <div class="flex items-baseline justify-between gap-4">
         <span class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant">

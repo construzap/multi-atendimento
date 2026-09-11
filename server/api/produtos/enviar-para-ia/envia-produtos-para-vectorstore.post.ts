@@ -79,6 +79,7 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
         credenciais.api_key,
         toEmbed.map((p) => p!.content),
         event,
+        workspaceId,
       )
 
       for (let i = 0; i < toEmbed.length; i++) {

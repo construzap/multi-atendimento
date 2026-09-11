@@ -18,6 +18,7 @@ const {
   detalheTotalCustoBrl,
   detalheTotalLetras,
   detalheTotalMensagens,
+  detalheCustoPorToken,
   detalheCustoPorLetra,
   detalheCustoPorMensagem,
 } = storeToRefs(store)
@@ -85,13 +86,17 @@ watch(
   { immediate: true },
 )
 
-function formatBrl(value: number, maxFrac = 4): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
+function formatBrl(value: number | string | null | undefined, maxFrac = 4): string {
+  const n =
+    typeof value === 'number'
+      ? value
+      : Number(String(value ?? '').trim().replace(/\s/g, '').replace(',', '.'))
+  if (!Number.isFinite(n)) return '—'
+  const formatted = n.toLocaleString('pt-BR', {
+    minimumFractionDigits: Math.min(2, maxFrac),
     maximumFractionDigits: maxFrac,
-  }).format(value)
+  })
+  return `R$ ${formatted}`
 }
 
 function formatNum(value: number): string {
@@ -126,6 +131,11 @@ const cards = computed(() => [
     id: 'mensagens',
     label: 'Total de mensagens',
     value: formatNum(detalheTotalMensagens.value),
+  },
+  {
+    id: 'custo-token',
+    label: 'Custo por token',
+    value: formatBrl(detalheCustoPorToken.value, 8),
   },
   {
     id: 'custo-letra',

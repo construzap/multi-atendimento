@@ -100,6 +100,8 @@ async function conjuntoIdsCategoriaValidos(
 export type MassUpdateBuildResult = {
   update: Record<string, unknown>
   termosIdsPatch?: number[]
+  /** Quando true, `preco_prazo` null sem `preco` no patch — copiar coluna `preco` por produto. */
+  precoPrazoCopiarDePreco?: boolean
 }
 
 /**
@@ -123,17 +125,22 @@ export async function buildProdutoMassUpdateFromPatch(
 
   const p = rawPatch
   const update: Record<string, unknown> = {}
+  let precoPrazoCopiarDePreco = false
 
   if (p.unidade_venda !== undefined) update.unidade_venda = strOrNull(p.unidade_venda)
   if (p.marca !== undefined) update.marca = strOrNull(p.marca)
   if (p.infos_relevantes !== undefined) update.infos_relevantes = strOrNull(p.infos_relevantes)
 
   if (p.preco !== undefined) {
-    const preco = numOrNull(p.preco)
-    if (preco == null || preco < 0) {
-      throw createError({ statusCode: 400, statusMessage: 'Preço inválido.' })
+    if (p.preco === null || p.preco === '') {
+      update.preco = null
+    } else {
+      const preco = numOrNull(p.preco)
+      if (preco == null || preco < 0) {
+        throw createError({ statusCode: 400, statusMessage: 'Preço inválido.' })
+      }
+      update.preco = preco
     }
-    update.preco = preco
   }
 
   if (p.preco_custo !== undefined) {
@@ -151,7 +158,13 @@ export async function buildProdutoMassUpdateFromPatch(
 
   if (p.preco_prazo !== undefined) {
     const v = numOrNull(p.preco_prazo)
-    update.preco_prazo = v != null && v >= 0 ? v : null
+    if (v != null && v >= 0) {
+      update.preco_prazo = v
+    } else if (Object.prototype.hasOwnProperty.call(update, 'preco')) {
+      update.preco_prazo = update.preco as number | null
+    } else {
+      precoPrazoCopiarDePreco = true
+    }
   }
 
   if (p.peso_kg !== undefined) {
@@ -241,11 +254,11 @@ export async function buildProdutoMassUpdateFromPatch(
     }
   }
 
-  if (Object.keys(update).length === 0 && termosIdsPatch === undefined) {
+  if (Object.keys(update).length === 0 && termosIdsPatch === undefined && !precoPrazoCopiarDePreco) {
     throw createError({ statusCode: 400, statusMessage: 'Nenhum campo válido para atualizar.' })
   }
 
-  return { update, termosIdsPatch }
+  return { update, termosIdsPatch, precoPrazoCopiarDePreco }
 }
 
 export function parseProdutoMassUpdateIds(raw: unknown, maxIds: number): number[] {

@@ -14,6 +14,7 @@ import type {
   ProdutosOportunidadesVendasListaResponse,
   ProdutosOportunidadesVendasTotalResponse,
 } from '#shared/types/produtos'
+import { resolverPrecoPrazo } from '#shared/utils/resolverPrecoPrazo'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useWorkspacesStore } from '~/stores/workspaces'
 
@@ -67,7 +68,7 @@ function novoRascunhoCriarEmMassa(): ProdutoWorkspaceItem {
     sku: null,
     unidade_venda: null,
     marca: null,
-    preco: 0,
+    preco: null,
     preco_custo: 0,
     preco_promocional: null,
     preco_prazo: null,
@@ -101,15 +102,16 @@ function parseWorkspaceIdFromPinia(): number | null {
 }
 
 function linhaParaPayload(row: ProdutoWorkspaceItem): ProdutoCriarEmMassaLinha {
+  const preco = row.preco
   return {
     nome: String(row.nome ?? '').trim(),
     sku: row.sku,
     unidade_venda: row.unidade_venda,
     marca: row.marca,
-    preco: row.preco,
+    preco,
     preco_custo: row.preco_custo,
     preco_promocional: row.preco_promocional,
-    preco_prazo: row.preco_prazo,
+    preco_prazo: resolverPrecoPrazo(preco, row.preco_prazo),
     peso_kg: row.peso_kg,
     estoque: row.estoque,
     imagem_url: row.imagem_url,
@@ -546,25 +548,37 @@ export const useProdutosStore = defineStore('produtos', {
       item: ProdutoOportunidadeVendaItem
       /** Nome final do produto (editável no modal). Fallback: `item.produto_sugerido`. */
       nome?: string | null
-      preco: number
-      /** Ids em `produto_termo_de_pesquisa_vinculo`. */
-      termoPesquisaId?: number | null
+      preco?: number | null
+      /** Unidade de venda (ex.: UNIDADE, KG). */
+      unidadeVenda?: string | null
+      /** Ids em `produto_termo_de_pesquisa_vinculo` (seleção múltipla). */
+      termosPesquisaIds?: number[] | null
     }): Promise<void> {
       const nome = String(opts.nome ?? opts.item.produto_sugerido ?? '').trim()
       if (!nome) throw new Error('Nome do produto inválido.')
-      const preco = Number.isFinite(opts.preco) && opts.preco >= 0 ? opts.preco : 0
-      const termoId =
-        opts.termoPesquisaId != null &&
-        Number.isFinite(opts.termoPesquisaId) &&
-        opts.termoPesquisaId > 0
-          ? Math.trunc(opts.termoPesquisaId)
-          : null
+      const preco =
+        opts.preco != null && Number.isFinite(opts.preco) && opts.preco >= 0 ? opts.preco : null
+      const unidade_venda = String(opts.unidadeVenda ?? '').trim() || null
+      const termos_pesquisa_ids = [
+        ...new Set(
+          (opts.termosPesquisaIds ?? [])
+            .map((id) => (Number.isFinite(id) ? Math.trunc(id) : 0))
+            .filter((id) => id > 0),
+        ),
+      ]
 
       await $fetch<ProdutosCriarEmMassaResponse>('/api/produtos/criar-em-massa', {
         method: 'POST',
         body: {
           workspace_id: opts.workspaceId,
-          linhas: [{ nome, preco, termos_pesquisa_ids: termoId != null ? [termoId] : [] }],
+          linhas: [
+            {
+              nome,
+              preco,
+              unidade_venda,
+              termos_pesquisa_ids,
+            },
+          ],
         },
       })
 
@@ -1134,14 +1148,12 @@ export const useProdutosStore = defineStore('produtos', {
       this.criarEmMassaItems = next
     },
 
-    /** Remove rascunhos sem os campos obrigatórios (nome, termo, unidade, preço). */
+    /** Remove rascunhos sem os campos obrigatórios (nome, termo). */
     removerLinhasCriarEmMassaIncompletas() {
       this.criarEmMassaItems = this.criarEmMassaItems.filter((r) => {
         const nomeOk = String(r.nome ?? '').trim().length > 0
         const termoOk = (r.termos_pesquisa?.length ?? 0) > 0
-        const unidadeOk = String(r.unidade_venda ?? '').trim().length > 0
-        const precoOk = r.preco != null && Number.isFinite(r.preco) && r.preco >= 0
-        return nomeOk && termoOk && unidadeOk && precoOk
+        return nomeOk && termoOk
       })
     },
 
@@ -1150,8 +1162,7 @@ export const useProdutosStore = defineStore('produtos', {
         .filter((r) => {
           const nomeOk = String(r.nome ?? '').trim().length > 0
           const termoOk = (r.termos_pesquisa?.length ?? 0) > 0
-          const unidadeOk = String(r.unidade_venda ?? '').trim().length > 0
-          return nomeOk && termoOk && unidadeOk
+          return nomeOk && termoOk
         })
         .map((r) => linhaParaPayload(r))
     },

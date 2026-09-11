@@ -408,7 +408,7 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
   if (adminUser) {
     await assertAdminWorkspaceAtivo(event, workspaceId)
   } else {
-    await checkWorkspace(event, workspaceId, userId)
+  await checkWorkspace(event, workspaceId, userId)
   }
 
   const colunaIdFilter = parseColunaId(q.coluna_id)
@@ -513,10 +513,10 @@ export default defineEventHandler(async (event): Promise<KanbanBoardResponse | K
   const columns: KanbanColumn[] = colunas.map((c, i) => {
     const page = pages[i]!
     return {
-      id: c.id,
-      nome: c.nome,
-      cor: c.cor,
-      ordem: c.ordem,
+    id: c.id,
+    nome: c.nome,
+    cor: c.cor,
+    ordem: c.ordem,
       id_agendamento_mensagem: uuidOrNull(c.id_agendamento_mensagem),
       recolhida: c.recolhida === true,
       cards: page.cards,

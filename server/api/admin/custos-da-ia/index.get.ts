@@ -6,7 +6,10 @@ import { getAuthUserId } from '../../../utils/getAuthUserId'
 
 function parseNum(raw: unknown): number | null {
   if (raw == null || raw === '') return null
-  const n = typeof raw === 'number' ? raw : Number.parseFloat(String(raw))
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+  const s = String(raw).trim().replace(/\s/g, '').replace(',', '.')
+  if (!s) return null
+  const n = Number(s)
   return Number.isFinite(n) ? n : null
 }
 
@@ -29,8 +32,9 @@ function mapRow(
   const palavras = parseIntOrNull(r.total_palavras) ?? 0
   const letras = parseIntOrNull(r.total_letras) ?? 0
   const mensagens = parseIntOrNull(r.total_mensagens) ?? 0
-  const custoPorLetra = parseNum(r.custo_por_letra) ?? 0
-  const custoPorMensagem = parseNum(r.custo_por_mensagem) ?? 0
+  const custoPorToken = parseNum(r.custo_por_token) ?? (tokens > 0 ? custo / tokens : 0)
+  const custoPorLetra = parseNum(r.custo_por_letra) ?? (letras > 0 ? custo / letras : 0)
+  const custoPorMensagem = parseNum(r.custo_por_mensagem) ?? (mensagens > 0 ? custo / mensagens : 0)
 
   const modelosRaw = r.modelos_usados
   const modelos = Array.isArray(modelosRaw)
@@ -62,6 +66,7 @@ function mapRow(
     total_palavras: palavras,
     total_letras: letras,
     total_mensagens: mensagens,
+    custo_por_token: custoPorToken,
     custo_por_letra: custoPorLetra,
     custo_por_mensagem: custoPorMensagem,
     modelos_usados: modelos,
@@ -96,7 +101,7 @@ export default defineEventHandler(async (event): Promise<AdminCustosIaResponse> 
   const { data, error } = await admin
     .from('view_custos_por_canal')
     .select(
-      'workspace_id, canal_id, nome_canal, custo_total_brl, total_tokens_usados, total_palavras, total_letras, total_mensagens, custo_por_letra, custo_por_mensagem, modelos_usados, primeiro_uso_em, ultimo_uso_em',
+      'workspace_id, canal_id, nome_canal, custo_total_brl, total_tokens_usados, total_palavras, total_letras, total_mensagens, custo_por_token, custo_por_letra, custo_por_mensagem, modelos_usados, primeiro_uso_em, ultimo_uso_em',
     )
 
   if (error) {

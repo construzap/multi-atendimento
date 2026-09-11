@@ -1,18 +1,40 @@
 import { assertMethod, createError, readBody } from 'h3'
 import { serverSupabaseServiceRole } from '#supabase/server'
-import type { PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
-import { normalizeEntregaStatus } from '#shared/utils/notificacaoIaProdutos'
+import type {
+  KanbanNotificacaoIa,
+  KanbanNotificacaoTotalOrcamento,
+  PusherKanbanAtualizacaoPayload,
+} from '#shared/types/kanban'
+import {
+  normalizeEntregaStatus,
+  normalizeProdutosRaw,
+  normalizeTotalOrcamento,
+} from '#shared/utils/notificacaoIaProdutos'
 import { requireN8nKanbanApiKey } from '../../utils/requireN8nKanbanApiKey'
 import { triggerKanbanAtualizacao } from '../../utils/pusherServer'
 
-type Body = {
-  workspace_id?: unknown
-  conversa_key?: unknown
-  coluna_id?: unknown
-  notificacao_id?: unknown
-  /** Status em `notificacoes_ia.entrega_status` — espelhado no Pinia via Pusher (sem gravar no banco). */
-  entrega_status?: unknown
-}
+/** Campos opcionais que o N8N pode enviar para espelhar no Pinia (só os presentes são aplicados). */
+const PATCH_KEYS = [
+  'created_at',
+  'endereco',
+  'entrega_ou_retirada',
+  'entrega_status',
+  'forma_pagamento',
+  'id_cobranca',
+  'latitude',
+  'longitude',
+  'observacoes',
+  'pagamento_realizado',
+  'produtos',
+  'tipo_solicitacao',
+  'token_entrega',
+  'total_orcamento',
+  'updated_at',
+] as const
+
+type PatchKey = (typeof PATCH_KEYS)[number]
+
+type Body = Record<string, unknown>
 
 function parsePositiveInt(raw: unknown, label: string): number {
   const n =
@@ -31,15 +53,67 @@ function strOrNull(v: unknown): string | null {
   return s.length ? s : null
 }
 
+function numOrNull(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return null
+  const n = typeof v === 'number' ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+function buildNotificacaoPatch(body: Body): Partial<KanbanNotificacaoIa> {
+  const patch: Partial<KanbanNotificacaoIa> = {}
+
+  for (const key of PATCH_KEYS) {
+    if (!(key in body) || body[key] === undefined) continue
+
+    const raw = body[key]
+    switch (key) {
+      case 'entrega_status':
+        patch.entrega_status = normalizeEntregaStatus(raw)
+        break
+      case 'produtos':
+        patch.produtos = normalizeProdutosRaw(raw)
+        break
+      case 'total_orcamento':
+        patch.total_orcamento = normalizeTotalOrcamento(raw) as KanbanNotificacaoTotalOrcamento
+        break
+      case 'pagamento_realizado':
+        patch.pagamento_realizado =
+          raw === true || raw === 'true' || raw === 1 || raw === '1'
+        break
+      case 'latitude':
+      case 'longitude':
+        patch[key] = numOrNull(raw)
+        break
+      case 'id_cobranca':
+      case 'token_entrega':
+      case 'endereco':
+      case 'entrega_ou_retirada':
+      case 'forma_pagamento':
+      case 'observacoes':
+      case 'tipo_solicitacao':
+      case 'created_at':
+      case 'updated_at':
+        patch[key] = strOrNull(raw)
+        break
+      default: {
+        const _exhaustive: never = key
+        void _exhaustive
+      }
+    }
+  }
+
+  return patch
+}
+
 /**
  * POST /api/public/pushercolunapedidoconcluido
  *
- * Sync leve N8N → Pusher → Pinia (sem escrever no banco).
- * Atualiza coluna do card e `notificacoes_ia[].entrega_status` no board.
+ * Sync leve N8N → Pusher → Pinia (não grava no banco).
+ * Obrigatório: `notificacao_id` (ou `id`).
+ * Opcionais: qualquer campo da notificação — só os enviados atualizam o Pinia;
+ * se a notificação não estiver no board, o client ignora (não cria).
  *
  * Auth: Authorization: Bearer <NUXT_N8N_KANBAN_API_KEY>  ou  x-api-key: <…>
- *
- * Body: `{ workspace_id, conversa_key, coluna_id, notificacao_id, entrega_status }`
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
@@ -50,59 +124,51 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Body JSON inválido.' })
   }
 
-  const workspaceId = parsePositiveInt(body.workspace_id, 'workspace_id')
-  const conversaKey = strOrNull(body.conversa_key)
-  if (!conversaKey) {
-    throw createError({ statusCode: 400, statusMessage: 'Informe conversa_key.' })
-  }
-
-  const colunaId = parsePositiveInt(body.coluna_id, 'coluna_id')
-  const notificacaoId = parsePositiveInt(body.notificacao_id, 'notificacao_id')
-  const entregaStatus = normalizeEntregaStatus(body.entrega_status)
-
-  // Só leitura: precisa do id_canal para o canal Pusher (não grava nada).
-  const admin = serverSupabaseServiceRole<any>(event)
-  const { data: conversa, error: convErr } = await admin
-    .from('conversas')
-    .select('key, workspace_id, id_canal, name, phone, funil_id')
-    .eq('key', conversaKey)
-    .eq('workspace_id', workspaceId)
-    .is('deleted_at', null)
-    .maybeSingle()
-
-  if (convErr) throw createError({ statusCode: 500, statusMessage: convErr.message })
-  if (!conversa) {
-    throw createError({ statusCode: 404, statusMessage: 'Conversa não encontrada neste workspace.' })
-  }
-
-  const idCanal =
-    typeof conversa.id_canal === 'number'
-      ? conversa.id_canal
-      : Number.parseInt(String(conversa.id_canal ?? ''), 10)
-  if (!Number.isFinite(idCanal) || idCanal < 1) {
+  const notificacaoId = parsePositiveInt(
+    body.notificacao_id ?? body.id,
+    'notificacao_id',
+  )
+  const patch = buildNotificacaoPatch(body)
+  if (Object.keys(patch).length === 0) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Conversa sem id_canal válido — não é possível notificar o Pusher.',
+      statusMessage:
+        'Envie ao menos um campo para atualizar (ex.: entrega_status, pagamento_realizado, …).',
     })
   }
 
-  const funilId =
-    typeof conversa.funil_id === 'number'
-      ? conversa.funil_id
-      : conversa.funil_id != null
-        ? Number.parseInt(String(conversa.funil_id), 10)
-        : null
+  const admin = serverSupabaseServiceRole<any>(event)
+  const { data: notif, error: nErr } = await admin
+    .from('notificacoes_ia')
+    .select('id, workspace_id, canal_id, conversa_key')
+    .eq('id', notificacaoId)
+    .maybeSingle()
+
+  if (nErr) throw createError({ statusCode: 500, statusMessage: nErr.message })
+  if (!notif) {
+    throw createError({ statusCode: 404, statusMessage: 'notificacao_id não encontrada.' })
+  }
+
+  const workspaceId = parsePositiveInt(notif.workspace_id, 'workspace_id')
+  const idCanal = parsePositiveInt(notif.canal_id, 'canal_id')
+  const conversaKey = strOrNull(notif.conversa_key)
+  if (!conversaKey) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Notificação sem conversa_key — não é possível notificar o Pusher.',
+    })
+  }
 
   const payload: PusherKanbanAtualizacaoPayload = {
     workspace_id: workspaceId,
     conversa_key: conversaKey,
     id_canal: idCanal,
-    coluna_id: colunaId,
-    funil_id: Number.isFinite(funilId) && funilId != null && funilId >= 1 ? funilId : null,
-    nome_contato: strOrNull(conversa.name) ?? strOrNull(conversa.phone),
+    coluna_id: null,
+    funil_id: null,
+    nome_contato: null,
     notificacao: null,
     notificacao_id: notificacaoId,
-    notificacao_entrega_status: entregaStatus,
+    notificacao_patch: patch,
     motivo: 'pinia_sync',
   }
 
@@ -112,10 +178,9 @@ export default defineEventHandler(async (event) => {
     ok: true as const,
     workspace_id: workspaceId,
     conversa_key: conversaKey,
-    coluna_id: colunaId,
-    notificacao_id: notificacaoId,
-    entrega_status: entregaStatus,
     id_canal: idCanal,
+    notificacao_id: notificacaoId,
+    patch,
     motivo: 'pinia_sync' as const,
   }
 })

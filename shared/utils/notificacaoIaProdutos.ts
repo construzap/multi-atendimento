@@ -20,6 +20,9 @@ export type ProdutoNotificacaoLinha = {
   subtotal_vista: number | null
   subtotal_prazo: number | null
   raw: string
+  /** Agrupamento opcional (metade/metade…). */
+  grupo?: string | null
+  partes?: number | null
 }
 
 function numOrNull(raw: unknown): number | null {
@@ -57,6 +60,7 @@ export function formaPagamentoEhAPrazo(forma: string | null | undefined): boolea
  * - `{ total_a_vista, total_a_prazo }` (null permanece null)
  * - number legado → ambos iguais
  * - string JSON ou número em string
+ * - se `total_a_prazo` for `null` ou `0` e houver `total_a_vista`, usa o à vista no prazo
  */
 export function normalizeTotalOrcamento(raw: unknown): KanbanNotificacaoTotalOrcamento {
   if (typeof raw === 'number' && Number.isFinite(raw)) {
@@ -72,10 +76,13 @@ export function normalizeTotalOrcamento(raw: unknown): KanbanNotificacaoTotalOrc
   }
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
     const o = raw as Record<string, unknown>
-    return {
-      total_a_vista: numOrNull(o.total_a_vista ?? o.total_vista),
-      total_a_prazo: numOrNull(o.total_a_prazo ?? o.total_prazo),
+    const total_a_vista = numOrNull(o.total_a_vista ?? o.total_vista)
+    let total_a_prazo = numOrNull(o.total_a_prazo ?? o.total_prazo)
+    // null ou 0 → assume à vista (quando existir)
+    if ((total_a_prazo == null || total_a_prazo === 0) && total_a_vista != null) {
+      total_a_prazo = total_a_vista
     }
+    return { total_a_vista, total_a_prazo }
   }
   return { total_a_vista: null, total_a_prazo: null }
 }
@@ -149,6 +156,17 @@ export function normalizeProdutosRaw(raw: unknown): Array<string | KanbanNotific
           ? quantidade * preco_prazo
           : null
 
+    const grupoRaw = item.grupo ?? item.grupo_id ?? item.combo_id
+    const grupo =
+      typeof grupoRaw === 'string' && grupoRaw.trim()
+        ? grupoRaw.trim()
+        : grupoRaw != null && String(grupoRaw).trim()
+          ? String(grupoRaw).trim()
+          : null
+    const partesRaw = intOrNull(item.partes)
+    const partes =
+      partesRaw != null && partesRaw >= 2 ? partesRaw : null
+
     out.push({
       quantidade: Math.max(1, quantidade),
       nome_produto: nome,
@@ -156,6 +174,7 @@ export function normalizeProdutosRaw(raw: unknown): Array<string | KanbanNotific
       preco_prazo,
       subtotal_vista,
       subtotal_prazo,
+      ...(grupo ? { grupo, partes: partes ?? null } : {}),
     })
   }
   return out
@@ -225,6 +244,7 @@ export function parseProdutosNotificacao(
       subtotal_vista: item.subtotal_vista,
       subtotal_prazo: item.subtotal_prazo,
       raw: `${item.quantidade}X ${item.nome_produto}`,
+      ...(item.grupo ? { grupo: item.grupo, partes: item.partes ?? null } : {}),
     })
   }
   return linhas

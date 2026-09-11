@@ -13,6 +13,8 @@ export interface CustoPorCanalRow {
   total_palavras: number
   total_letras: number
   total_mensagens: number
+  /** custo_total_brl / total_tokens_usados (0 se sem tokens). */
+  custo_por_token: number
   custo_por_letra: number
   custo_por_mensagem: number
   modelos_usados: string[]
@@ -49,6 +51,7 @@ export interface AdminCustosIaPorCanalTotais {
   total_palavras: number
   total_letras: number
   total_mensagens: number
+  custo_por_token: number
   custo_por_letra: number
   custo_por_mensagem: number
 }

@@ -18,6 +18,7 @@ const TOTAIS_ZERADOS: AdminCustosIaPorCanalTotais = {
   total_palavras: 0,
   total_letras: 0,
   total_mensagens: 0,
+  custo_por_token: 0,
   custo_por_letra: 0,
   custo_por_mensagem: 0,
 }
@@ -86,6 +87,12 @@ export const useAdminCustosIaStore = defineStore('admin-custos-ia', {
       return state.items.reduce((acc, row) => acc + row.total_mensagens, 0)
     },
 
+    custoPorTokenLista(state): number {
+      const tokens = state.items.reduce((acc, row) => acc + row.total_tokens_usados, 0)
+      const custo = state.items.reduce((acc, row) => acc + row.custo_total_brl, 0)
+      return tokens > 0 ? custo / tokens : 0
+    },
+
     custoPorLetraLista(state): number {
       const letras = state.items.reduce((acc, row) => acc + row.total_letras, 0)
       const custo = state.items.reduce((acc, row) => acc + row.custo_total_brl, 0)
@@ -116,6 +123,10 @@ export const useAdminCustosIaStore = defineStore('admin-custos-ia', {
 
     detalheTotalMensagens(state): number {
       return state.detalheTotais.total_mensagens
+    },
+
+    detalheCustoPorToken(state): number {
+      return state.detalheTotais.custo_por_token
     },
 
     detalheCustoPorLetra(state): number {

@@ -59,7 +59,7 @@ export default defineEventHandler(async (event): Promise<ProdutosAtualizarEmMass
   await checkWorkspace(event, workspaceId, userId)
 
   const admin = serverSupabaseServiceRole<any>(event)
-  const { update, termosIdsPatch } = await buildProdutoMassUpdateFromPatch(
+  const { update, termosIdsPatch, precoPrazoCopiarDePreco } = await buildProdutoMassUpdateFromPatch(
     admin,
     workspaceId,
     rawPatch as Record<string, unknown>,
@@ -67,15 +67,17 @@ export default defineEventHandler(async (event): Promise<ProdutosAtualizarEmMass
 
   const hasCampos = Object.keys(update).length > 0
   const hasTermos = termosIdsPatch !== undefined
+  const copiarPrazo = precoPrazoCopiarDePreco === true
 
-  if (!hasCampos && !hasTermos) {
+  if (!hasCampos && !hasTermos && !copiarPrazo) {
     throw createError({ statusCode: 400, statusMessage: 'Nenhum campo válido para atualizar.' })
   }
 
   let atualizadosIds: number[] = []
+  const agora = new Date().toISOString()
 
   if (hasCampos || hasTermos) {
-    const patchUpdate: Record<string, unknown> = { ...update, updated_at: new Date().toISOString() }
+    const patchUpdate: Record<string, unknown> = { ...update, updated_at: agora }
 
     const { data, error } = await admin
       .from('produtos_workspace')
@@ -91,6 +93,41 @@ export default defineEventHandler(async (event): Promise<ProdutosAtualizarEmMass
     atualizadosIds = (data ?? [])
       .map((r: { id?: unknown }) => (typeof r.id === 'number' ? r.id : Number(r.id)))
       .filter((n: number) => Number.isFinite(n))
+  }
+
+  if (copiarPrazo) {
+    const { data: rows, error: selErr } = await admin
+      .from('produtos_workspace')
+      .select('id, preco')
+      .eq('workspace_id', workspaceId)
+      .in('id', ids)
+
+    if (selErr) {
+      throw createError({ statusCode: 500, statusMessage: selErr.message })
+    }
+
+    const idsOk = new Set<number>()
+    for (const row of rows ?? []) {
+      const id = typeof row.id === 'number' ? row.id : Number(row.id)
+      if (!Number.isFinite(id)) continue
+      const preco =
+        row.preco == null || row.preco === ''
+          ? null
+          : typeof row.preco === 'number'
+            ? row.preco
+            : Number.parseFloat(String(row.preco).replace(',', '.'))
+      const precoOk = preco != null && Number.isFinite(preco) && preco >= 0 ? preco : null
+      const { error: upErr } = await admin
+        .from('produtos_workspace')
+        .update({ preco_prazo: precoOk, updated_at: agora })
+        .eq('workspace_id', workspaceId)
+        .eq('id', id)
+      if (upErr) {
+        throw createError({ statusCode: 500, statusMessage: upErr.message })
+      }
+      idsOk.add(id)
+    }
+    atualizadosIds = [...new Set([...atualizadosIds, ...idsOk])]
   }
 
   if (hasTermos && atualizadosIds.length > 0 && (termosIdsPatch?.length ?? 0) > 0) {

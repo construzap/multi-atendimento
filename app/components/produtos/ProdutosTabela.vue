@@ -24,6 +24,7 @@ import { useProdutoCategoriasStore } from '~/stores/produtoCategorias'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
 import { useProdutosStore, PRODUTOS_PAGE_SIZE_TODOS } from '~/stores/produtos'
 import { parseDecimalPtBr } from '~/utils/mapearLinhasImportacaoProduto'
+import { resolverPrecoPrazo } from '#shared/utils/resolverPrecoPrazo'
 
 const produtosStore = useProdutosStore()
 const { items: itemsPinia } = storeToRefs(produtosStore)
@@ -579,7 +580,18 @@ async function aplicarEdicaoMassa(patch: ProdutoWorkspacePatch) {
     const row = encontrarRowPorId(id)
     if (!row) continue
     snapshots.set(id, clonarLinhaParaSalvar(row))
-    emitLinhaLocal(row, patchTermosMassaAdicionar(row, patch))
+    const patchRow = patchTermosMassaAdicionar(row, patch)
+    const patchNorm =
+      patchRow.preco_prazo === undefined
+        ? patchRow
+        : {
+            ...patchRow,
+            preco_prazo: resolverPrecoPrazo(
+              patchRow.preco !== undefined ? patchRow.preco : row.preco,
+              patchRow.preco_prazo,
+            ),
+          }
+    emitLinhaLocal(row, patchNorm)
   }
 
   let sucesso = 0
@@ -975,17 +987,28 @@ const linhasExibicao = computed<LinhaTabelaExibicao[]>(() => {
 })
 
 function gravarPatch(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch) {
+  const patchNorm =
+    patch.preco_prazo === undefined
+      ? patch
+      : {
+          ...patch,
+          preco_prazo: resolverPrecoPrazo(
+            patch.preco !== undefined ? patch.preco : row.preco,
+            patch.preco_prazo,
+          ),
+        }
+
   if (props.modo === 'rascunho') {
-    emitLinhaLocal(row, patch)
+    emitLinhaLocal(row, patchNorm)
     return
   }
   if (!podeGravar()) return
-  const campos = camposDoPatch(patch)
+  const campos = camposDoPatch(patchNorm)
   if (!campos.length) return
 
   // 1) Pinia primeiro — UI livre para editar várias células em paralelo.
   const rowAntes = clonarLinhaParaSalvar(row)
-  emitLinhaLocal(row, patch)
+  emitLinhaLocal(row, patchNorm)
   const geracoes = bumpGeracaoCelulas(row.id, campos)
   // Sem estado "pending" (não trava/opaca a célula).
   marcarCelulas(row.id, campos, null)
@@ -997,7 +1020,7 @@ function gravarPatch(row: ProdutoWorkspaceCampos, patch: ProdutoWorkspacePatch) 
     body: {
       workspace_id: props.workspaceId,
       id: produtoId,
-      patch,
+      patch: patchNorm,
     },
   })
     .then(() => {
@@ -1086,9 +1109,9 @@ function fmtPrecoInput(n: number): string {
   }).format(n)
 }
 
-/** Célula de preço: vazio quando null ou 0 (sem valor predefinido "0,00"). */
+/** Célula de preço: vazio quando null (sem valor). */
 function fmtPrecoCelula(val: number | null | undefined): string {
-  if (val == null || val === 0) return ''
+  if (val == null) return ''
   return fmtPrecoInput(val)
 }
 
@@ -1141,8 +1164,8 @@ function blurEstoque(row: ProdutoWorkspaceCampos, ev: Event) {
 function blurPreco(row: ProdutoWorkspaceCampos, ev: Event) {
   const raw = (ev.target as HTMLInputElement).value.trim()
   if (!raw.length) {
-    if (row.preco == null || row.preco === 0) return
-    void gravarPatch(row, { preco: 0 })
+    if (row.preco == null) return
+    void gravarPatch(row, { preco: null })
     return
   }
   const n = parseDecimalPtBr(raw)

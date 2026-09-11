@@ -932,6 +932,11 @@ export const useKanbanStore = defineStore('kanban', {
       observacoes?: string | null
       nome?: string | null
       fone?: string | null
+      endereco?: string | null
+      /** Texto `"lat, lng"` ou campos separados. */
+      coordenadas?: string | null
+      latitude?: number | null
+      longitude?: number | null
     }) {
       const workspaceId = input.workspaceId
       const canalId = input.canalId
@@ -963,6 +968,10 @@ export const useKanbanStore = defineStore('kanban', {
           observacoes: input.observacoes ?? null,
           nome: input.nome ?? null,
           fone: input.fone ?? null,
+          endereco: input.endereco ?? null,
+          coordenadas: input.coordenadas ?? null,
+          latitude: input.latitude ?? null,
+          longitude: input.longitude ?? null,
         },
       })
 
@@ -1229,6 +1238,78 @@ export const useKanbanStore = defineStore('kanban', {
           if (nIdx >= 0) list[nIdx] = notifNorm
           else list.unshift(notifNorm)
           card = { ...card, notificacoes_ia: list }
+        } else if (
+          payload.notificacao_id != null
+          && Number.isFinite(Number(payload.notificacao_id))
+          && payload.notificacao_patch
+          && typeof payload.notificacao_patch === 'object'
+        ) {
+          // Patch parcial: só atualiza se a notificação já estiver no Pinia (não cria).
+          const nid = Number(payload.notificacao_id)
+          const list = [...(card.notificacoes_ia ?? [])]
+          const nIdx = list.findIndex((n) => n.id === nid)
+          if (nIdx >= 0) {
+            const prev = list[nIdx]!
+            const p = payload.notificacao_patch
+            const nextNotif = { ...prev }
+            if (p.created_at !== undefined) nextNotif.created_at = String(p.created_at)
+            if (p.updated_at !== undefined) {
+              nextNotif.updated_at =
+                p.updated_at != null ? String(p.updated_at) : new Date().toISOString()
+            } else {
+              nextNotif.updated_at = new Date().toISOString()
+            }
+            if (p.endereco !== undefined) {
+              nextNotif.endereco =
+                typeof p.endereco === 'string' && p.endereco.trim()
+                  ? p.endereco.trim()
+                  : p.endereco ?? null
+            }
+            if (p.entrega_ou_retirada !== undefined) {
+              nextNotif.entrega_ou_retirada =
+                p.entrega_ou_retirada != null ? String(p.entrega_ou_retirada) : null
+            }
+            if (p.entrega_status !== undefined) {
+              nextNotif.entrega_status = normalizeEntregaStatus(p.entrega_status)
+            }
+            if (p.forma_pagamento !== undefined) {
+              nextNotif.forma_pagamento =
+                p.forma_pagamento != null ? String(p.forma_pagamento) : null
+            }
+            if (p.id_cobranca !== undefined) {
+              nextNotif.id_cobranca =
+                typeof p.id_cobranca === 'string' && p.id_cobranca.trim()
+                  ? p.id_cobranca.trim()
+                  : p.id_cobranca ?? null
+            }
+            if (p.latitude !== undefined) nextNotif.latitude = p.latitude ?? null
+            if (p.longitude !== undefined) nextNotif.longitude = p.longitude ?? null
+            if (p.observacoes !== undefined) {
+              nextNotif.observacoes =
+                p.observacoes != null ? String(p.observacoes) : null
+            }
+            if (p.pagamento_realizado !== undefined) {
+              nextNotif.pagamento_realizado = p.pagamento_realizado === true
+            }
+            if (p.produtos !== undefined) {
+              nextNotif.produtos = normalizeProdutosRaw(p.produtos)
+            }
+            if (p.tipo_solicitacao !== undefined) {
+              nextNotif.tipo_solicitacao =
+                p.tipo_solicitacao != null ? String(p.tipo_solicitacao) : null
+            }
+            if (p.token_entrega !== undefined) {
+              nextNotif.token_entrega =
+                typeof p.token_entrega === 'string' && p.token_entrega.trim()
+                  ? p.token_entrega.trim().toLowerCase()
+                  : p.token_entrega ?? null
+            }
+            if (p.total_orcamento !== undefined) {
+              nextNotif.total_orcamento = normalizeTotalOrcamento(p.total_orcamento)
+            }
+            list[nIdx] = nextNotif
+            card = { ...card, notificacoes_ia: list }
+          }
         } else if (
           payload.notificacao_id != null
           && Number.isFinite(Number(payload.notificacao_id))

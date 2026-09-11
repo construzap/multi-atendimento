@@ -1,6 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutoCriarEmMassaLinha, ProdutosCriarEmMassaResponse } from '#shared/types/produtos'
+import { resolverPrecoPrazo } from '#shared/utils/resolverPrecoPrazo'
 import { checkLimiteProdutos } from '../../utils/checkLimiteProdutos'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
@@ -84,21 +85,21 @@ function normalizarLinha(raw: unknown): ProdutoCriarEmMassaLinha | null {
   const altura = numOrNull(o.altura)
   const comprimento = numOrNull(o.comprimento)
 
+  const precoFinal = preco != null && preco >= 0 ? preco : null
+  const precoPrazoRaw = numOrNull(o.preco_prazo)
+
   const linha: ProdutoCriarEmMassaLinha = {
     nome,
     sku: strOrNull(o.sku),
     unidade_venda: strOrNull(o.unidade_venda),
     marca: strOrNull(o.marca),
-    preco: preco != null && preco >= 0 ? preco : 0,
+    preco: precoFinal,
     preco_custo: preco_custo != null && preco_custo >= 0 ? preco_custo : 0,
     preco_promocional: (() => {
       const v = numOrNull(o.preco_promocional)
       return v != null && v >= 0 ? v : null
     })(),
-    preco_prazo: (() => {
-      const v = numOrNull(o.preco_prazo)
-      return v != null && v >= 0 ? v : null
-    })(),
+    preco_prazo: resolverPrecoPrazo(precoFinal, precoPrazoRaw),
     peso_kg: (() => {
       const v = numOrNull(o.peso_kg)
       return v != null && v >= 0 ? v : null
@@ -213,7 +214,7 @@ export default defineEventHandler(async (event): Promise<ProdutosCriarEmMassaRes
       sku: r.sku ?? null,
       unidade_venda: r.unidade_venda ?? null,
       marca: r.marca ?? null,
-      preco: r.preco ?? 0,
+      preco: r.preco ?? null,
       preco_custo: r.preco_custo ?? 0,
       preco_promocional: r.preco_promocional ?? null,
       preco_prazo: r.preco_prazo ?? null,

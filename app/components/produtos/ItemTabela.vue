@@ -56,7 +56,7 @@ const emit = defineEmits<{
 }>()
 
 function fmtPreco(val: number | null | undefined): string {
-  if (val == null || val === 0) return '—'
+  if (val == null) return '—'
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',

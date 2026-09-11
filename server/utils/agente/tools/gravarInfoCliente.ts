@@ -44,5 +44,6 @@ export const gravarInfoClienteTool: ToolDef = {
     ngrok_skip_browser_warning: ctx.ngrok_skip_browser_warning,
     endereco_loja: ctxStr(ctx.endereco_loja),
     produtos_contexto: ctx.produtos_contexto,
+    user_id: ctxStr(ctx.user_id),
   }),
 }

@@ -22,6 +22,7 @@ const {
   totalPalavras,
   totalLetras,
   totalMensagens,
+  custoPorTokenLista,
   custoPorLetraLista,
   custoPorMensagemLista,
 } = storeToRefs(store)
@@ -62,13 +63,17 @@ onMounted(() => {
   carregar().catch(() => {})
 })
 
-function formatBrl(value: number, maxFrac = 4): string {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-    minimumFractionDigits: 2,
+function formatBrl(value: number | string | null | undefined, maxFrac = 4): string {
+  const n =
+    typeof value === 'number'
+      ? value
+      : Number(String(value ?? '').trim().replace(/\s/g, '').replace(',', '.'))
+  if (!Number.isFinite(n)) return '—'
+  const formatted = n.toLocaleString('pt-BR', {
+    minimumFractionDigits: Math.min(2, maxFrac),
     maximumFractionDigits: maxFrac,
-  }).format(value)
+  })
+  return `R$ ${formatted}`
 }
 
 function formatTokens(value: number): string {
@@ -99,6 +104,7 @@ function formatTokens(value: number): string {
             Total {{ formatBrl(totalCustoBrl) }} · {{ formatTokens(totalTokens) }} tokens ·
             {{ formatTokens(totalPalavras) }} palavras · {{ formatTokens(totalLetras) }} letras ·
             {{ formatTokens(totalMensagens) }} mensagens ·
+            {{ formatBrl(custoPorTokenLista, 8) }}/token ·
             {{ formatBrl(custoPorLetraLista, 8) }}/letra · {{ formatBrl(custoPorMensagemLista, 6) }}/msg
           </p>
           <p

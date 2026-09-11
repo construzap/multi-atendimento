@@ -28,6 +28,12 @@ export interface AdminVerificarResponse {
 /** Valores de `vw_perfil_consolidado.status_assinatura`. */
 export type StatusAssinatura = 'trial' | 'pendente' | 'ativo' | 'vencida' | 'cancelado'
 
+/** Valores de `vw_perfil_consolidado.status_limite_tokens`. */
+export type StatusLimiteTokens =
+  | 'dentro do limite'
+  | 'limite atingido'
+  | 'nao tem canal criado'
+
 /**
  * Campos de assinatura expostos pelo endpoint `GET /api/perfil/assinatura`
  * (`public.vw_perfil_consolidado`).

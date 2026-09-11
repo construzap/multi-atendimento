@@ -54,6 +54,8 @@ export type AgenteResponderBody = {
   agenda_pedido?: boolean | null
   /** Contexto de produtos da conversa (texto livre; pode ser null). */
   produtos_contexto?: string | null
+  /** ID do usuário (texto; N8N). */
+  user_id?: string | null
   model?: string | null
   max_tool_rounds?: number | null
 }
@@ -136,6 +138,8 @@ export type AgenteContext = {
   agenda_pedido: boolean | null
   /** Contexto de produtos da conversa; null se não enviado. */
   produtos_contexto: string | null
+  /** ID do usuário (texto); null se não enviado. */
+  user_id: string | null
   model: string
   max_tool_rounds: number
   context_window: number

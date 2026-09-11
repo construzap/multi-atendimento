@@ -13,6 +13,18 @@ export function parseCoordenadasValidas(
   return { lat: latN, lng: lngN }
 }
 
+/**
+ * Parseia texto no formato `"lat, lng"` (ex.: `-12.89, -38.30`).
+ * Vazio → `null`. Inválido → `undefined`.
+ */
+export function parseLatLngTexto(raw: unknown): CoordenadasValidas | null | undefined {
+  const s = String(raw ?? '').trim()
+  if (!s) return null
+  const parts = s.split(',').map((p) => p.trim()).filter((p) => p.length > 0)
+  if (parts.length !== 2) return undefined
+  return parseCoordenadasValidas(parts[0], parts[1]) ?? undefined
+}
+
 export function urlGoogleMaps(c: CoordenadasValidas): string {
   return `https://www.google.com/maps/dir/?api=1&destination=${c.lat},${c.lng}`
 }
