@@ -42,7 +42,7 @@ export type AgenteResponderBody = {
   email?: string | null
   /** Chave Pix aleatória do workspace (pode ser null). */
   chave_pix_aleatoria?: string | null
-  /** Provedor de pagamento do canal (ex.: pagar.me, asaas). */
+  /** Provedor de pagamento do canal (ex.: pagar.me, asaas, pix_manual). */
   provedor_pagamentos?: string | null
   /** Credenciais de pagamento criptografadas (coluna canais.credenciais_encrypted). */
   credenciais_encrypted?: string | null
@@ -56,6 +56,10 @@ export type AgenteResponderBody = {
   produtos_contexto?: string | null
   /** ID do usuário (texto; N8N). */
   user_id?: string | null
+  /** Mensagem do PIX Manual do canal. */
+  mensagem_pix_manual?: string | null
+  /** Tipo da chave PIX (ex.: cpf, cnpj, email, phone, random). */
+  pixType?: string | null
   model?: string | null
   max_tool_rounds?: number | null
 }
@@ -140,6 +144,10 @@ export type AgenteContext = {
   produtos_contexto: string | null
   /** ID do usuário (texto); null se não enviado. */
   user_id: string | null
+  /** Mensagem do PIX Manual; null se não enviado. */
+  mensagem_pix_manual: string | null
+  /** Tipo da chave PIX; null se não enviado. */
+  pixType: string | null
   model: string
   max_tool_rounds: number
   context_window: number

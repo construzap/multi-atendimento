@@ -9,9 +9,11 @@ import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 import type {
   CanalPagamentoInfo,
+  CanalPixType,
   CanalProvedorPagamentos,
   CanalTaxasCartao,
 } from '#shared/types/canal'
+import { CANAL_PIX_TYPES } from '#shared/types/canal'
 import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
 import { useWorkspacesStore } from '~/stores/workspaces'
 
@@ -46,7 +48,9 @@ const workspaceIdEfetivo = computed((): number | null => {
 
 const loading = ref(false)
 const provedor = ref<CanalProvedorPagamentos | null>(null)
+const pixType = ref<CanalPixType | null>(null)
 const chavePix = ref('')
+const mensagemPixManual = ref('')
 const credenciaisPagarme = ref('')
 const temCredenciaisPagarme = ref(false)
 
@@ -56,6 +60,7 @@ const taxasLinhas = ref<TaxaLinha[]>([])
 const PROVEDORES: { value: CanalProvedorPagamentos; label: string }[] = [
   { value: 'pagar.me', label: 'Pagar.me' },
   { value: 'asaas', label: 'Asaas' },
+  { value: 'pix_manual', label: 'PIX Manual' },
 ]
 
 const provedorLabel = computed(() => {
@@ -63,8 +68,22 @@ const provedorLabel = computed(() => {
   return PROVEDORES.find((p) => p.value === provedor.value)?.label ?? provedor.value
 })
 
-/** Chave PIX só para Pagar.me — Asaas não exibe o campo. */
-const mostraChavePix = computed(() => provedor.value === 'pagar.me')
+const pixTypeLabel = computed(() => {
+  if (!pixType.value) return 'Selecione o tipo da chave'
+  return CANAL_PIX_TYPES.find((p) => p.value === pixType.value)?.label ?? pixType.value
+})
+
+/** Chave PIX: Pagar.me e PIX Manual. Asaas não usa. */
+const mostraChavePix = computed(
+  () => provedor.value === 'pagar.me' || provedor.value === 'pix_manual',
+)
+
+/** Credenciais e taxas de cartão: gateways com API. PIX Manual não usa. */
+const mostraCredenciaisETaxas = computed(() => provedor.value !== 'pix_manual')
+
+/** Mensagem e tipo PIX — só no provedor pix_manual. */
+const mostraMensagemPixManual = computed(() => provedor.value === 'pix_manual')
+const mostraPixType = computed(() => provedor.value === 'pix_manual')
 
 function ordenarChavesParcela(keys: string[]): string[] {
   return [...keys].sort((a, b) => {
@@ -146,7 +165,9 @@ function removerTaxa(id: string) {
 
 function aplicarPagamento(info: CanalPagamentoInfo) {
   provedor.value = info.provedor_pagamentos
+  pixType.value = info.pixtype
   chavePix.value = info.chave_pix?.trim() ?? ''
+  mensagemPixManual.value = info.mensagem_pix_manual?.trim() ?? ''
   temCredenciaisPagarme.value = Boolean(info.tem_credenciais_pagarme)
   credenciaisPagarme.value = ''
   taxasLinhas.value = taxasObjetoParaLinhas(info.taxas_cartao ?? {})
@@ -154,7 +175,9 @@ function aplicarPagamento(info: CanalPagamentoInfo) {
 
 function limparFormulario() {
   provedor.value = null
+  pixType.value = null
   chavePix.value = ''
+  mensagemPixManual.value = ''
   credenciaisPagarme.value = ''
   temCredenciaisPagarme.value = false
   taxasLinhas.value = taxasObjetoParaLinhas({})
@@ -222,6 +245,11 @@ function selecionarProvedor(value: CanalProvedorPagamentos, close: () => void) {
   close()
 }
 
+function selecionarPixType(value: CanalPixType, close: () => void) {
+  pixType.value = value
+  close()
+}
+
 const saving = ref(false)
 
 function close() {
@@ -229,6 +257,10 @@ function close() {
 }
 
 function validarFormulario(): string | null {
+  if (mostraPixType.value && !pixType.value) {
+    return 'Selecione o tipo da chave PIX.'
+  }
+  if (!mostraCredenciaisETaxas.value) return null
   for (const linha of taxasLinhas.value) {
     const valorStr = String(linha.valor).trim()
     if (!valorStr) continue
@@ -263,12 +295,20 @@ async function onSalvar() {
         workspace_id: workspaceId,
         id: canalId,
         provedor_pagamentos: provedor.value,
-        ...(provedor.value === 'pagar.me'
+        ...(mostraPixType.value ? { pixtype: pixType.value } : {}),
+        ...(mostraChavePix.value
           ? { chave_pix: chavePix.value.trim() || null }
           : {}),
-        taxas_cartao: linhasParaTaxasObjeto(taxasLinhas.value),
-        ...(credenciaisPagarme.value.trim()
-          ? { credenciais: credenciaisPagarme.value.trim() }
+        ...(mostraMensagemPixManual.value
+          ? { mensagem_pix_manual: mensagemPixManual.value.trim() || null }
+          : {}),
+        ...(mostraCredenciaisETaxas.value
+          ? {
+              taxas_cartao: linhasParaTaxasObjeto(taxasLinhas.value),
+              ...(credenciaisPagarme.value.trim()
+                ? { credenciais: credenciaisPagarme.value.trim() }
+                : {}),
+            }
           : {}),
       },
     })
@@ -348,6 +388,51 @@ async function onSalvar() {
         </BaseDropdown>
       </div>
 
+      <div v-if="mostraPixType">
+        <p class="mb-2 text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+          Tipo da chave PIX
+        </p>
+        <BaseDropdown
+          title="Tipo da chave PIX"
+          align="left"
+          block
+          teleport
+          panel-class="w-full min-w-[14rem]"
+        >
+          <template #trigger>
+            <span
+              class="flex w-full items-center justify-between rounded-2xl border border-outline-variant/30 bg-surface-container-lowest px-4 py-3 text-sm text-on-surface dark:border-dark-outline/30 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface"
+            >
+              <span :class="pixType ? '' : 'text-on-surface-variant dark:text-dark-on-surface-variant'">
+                {{ pixTypeLabel }}
+              </span>
+              <span class="material-symbols-outlined text-[20px] text-on-surface-variant" aria-hidden="true">
+                expand_more
+              </span>
+            </span>
+          </template>
+          <template #default="{ close: closeDropdown }">
+            <div class="flex flex-col gap-1 p-1">
+              <button
+                v-for="opt in CANAL_PIX_TYPES"
+                :key="opt.value"
+                type="button"
+                role="menuitem"
+                class="flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-surface-container-high dark:hover:bg-dark-surface-container-high"
+                :class="
+                  pixType === opt.value
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-on-surface dark:text-dark-on-surface'
+                "
+                @click="selecionarPixType(opt.value, closeDropdown)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </template>
+        </BaseDropdown>
+      </div>
+
       <div v-if="mostraChavePix">
         <label
           class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface"
@@ -366,7 +451,25 @@ async function onSalvar() {
         />
       </div>
 
-      <div>
+      <div v-if="mostraMensagemPixManual">
+        <label
+          class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface"
+          for="canal-pagamento-mensagem-pix-manual"
+        >
+          Mensagem PIX Manual
+        </label>
+        <BaseTextarea
+          id="canal-pagamento-mensagem-pix-manual"
+          v-model="mensagemPixManual"
+          name="mensagem_pix_manual"
+          :submit-on-enter="false"
+          :min-height-px="96"
+          :max-height-px="220"
+          placeholder="Texto enviado ao cliente com as instruções do PIX"
+        />
+      </div>
+
+      <div v-if="mostraCredenciaisETaxas">
         <label
           class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface"
           for="canal-pagamento-credenciais"
@@ -390,7 +493,7 @@ async function onSalvar() {
         </p>
       </div>
 
-      <div>
+      <div v-if="mostraCredenciaisETaxas">
         <p class="mb-2 text-sm font-semibold text-on-surface dark:text-dark-on-surface">
           Taxas do cartão (%)
         </p>

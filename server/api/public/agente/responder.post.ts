@@ -154,6 +154,8 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     agenda_pedido: boolOrNull(body.agenda_pedido),
     produtos_contexto: strOrNull(body.produtos_contexto),
     user_id: strOrNull(body.user_id),
+    mensagem_pix_manual: strOrNull(body.mensagem_pix_manual),
+    pixType: strOrNull(body.pixType),
     model: modelOverride || canalCredenciais.model_name || defaultModel,
     max_tool_rounds:
       Number.isFinite(maxRoundsBody) && maxRoundsBody > 0

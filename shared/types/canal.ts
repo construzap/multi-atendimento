@@ -72,7 +72,18 @@ export interface Canal {
   agenda_pedido: boolean
 }
 
-export type CanalProvedorPagamentos = 'pagar.me' | 'asaas'
+export type CanalProvedorPagamentos = 'pagar.me' | 'asaas' | 'pix_manual'
+
+/** Tipo da chave PIX (`canais.pixtype`) — usado no PIX Manual. */
+export type CanalPixType = 'CPF' | 'CNPJ' | 'PHONE' | 'EMAIL' | 'EVP'
+
+export const CANAL_PIX_TYPES: { value: CanalPixType; label: string }[] = [
+  { value: 'CPF', label: 'CPF' },
+  { value: 'CNPJ', label: 'CNPJ' },
+  { value: 'PHONE', label: 'Telefone' },
+  { value: 'EMAIL', label: 'E-mail' },
+  { value: 'EVP', label: 'Chave aleatória (EVP)' },
+]
 
 /** Taxas por parcela — chaves livres (`1x`, `2x`, `12x`, …). */
 export type CanalTaxasCartao = Record<string, number>
@@ -96,6 +107,10 @@ export type CanalPagamentoInfo = {
   tem_credenciais_pagarme: boolean
   /** null = sem taxas cadastradas. */
   taxas_cartao: CanalTaxasCartao | null
+  /** Mensagem exibida no PIX Manual (`canais.mensagem_pix_manual`). */
+  mensagem_pix_manual: string | null
+  /** Tipo da chave PIX (`canais.pixtype`) — PIX Manual. */
+  pixtype: CanalPixType | null
 }
 
 /** Payload de criação de canal (POST /api/canais/criarcanal). */

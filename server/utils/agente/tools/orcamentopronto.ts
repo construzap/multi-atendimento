@@ -189,5 +189,7 @@ export const orcamentoprontoTool: ToolDef = {
     agenda_pedido: ctx.agenda_pedido,
     produtos_contexto: ctx.produtos_contexto,
     user_id: ctxStr(ctx.user_id),
+    mensagem_pix_manual: ctxStr(ctx.mensagem_pix_manual),
+    pixType: ctxStr(ctx.pixType),
   }),
 }

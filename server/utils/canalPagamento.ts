@@ -1,12 +1,26 @@
 import { createError } from 'h3'
 import type {
   CanalPagamentoInfo,
+  CanalPixType,
   CanalProvedorPagamentos,
   CanalTaxasCartao,
 } from '#shared/types/canal'
 
 export function parseProvedorPagamentos(raw: unknown): CanalProvedorPagamentos | null {
-  if (raw === 'pagar.me' || raw === 'asaas') return raw
+  if (raw === 'pagar.me' || raw === 'asaas' || raw === 'pix_manual') return raw
+  return null
+}
+
+export function parsePixType(raw: unknown): CanalPixType | null {
+  if (
+    raw === 'CPF' ||
+    raw === 'CNPJ' ||
+    raw === 'PHONE' ||
+    raw === 'EMAIL' ||
+    raw === 'EVP'
+  ) {
+    return raw
+  }
   return null
 }
 
@@ -118,5 +132,10 @@ export function mapCanalPagamentoRow(
       const taxas = parseTaxasCartao(row.taxas_cartao)
       return Object.keys(taxas).length > 0 ? taxas : null
     })(),
+    mensagem_pix_manual:
+      typeof row.mensagem_pix_manual === 'string' && row.mensagem_pix_manual.trim()
+        ? row.mensagem_pix_manual
+        : null,
+    pixtype: parsePixType(row.pixtype),
   }
 }

@@ -7,7 +7,7 @@ import { checkChannel } from '../../../utils/checkChannel'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
 
 const SELECT =
-  'id, workspace_id, provedor_pagamentos, chave_pix, credenciais_encrypted, taxas_cartao'
+  'id, workspace_id, provedor_pagamentos, chave_pix, credenciais_encrypted, taxas_cartao, mensagem_pix_manual, pixtype'
 
 /**
  * GET /api/canais/pagamento?workspace_id=&id=

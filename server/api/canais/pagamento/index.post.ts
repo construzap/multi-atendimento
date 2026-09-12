@@ -3,6 +3,7 @@ import { createError, readBody } from 'h3'
 import type { CanalPagamentoInfo } from '#shared/types/canal'
 import {
   mapCanalPagamentoRow,
+  parsePixType,
   parseProvedorPagamentos,
   parseTaxasCartaoParaSalvar,
 } from '../../../utils/canalPagamento'
@@ -22,10 +23,12 @@ type Body = {
   credenciais?: string | null
   credenciais_pagarme?: string | null
   taxas_cartao?: unknown
+  mensagem_pix_manual?: string | null
+  pixtype?: string | null
 }
 
 const SELECT =
-  'id, workspace_id, provedor_pagamentos, chave_pix, credenciais_encrypted, taxas_cartao'
+  'id, workspace_id, provedor_pagamentos, chave_pix, credenciais_encrypted, taxas_cartao, mensagem_pix_manual, pixtype'
 
 /**
  * POST /api/canais/pagamento
@@ -86,7 +89,7 @@ export default defineEventHandler(async (event): Promise<CanalPagamentoInfo> => 
     if (provedor == null) {
       throw createError({
         statusCode: 400,
-        statusMessage: 'provedor_pagamentos inválido (use pagar.me ou asaas).',
+        statusMessage: 'provedor_pagamentos inválido (use pagar.me, asaas ou pix_manual).',
       })
     }
   }
@@ -97,6 +100,28 @@ export default defineEventHandler(async (event): Promise<CanalPagamentoInfo> => 
       : typeof body.chave_pix === 'string'
         ? body.chave_pix.trim() || null
         : null
+
+  const mensagemPixManual =
+    body.mensagem_pix_manual === undefined
+      ? undefined
+      : typeof body.mensagem_pix_manual === 'string'
+        ? body.mensagem_pix_manual.trim() || null
+        : null
+
+  let pixType: ReturnType<typeof parsePixType> | null | undefined
+  if (body.pixtype === undefined) {
+    pixType = undefined
+  } else if (body.pixtype === null || body.pixtype === '') {
+    pixType = null
+  } else {
+    pixType = parsePixType(body.pixtype)
+    if (pixType == null) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'pixtype inválido (use CPF, CNPJ, PHONE, EMAIL ou EVP).',
+      })
+    }
+  }
 
   const taxas =
     body.taxas_cartao === undefined
@@ -111,6 +136,13 @@ export default defineEventHandler(async (event): Promise<CanalPagamentoInfo> => 
   if (provedor !== undefined) patch.provedor_pagamentos = provedor
   // Asaas não usa chave PIX no canal — não altera a coluna ao salvar.
   if (chavePix !== undefined && provedor !== 'asaas') patch.chave_pix = chavePix
+  // mensagem_pix_manual e pixtype só atualizam no PIX Manual.
+  if (mensagemPixManual !== undefined && provedor === 'pix_manual') {
+    patch.mensagem_pix_manual = mensagemPixManual
+  }
+  if (pixType !== undefined && provedor === 'pix_manual') {
+    patch.pixtype = pixType
+  }
   if (taxas !== undefined) patch.taxas_cartao = taxas
 
   if (Object.keys(patch).length === 0 && !credenciaisPlain) {
