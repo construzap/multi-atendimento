@@ -55,10 +55,15 @@ export async function openaiChatCompletions(
 
   const endpoint = resolveOpenAiChatCompletionsUrl(params.baseUrl)
 
+  // GPT-5 (nano/mini/etc.) só aceita o default de temperature (1).
+  const modelLower = String(params.model ?? '').toLowerCase()
+  const isGpt5 = /(^|\/)gpt-5/.test(modelLower)
+  const temperature = isGpt5 ? 1 : (params.temperature ?? 0.2)
+
   const body: Record<string, unknown> = {
     model: params.model,
     messages: params.messages,
-    temperature: params.temperature ?? 0.2,
+    temperature,
   }
 
   if (params.tools?.length) {

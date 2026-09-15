@@ -2,6 +2,10 @@ import type { H3Event } from 'h3'
 import type { AgenteToolTraceItem } from '#shared/types/agente'
 import type { OpenAiToolDefinition } from '../openaiChat'
 import { executeVectorSearch } from '../../enviarParaIa/executeVectorSearch'
+import {
+  parseCodigoProdutoFromContent,
+  parseEnviaFoto,
+} from '../../enviarParaIa/produtoEmbeddingText'
 import { argStr } from '../tools/helpers'
 import { parseToolArgs, previewToolResult } from './parseBody'
 
@@ -48,11 +52,12 @@ export async function executeComCategoriaTool(
       limit: 50,
     })
     const payload = {
-      ok: search.ok,
-      query: search.query,
-      termos_pesquisa: search.termos_pesquisa,
       count: search.count,
-      hits: search.hits.map(({ content, metadata }) => ({ content, metadata })),
+      hits: search.hits.map(({ content, metadata }) => ({
+        content,
+        codigo_produto: parseCodigoProdutoFromContent(content),
+        envia_foto: parseEnviaFoto(metadata?.envia_foto),
+      })),
     }
     const result = JSON.stringify(payload)
     return {

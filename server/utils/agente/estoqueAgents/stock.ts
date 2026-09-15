@@ -50,10 +50,8 @@ export async function executeStockTool(
       metadataFilters: null,
     })
     const payload = {
-      ok: search.ok,
-      query: search.query,
       count: search.count,
-      hits: search.hits.map(({ content, metadata }) => ({ content, metadata })),
+      hits: search.hits.map(({ content }) => content),
     }
     const result = JSON.stringify(payload)
     return {
