@@ -6,13 +6,23 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 
 const CANAL_SELECT =
-  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido'
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido'
 
 type CanalRow = Record<string, unknown> & {
   api_key_encrypted?: unknown
   horarios?: unknown
   loja_aberta?: unknown
   agenda_pedido?: unknown
+  valor_pedido_minimo?: unknown
+}
+
+function parseValorPedidoMinimoRow(raw: unknown): number {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.round(raw * 100) / 100
+  if (typeof raw === 'string' && raw.trim()) {
+    const n = Number.parseFloat(raw.replace(',', '.'))
+    if (Number.isFinite(n)) return Math.round(n * 100) / 100
+  }
+  return 0
 }
 
 function mapCanalPublico(row: CanalRow): Canal {
@@ -29,7 +39,12 @@ function mapCanalPublico(row: CanalRow): Canal {
   return {
     ...(rest as Omit<
       Canal,
-      'tem_api_key' | 'tem_inteligencia_artificial' | 'horarios' | 'loja_aberta' | 'agenda_pedido'
+      | 'tem_api_key'
+      | 'tem_inteligencia_artificial'
+      | 'horarios'
+      | 'loja_aberta'
+      | 'agenda_pedido'
+      | 'valor_pedido_minimo'
     >),
     horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
@@ -40,6 +55,7 @@ function mapCanalPublico(row: CanalRow): Canal {
     loja_aberta: row.loja_aberta !== false,
     // DB default false; null legado trata como desligado
     agenda_pedido: row.agenda_pedido === true,
+    valor_pedido_minimo: parseValorPedidoMinimoRow(row.valor_pedido_minimo),
   }
 }
 

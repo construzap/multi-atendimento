@@ -305,6 +305,7 @@ export const useCanaisStore = defineStore('canais', {
             latitude: input.latitude,
             longitude: input.longitude,
             tempo_aviso_minutos: input.tempo_aviso_minutos,
+            valor_pedido_minimo: input.valor_pedido_minimo,
             horarios: input.horarios,
           }
         })
@@ -341,6 +342,9 @@ export const useCanaisStore = defineStore('canais', {
         if (input.longitude !== undefined) body.longitude = input.longitude
         if (input.tempo_aviso_minutos !== undefined) {
           body.tempo_aviso_minutos = input.tempo_aviso_minutos
+        }
+        if (input.valor_pedido_minimo !== undefined) {
+          body.valor_pedido_minimo = input.valor_pedido_minimo
         }
         if (input.horarios !== undefined) body.horarios = input.horarios
         if (input.tem_inteligencia_artificial !== undefined) {

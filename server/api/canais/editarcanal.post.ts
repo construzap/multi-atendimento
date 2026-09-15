@@ -7,6 +7,7 @@ import {
   parseLatitudeOpcional,
   parseLongitudeOpcional,
   parseTempoAvisoMinutos,
+  parseValorPedidoMinimo,
 } from '#shared/utils/validarCanalConfigLoja'
 import { createError, readBody } from 'h3'
 import { checkChannel } from '../../utils/checkChannel'
@@ -22,6 +23,7 @@ type EditarCanalBody = {
   latitude?: number | string | null
   longitude?: number | string | null
   tempo_aviso_minutos?: number | string
+  valor_pedido_minimo?: number | string
   horarios?: unknown
   endereco?: string | null
   tem_inteligencia_artificial?: boolean
@@ -34,13 +36,23 @@ type EditarCanalBody = {
 }
 
 const CANAL_SELECT =
-  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido'
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido'
 
 type CanalRow = Record<string, unknown> & {
   api_key_encrypted?: unknown
   horarios?: unknown
   loja_aberta?: unknown
   agenda_pedido?: unknown
+  valor_pedido_minimo?: unknown
+}
+
+function parseValorPedidoMinimoRow(raw: unknown): number {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.round(raw * 100) / 100
+  if (typeof raw === 'string' && raw.trim()) {
+    const n = Number.parseFloat(raw.replace(',', '.'))
+    if (Number.isFinite(n)) return Math.round(n * 100) / 100
+  }
+  return 0
 }
 
 function mapCanalPublico(row: CanalRow): Canal {
@@ -57,7 +69,12 @@ function mapCanalPublico(row: CanalRow): Canal {
   return {
     ...(rest as Omit<
       Canal,
-      'tem_api_key' | 'tem_inteligencia_artificial' | 'horarios' | 'loja_aberta' | 'agenda_pedido'
+      | 'tem_api_key'
+      | 'tem_inteligencia_artificial'
+      | 'horarios'
+      | 'loja_aberta'
+      | 'agenda_pedido'
+      | 'valor_pedido_minimo'
     >),
     horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
@@ -66,6 +83,7 @@ function mapCanalPublico(row: CanalRow): Canal {
     tem_api_key: temApiKey,
     loja_aberta: row.loja_aberta !== false,
     agenda_pedido: row.agenda_pedido === true,
+    valor_pedido_minimo: parseValorPedidoMinimoRow(row.valor_pedido_minimo),
   }
 }
 
@@ -199,6 +217,14 @@ export default defineEventHandler(async (event) => {
     patch.tempo_aviso_minutos = tempoAvisoParsed
   }
 
+  if (hasOwn(body, 'valor_pedido_minimo')) {
+    const valorPedidoMinimoParsed = parseValorPedidoMinimo(body.valor_pedido_minimo)
+    if (typeof valorPedidoMinimoParsed === 'string') {
+      throw createError({ statusCode: 400, statusMessage: valorPedidoMinimoParsed })
+    }
+    patch.valor_pedido_minimo = valorPedidoMinimoParsed
+  }
+
   if (hasOwn(body, 'horarios')) {
     const horariosParsed = parseCanalHorariosOpcional(body.horarios)
     if (typeof horariosParsed === 'string') {
@@ -277,19 +303,27 @@ export default defineEventHandler(async (event) => {
   }
 
   if (Object.keys(patch).length > 0) {
-    const { error: upErr } = await admin
+    // Autorização já feita via checkChannel (atendente do workspace).
+    // Não filtrar por canais.user_id — o criador pode ser outro usuário do workspace.
+    const { data: updatedRows, error: upErr } = await admin
       .from('canais')
       .update(patch)
       .eq('id', canalId)
-      .eq('user_id', userId)
       .eq('workspace_id', workspaceId)
       .is('deleted_at', null)
       .is('deleted_by', null)
+      .select('id')
 
     if (upErr) {
       throw createError({
         statusCode: 500,
         statusMessage: upErr.message,
+      })
+    }
+    if (!updatedRows?.length) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: 'Canal não encontrado neste workspace ou foi removido.',
       })
     }
   }

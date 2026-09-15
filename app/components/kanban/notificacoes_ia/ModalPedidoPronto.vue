@@ -357,6 +357,7 @@ function confirmarExcluirNotificacao() {
           <PedidoProntoExpandido
             v-if="isPedidoPronto(item.tipo_solicitacao)"
             :item="item"
+            :conversa-key="conversaKey"
             :busy="estaEmVoo(item.id)"
             @aceitar="aceitarPedido(item, $event)"
             @rejeitar="rejeitarPedido(item)"

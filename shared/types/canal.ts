@@ -51,6 +51,8 @@ export interface Canal {
   longitude: number | null
   endereco: string | null
   tempo_aviso_minutos: number
+  /** Valor mínimo do pedido (`canais.valor_pedido_minimo`; default 0). */
+  valor_pedido_minimo: number
   horarios: CanalHorarios
   tem_inteligencia_artificial: boolean
   /** Endpoint OpenAI-compatible do agente (sem segredo). */
@@ -122,6 +124,7 @@ export type CanalCreateInput = {
   latitude?: number | null
   longitude?: number | null
   tempo_aviso_minutos?: number
+  valor_pedido_minimo?: number
   horarios?: CanalHorarios
 }
 
@@ -135,6 +138,7 @@ export type CanalUpdateInput = {
   latitude?: number | null
   longitude?: number | null
   tempo_aviso_minutos?: number
+  valor_pedido_minimo?: number
   horarios?: CanalHorarios
   tem_inteligencia_artificial?: boolean
   url?: string | null

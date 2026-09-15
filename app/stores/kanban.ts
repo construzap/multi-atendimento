@@ -1006,6 +1006,7 @@ export const useKanbanStore = defineStore('kanban', {
         id: number
         entrega_status: string
         updated_at: string
+        notificacao?: KanbanCard['notificacoes_ia'][number]
       }>('/api/kanban/notificacoes_ia', {
         method: 'PATCH',
         body: {
@@ -1014,6 +1015,74 @@ export const useKanbanStore = defineStore('kanban', {
           entrega_status: entregaStatus,
         },
       })
+    },
+
+    /**
+     * PATCH /api/kanban/notificacoes_ia — atualiza produtos, pagamento e/ou endereço
+     * e substitui a notificação no Pinia.
+     */
+    async atualizarNotificacaoPedidoPronto(input: {
+      workspaceId: number
+      conversaKey: string
+      notificacaoId: number
+      produtos: Array<{
+        nome?: string
+        nome_produto?: string
+        qtd?: number
+        quantidade?: number
+        preco?: number
+        preco_vista?: number | null
+        preco_prazo?: number | null
+      }>
+      totalOrcamento?: { total_a_vista: number | null; total_a_prazo: number | null }
+      formaPagamento: string
+      endereco?: string | null
+      coordenadas?: string | null
+      latitude?: number | null
+      longitude?: number | null
+    }) {
+      const workspaceId = input.workspaceId
+      const conversaKey = input.conversaKey?.trim()
+      const notificacaoId = input.notificacaoId
+      const formaPagamento = input.formaPagamento?.trim()
+      if (
+        !Number.isFinite(workspaceId)
+        || workspaceId < 1
+        || !conversaKey
+        || !Number.isFinite(notificacaoId)
+        || notificacaoId < 1
+        || !formaPagamento
+        || !Array.isArray(input.produtos)
+        || input.produtos.length === 0
+      ) {
+        throw new Error('Dados inválidos para atualizar o pedido.')
+      }
+
+      const res = await $fetch<{
+        ok: true
+        id: number
+        entrega_status: string | null
+        updated_at: string
+        notificacao: KanbanCard['notificacoes_ia'][number]
+      }>('/api/kanban/notificacoes_ia', {
+        method: 'PATCH',
+        body: {
+          workspace_id: workspaceId,
+          id: notificacaoId,
+          produtos: input.produtos,
+          total_orcamento: input.totalOrcamento
+            ? normalizeTotalOrcamento(input.totalOrcamento)
+            : undefined,
+          forma_pagamento: formaPagamento,
+          endereco: input.endereco ?? null,
+          coordenadas: input.coordenadas ?? null,
+          latitude: input.latitude ?? null,
+          longitude: input.longitude ?? null,
+        },
+      })
+
+      this.restaurarNotificacaoIaNoCard(conversaKey, res.notificacao)
+      return res
     },
 
     /** DELETE /api/kanban/notificacoes_ia — só persiste (Pinia fica a cargo do caller, otimista). */

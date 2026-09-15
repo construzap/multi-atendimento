@@ -124,6 +124,12 @@ function formatarCoordenada(valor: number | null | undefined): string {
   return String(valor)
 }
 
+function formatarValorPedidoMinimo(valor: number | null | undefined): string {
+  if (valor == null || !Number.isFinite(valor)) return '0'
+  const s = String(Math.round(valor * 100) / 100)
+  return s.includes('.') ? s.replace('.', ',') : s
+}
+
 function formatarDataCriacao(iso: string | null | undefined): string {
   if (!iso) return ''
   const d = new Date(iso)
@@ -186,6 +192,7 @@ const endereco = ref('')
 const latitude = ref('')
 const longitude = ref('')
 const tempoAvisoMinutos = ref('30')
+const valorPedidoMinimo = ref('0')
 const horarios = ref(horariosPadrao())
 
 /** Snapshot do canal no Pinia ao abrir o modal (restauração no cancelar/fechar). */
@@ -243,6 +250,7 @@ function buildConfigPayload():
       latitude: number | null
       longitude: number | null
       tempo_aviso_minutos: number
+      valor_pedido_minimo: number
       horarios: CanalHorarios
     }
   | string {
@@ -253,12 +261,17 @@ function buildConfigPayload():
   const lngRaw = longitude.value.trim()
   const avisoRaw = tempoAvisoMinutos.value.trim()
   const aviso = avisoRaw ? Number.parseInt(avisoRaw, 10) : 30
+  const minimoRaw = valorPedidoMinimo.value.trim()
+  const minimo = minimoRaw
+    ? Number.parseFloat(minimoRaw.replace(',', '.'))
+    : 0
 
   return {
     endereco: endereco.value.trim() || null,
     latitude: latRaw ? parseCoordenadaFormulario(latitude.value, -90, 90) : null,
     longitude: lngRaw ? parseCoordenadaFormulario(longitude.value, -180, 180) : null,
     tempo_aviso_minutos: aviso,
+    valor_pedido_minimo: Number.isFinite(minimo) ? Math.round(minimo * 100) / 100 : 0,
     // Clone puro do que está na tela — fonte da verdade no save
     horarios: montarHorariosDoFormulario(),
   }
@@ -279,6 +292,10 @@ function sincronizarFormularioNoPinia() {
   const lngRaw = longitude.value.trim()
   const avisoRaw = tempoAvisoMinutos.value.trim()
   const aviso = avisoRaw ? Number.parseInt(avisoRaw, 10) : 30
+  const minimoRaw = valorPedidoMinimo.value.trim()
+  const minimo = minimoRaw
+    ? Number.parseFloat(minimoRaw.replace(',', '.'))
+    : 0
 
   canaisStore.items[idx] = {
     ...atual,
@@ -288,6 +305,9 @@ function sincronizarFormularioNoPinia() {
     latitude: latRaw ? parseCoordenadaFormulario(latitude.value, -90, 90) : null,
     longitude: lngRaw ? parseCoordenadaFormulario(longitude.value, -180, 180) : null,
     tempo_aviso_minutos: Number.isFinite(aviso) ? aviso : atual.tempo_aviso_minutos,
+    valor_pedido_minimo: Number.isFinite(minimo)
+      ? Math.round(minimo * 100) / 100
+      : atual.valor_pedido_minimo,
     horarios: montarHorariosDoFormulario(),
   }
 }
@@ -305,6 +325,7 @@ function resetarCamposExtras() {
   latitude.value = ''
   longitude.value = ''
   tempoAvisoMinutos.value = '30'
+  valorPedidoMinimo.value = '0'
   horarios.value = horariosPadrao()
 }
 
@@ -330,6 +351,7 @@ function preencherDoPinia() {
     latitude.value = formatarCoordenada(canal.latitude)
     longitude.value = formatarCoordenada(canal.longitude)
     tempoAvisoMinutos.value = String(canal.tempo_aviso_minutos ?? 30)
+    valorPedidoMinimo.value = formatarValorPedidoMinimo(canal.valor_pedido_minimo)
     horarios.value = horariosFromCanal(canal.horarios)
   } finally {
     // nextTick seria melhor, mas microtask evita sync com form ainda “velho”
@@ -388,7 +410,7 @@ watch(
 )
 
 watch(
-  [nome, descricao, endereco, latitude, longitude, tempoAvisoMinutos, horarios],
+  [nome, descricao, endereco, latitude, longitude, tempoAvisoMinutos, valorPedidoMinimo, horarios],
   () => {
     if (!isOpen.value || !isEdit.value) return
     sincronizarFormularioNoPinia()
@@ -417,6 +439,13 @@ function validarCamposExtras(): string | null {
     const aviso = Number.parseInt(tempoAvisoMinutos.value, 10)
     if (!Number.isFinite(aviso) || aviso < 0) {
       return 'Tempo de aviso inválido (informe minutos >= 0).'
+    }
+  }
+
+  if (valorPedidoMinimo.value.trim()) {
+    const minimo = Number.parseFloat(valorPedidoMinimo.value.replace(',', '.'))
+    if (!Number.isFinite(minimo) || minimo < 0) {
+      return 'Valor mínimo do pedido inválido (informe um número >= 0).'
     }
   }
 
@@ -507,6 +536,7 @@ async function onCreate() {
         latitude: payload.latitude,
         longitude: payload.longitude,
         tempo_aviso_minutos: payload.tempo_aviso_minutos,
+        valor_pedido_minimo: payload.valor_pedido_minimo,
         horarios: payload.horarios,
       })
       edicaoCommitada.value = true
@@ -534,6 +564,7 @@ async function onCreate() {
       latitude: payload.latitude,
       longitude: payload.longitude,
       tempo_aviso_minutos: payload.tempo_aviso_minutos,
+      valor_pedido_minimo: payload.valor_pedido_minimo,
       horarios: payload.horarios,
     })
     toast.success('Canal criado com sucesso.')
@@ -673,6 +704,27 @@ async function onCreate() {
             />
             <p class="mt-1.5 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
               Aviso enviado antes de fechar a loja ou iniciar o horário de almoço.
+            </p>
+          </div>
+
+          <div>
+            <label
+              class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface"
+              :for="`canal-valor-pedido-minimo-${fieldIdSuffix}`"
+            >
+              Valor mínimo do pedido (R$)
+            </label>
+            <BaseInput
+              :id="`canal-valor-pedido-minimo-${fieldIdSuffix}`"
+              v-model="valorPedidoMinimo"
+              type="text"
+              name="canal_valor_pedido_minimo"
+              inputmode="decimal"
+              placeholder="Ex: 30,00"
+              autocomplete="off"
+            />
+            <p class="mt-1.5 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+              Use 0 se não houver valor mínimo. Aceita vírgula ou ponto.
             </p>
           </div>
         </div>

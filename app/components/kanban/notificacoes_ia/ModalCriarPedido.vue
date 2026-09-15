@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import type { KanbanNotificacaoIa } from '#shared/types/kanban'
 import type { ProdutoWorkspaceItem, ProdutosBuscaResponse } from '#shared/types/produtos'
@@ -52,7 +52,34 @@ const buscaTexto = ref('')
 const buscaItens = ref<ProdutoWorkspaceItem[]>([])
 const buscando = ref(false)
 const painelBuscaAberto = ref(false)
+const buscaRootEl = ref<HTMLElement | null>(null)
 let buscaTimer: ReturnType<typeof setTimeout> | null = null
+
+function fecharPainelBusca() {
+  painelBuscaAberto.value = false
+}
+
+function onPointerDownForaBusca(e: PointerEvent) {
+  if (!painelBuscaAberto.value) return
+  const root = buscaRootEl.value
+  const target = e.target
+  if (!(target instanceof Node) || !root) {
+    fecharPainelBusca()
+    return
+  }
+  if (!root.contains(target)) fecharPainelBusca()
+}
+
+onMounted(() => {
+  if (!import.meta.client) return
+  document.addEventListener('pointerdown', onPointerDownForaBusca, true)
+})
+
+onBeforeUnmount(() => {
+  if (!import.meta.client) return
+  document.removeEventListener('pointerdown', onPointerDownForaBusca, true)
+  if (buscaTimer) clearTimeout(buscaTimer)
+})
 
 const FORMAS_SUGESTAO = [
   'Pagamento a vista',
@@ -299,7 +326,7 @@ async function criarPedido() {
   >
     <div class="space-y-5">
       <!-- Busca produtos -->
-      <div class="relative space-y-2">
+      <div ref="buscaRootEl" class="relative space-y-2">
         <label class="block text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
           Produtos
         </label>
@@ -312,6 +339,7 @@ async function criarPedido() {
           :disabled="criando || !workspaceId"
           @input="onInputBusca"
           @focus="onFocusBusca"
+          @keydown.escape.prevent="fecharPainelBusca"
         />
 
         <div

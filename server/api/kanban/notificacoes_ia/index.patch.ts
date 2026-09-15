@@ -1,12 +1,26 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
+import {
+  mapNotificacaoIaRow,
+  normalizeTotalOrcamento,
+  NOTIFICACAO_IA_SELECT,
+} from '#shared/utils/notificacaoIaProdutos'
+import { parseCoordenadasValidas, parseLatLngTexto } from '#shared/utils/navegacaoMapas'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
+import { parseNotificacaoIaProdutosBody } from '../../../utils/parseNotificacaoIaProdutosBody'
 
 type Body = {
   workspace_id?: unknown
   id?: unknown
   entrega_status?: unknown
+  produtos?: unknown
+  total_orcamento?: unknown
+  forma_pagamento?: unknown
+  endereco?: unknown
+  latitude?: unknown
+  longitude?: unknown
+  coordenadas?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -20,10 +34,23 @@ function parsePositiveInt(raw: unknown, label: string): number {
   return n
 }
 
+function hasOwn(body: Body, key: keyof Body): boolean {
+  return Object.prototype.hasOwnProperty.call(body, key)
+}
+
+function strOrNull(v: unknown): string | null {
+  if (v === undefined || v === null) return null
+  const s = typeof v === 'string' ? v.trim() : String(v).trim()
+  return s.length ? s : null
+}
+
 /**
  * PATCH /api/kanban/notificacoes_ia
- * Body: `{ workspace_id, id, entrega_status }`
- * Atualiza `entrega_status` (e `updated_at`) de uma linha em `notificacoes_ia`.
+ * Body: `{ workspace_id, id, entrega_status?, produtos?, forma_pagamento?, endereco?, coordenadas?, latitude?, longitude?, total_orcamento? }`
+ *
+ * Atualização parcial. Envie ao menos um campo alterável.
+ * Com `produtos`, recalcula `total_orcamento` (ou usa o enviado).
+ * Retorna a notificação completa (mesmo shape do POST).
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'PATCH')
@@ -43,15 +70,90 @@ export default defineEventHandler(async (event) => {
   const body = (await readBody(event)) as Body
   const workspaceId = parsePositiveInt(body.workspace_id, 'workspace_id')
   const id = parsePositiveInt(body.id, 'id')
-  const entregaStatus = String(body.entrega_status ?? '').trim()
-  if (!entregaStatus) {
-    throw createError({ statusCode: 400, statusMessage: 'entrega_status inválido.' })
-  }
 
   await checkWorkspace(event, workspaceId, userId)
 
+  const patch: Record<string, unknown> = {}
+
+  if (hasOwn(body, 'entrega_status')) {
+    const entregaStatus = String(body.entrega_status ?? '').trim()
+    if (!entregaStatus) {
+      throw createError({ statusCode: 400, statusMessage: 'entrega_status inválido.' })
+    }
+    patch.entrega_status = entregaStatus
+  }
+
+  if (hasOwn(body, 'forma_pagamento')) {
+    const forma = strOrNull(body.forma_pagamento)
+    if (!forma) {
+      throw createError({ statusCode: 400, statusMessage: 'Informe a forma de pagamento.' })
+    }
+    patch.forma_pagamento = forma
+  }
+
+  if (hasOwn(body, 'endereco')) {
+    patch.endereco = strOrNull(body.endereco)
+  }
+
+  if (
+    hasOwn(body, 'coordenadas') ||
+    hasOwn(body, 'latitude') ||
+    hasOwn(body, 'longitude')
+  ) {
+    let latitude: number | null = null
+    let longitude: number | null = null
+
+    const coordsTexto = parseLatLngTexto(body.coordenadas)
+    if (coordsTexto === undefined) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'coordenadas inválidas. Use o formato: latitude, longitude',
+      })
+    }
+    if (coordsTexto) {
+      latitude = coordsTexto.lat
+      longitude = coordsTexto.lng
+    } else if (
+      (body.latitude != null && String(body.latitude).trim() !== '') ||
+      (body.longitude != null && String(body.longitude).trim() !== '')
+    ) {
+      const coordsSeparadas = parseCoordenadasValidas(body.latitude, body.longitude)
+      if (!coordsSeparadas) {
+        throw createError({
+          statusCode: 400,
+          statusMessage: 'latitude/longitude inválidas.',
+        })
+      }
+      latitude = coordsSeparadas.lat
+      longitude = coordsSeparadas.lng
+    }
+    // Coordenadas vazias limpam lat/lng
+    patch.latitude = latitude
+    patch.longitude = longitude
+  }
+
+  if (hasOwn(body, 'produtos')) {
+    const { itens, total: totalCalculado } = parseNotificacaoIaProdutosBody(body.produtos)
+    const totalBody =
+      body.total_orcamento != null
+        ? normalizeTotalOrcamento(body.total_orcamento)
+        : totalCalculado
+    patch.produtos = itens
+    patch.total_orcamento = totalBody
+  } else if (hasOwn(body, 'total_orcamento')) {
+    patch.total_orcamento = normalizeTotalOrcamento(body.total_orcamento)
+  }
+
+  if (Object.keys(patch).length === 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Nenhum campo para atualizar.',
+    })
+  }
+
   const admin = serverSupabaseServiceRole<any>(event)
   const nowIso = new Date().toISOString()
+  patch.updated_at = nowIso
 
   const { data: row, error: findErr } = await admin
     .from('notificacoes_ia')
@@ -79,13 +181,10 @@ export default defineEventHandler(async (event) => {
 
   const { data: updated, error: updErr } = await admin
     .from('notificacoes_ia')
-    .update({
-      entrega_status: entregaStatus,
-      updated_at: nowIso,
-    })
+    .update(patch)
     .eq('id', id)
     .eq('workspace_id', workspaceId)
-    .select('id, entrega_status, updated_at')
+    .select(NOTIFICACAO_IA_SELECT)
     .maybeSingle()
 
   if (updErr) {
@@ -95,10 +194,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, statusMessage: 'Notificação não encontrada.' })
   }
 
+  const notificacao = mapNotificacaoIaRow(updated as Record<string, unknown>)
+
   return {
     ok: true as const,
-    id: typeof updated.id === 'number' ? updated.id : Number(updated.id),
-    entrega_status: String(updated.entrega_status ?? entregaStatus),
-    updated_at: updated.updated_at != null ? String(updated.updated_at) : nowIso,
+    id: notificacao.id,
+    entrega_status: notificacao.entrega_status,
+    updated_at: notificacao.updated_at,
+    notificacao,
   }
 })

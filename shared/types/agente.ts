@@ -60,6 +60,8 @@ export type AgenteResponderBody = {
   mensagem_pix_manual?: string | null
   /** Tipo da chave PIX (ex.: cpf, cnpj, email, phone, random). */
   pixType?: string | null
+  /** Valor mínimo do pedido do canal (`canais.valor_pedido_minimo`). */
+  valor_pedido_minimo?: number | string | null
   model?: string | null
   max_tool_rounds?: number | null
 }
@@ -148,6 +150,8 @@ export type AgenteContext = {
   mensagem_pix_manual: string | null
   /** Tipo da chave PIX; null se não enviado. */
   pixType: string | null
+  /** Valor mínimo do pedido; null se não enviado. */
+  valor_pedido_minimo: number | null
   model: string
   max_tool_rounds: number
   context_window: number

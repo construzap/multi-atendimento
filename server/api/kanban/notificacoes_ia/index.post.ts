@@ -1,9 +1,5 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
-import type {
-  KanbanNotificacaoProdutoItem,
-  KanbanNotificacaoTotalOrcamento,
-} from '#shared/types/kanban'
 import {
   mapNotificacaoIaRow,
   normalizeTotalOrcamento,
@@ -13,6 +9,7 @@ import { parseCoordenadasValidas, parseLatLngTexto } from '#shared/utils/navegac
 import { checkChannel } from '../../../utils/checkChannel'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
+import { parseNotificacaoIaProdutosBody } from '../../../utils/parseNotificacaoIaProdutosBody'
 
 type Body = {
   workspace_id?: unknown
@@ -49,99 +46,6 @@ function strOrNull(v: unknown): string | null {
   return s.length ? s : null
 }
 
-function parseProdutosBody(raw: unknown): {
-  itens: KanbanNotificacaoProdutoItem[]
-  total: KanbanNotificacaoTotalOrcamento
-} {
-  if (!Array.isArray(raw) || raw.length === 0) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Informe ao menos um produto.',
-    })
-  }
-
-  const itens: KanbanNotificacaoProdutoItem[] = []
-  let total_a_vista = 0
-  let total_a_prazo = 0
-
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') {
-      throw createError({ statusCode: 400, statusMessage: 'Produto inválido.' })
-    }
-    const o = item as Record<string, unknown>
-    const nome = strOrNull(o.nome) ?? strOrNull(o.nome_produto)
-    if (!nome) {
-      throw createError({ statusCode: 400, statusMessage: 'Nome do produto é obrigatório.' })
-    }
-
-    const qtdRaw = o.qtd ?? o.quantidade
-    const qtd =
-      typeof qtdRaw === 'number'
-        ? Math.trunc(qtdRaw)
-        : Number.parseInt(String(qtdRaw ?? '').trim(), 10)
-    if (!Number.isFinite(qtd) || qtd < 1) {
-      throw createError({
-        statusCode: 400,
-        statusMessage: `Quantidade inválida para «${nome}».`,
-      })
-    }
-
-    const parsePrecoOpcional = (raw: unknown): number | null => {
-      if (raw === undefined || raw === null || raw === '') return null
-      const n =
-        typeof raw === 'number'
-          ? raw
-          : Number.parseFloat(String(raw).replace(',', '.'))
-      if (!Number.isFinite(n) || n < 0) {
-        throw createError({
-          statusCode: 400,
-          statusMessage: `Preço inválido para «${nome}».`,
-        })
-      }
-      return n
-    }
-
-    // null permanece null — não substitui prazo por vista nem por 0.
-    const precoVista =
-      o.preco_vista !== undefined
-        ? parsePrecoOpcional(o.preco_vista)
-        : parsePrecoOpcional(o.preco)
-    const precoPrazo = parsePrecoOpcional(o.preco_prazo)
-
-    const subtotal_vista = precoVista != null ? qtd * precoVista : null
-    const subtotal_prazo = precoPrazo != null ? qtd * precoPrazo : null
-    if (subtotal_vista != null) total_a_vista += subtotal_vista
-    if (subtotal_prazo != null) total_a_prazo += subtotal_prazo
-
-    itens.push({
-      quantidade: qtd,
-      nome_produto: nome,
-      preco_vista: precoVista,
-      preco_prazo: precoPrazo,
-      subtotal_vista,
-      subtotal_prazo,
-    })
-  }
-
-  const temAlgumPreco = itens.some(
-    (i) => i.preco_vista != null || i.preco_prazo != null,
-  )
-  if (!temAlgumPreco) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Informe ao menos um preço (à vista ou a prazo) nos produtos.',
-    })
-  }
-
-  return {
-    itens,
-    total: {
-      total_a_vista: itens.every((i) => i.subtotal_vista == null) ? null : total_a_vista,
-      total_a_prazo: itens.every((i) => i.subtotal_prazo == null) ? null : total_a_prazo,
-    },
-  }
-}
-
 /**
  * POST /api/kanban/notificacoes_ia
  * Body: `{ workspace_id, canal_id, conversa_key, produtos[{nome,quantidade,preco_vista,preco_prazo}], forma_pagamento? }`
@@ -175,7 +79,7 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Informe a forma de pagamento.' })
   }
 
-  const { itens, total: totalCalculado } = parseProdutosBody(body.produtos)
+  const { itens, total: totalCalculado } = parseNotificacaoIaProdutosBody(body.produtos)
 
   const totalBody =
     body.total_orcamento != null

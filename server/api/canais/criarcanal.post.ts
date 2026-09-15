@@ -5,6 +5,7 @@ import {
   parseLatitudeOpcional,
   parseLongitudeOpcional,
   parseTempoAvisoMinutos,
+  parseValorPedidoMinimo,
 } from '#shared/utils/validarCanalConfigLoja'
 import { createError, readBody } from 'h3'
 import { checkSubscription } from '../../utils/checkSubscription'
@@ -19,12 +20,13 @@ type CreateCanalBody = {
   latitude?: number | string
   longitude?: number | string
   tempo_aviso_minutos?: number | string
+  valor_pedido_minimo?: number | string
   horarios?: unknown
   endereco?: string
 }
 
 const CANAL_SELECT_PUBLICO =
-  'id, workspace_id, user_id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, horarios'
+  'id, workspace_id, user_id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios'
 
 /**
  * POST /api/canais/criarcanal
@@ -90,6 +92,11 @@ export default defineEventHandler(async (event) => {
   const tempoAvisoParsed = parseTempoAvisoMinutos(body.tempo_aviso_minutos)
   if (typeof tempoAvisoParsed === 'string') {
     throw createError({ statusCode: 400, statusMessage: tempoAvisoParsed })
+  }
+
+  const valorPedidoMinimoParsed = parseValorPedidoMinimo(body.valor_pedido_minimo)
+  if (typeof valorPedidoMinimoParsed === 'string') {
+    throw createError({ statusCode: 400, statusMessage: valorPedidoMinimoParsed })
   }
 
   const horariosParsed = parseCanalHorariosOpcional(body.horarios)
@@ -168,6 +175,7 @@ export default defineEventHandler(async (event) => {
       latitude: latitudeParsed,
       longitude: longitudeParsed,
       tempo_aviso_minutos: tempoAvisoParsed,
+      valor_pedido_minimo: valorPedidoMinimoParsed,
       ...(horariosParsed ? { horarios: horariosParsed } : {}),
     })
     .select(CANAL_SELECT_PUBLICO)

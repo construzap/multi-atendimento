@@ -135,6 +135,23 @@ export function parseTempoAvisoMinutos(raw: unknown): number | string {
   return n
 }
 
+/**
+ * Valor mínimo do pedido (`canais.valor_pedido_minimo`, numeric 10,2).
+ * Vazio → 0. Aceita vírgula como decimal.
+ */
+export function parseValorPedidoMinimo(raw: unknown): number | string {
+  if (valorVazio(raw)) return 0
+  const n =
+    typeof raw === 'number'
+      ? raw
+      : Number.parseFloat(String(raw ?? '').trim().replace(',', '.'))
+  if (!Number.isFinite(n) || n < 0) {
+    return 'Valor mínimo do pedido inválido (informe um número >= 0).'
+  }
+  // numeric(10,2)
+  return Math.round(n * 100) / 100
+}
+
 /** Horários opcionais: vazio → `null` (usa default do banco); preenchido inválido → erro. */
 export function parseCanalHorariosOpcional(raw: unknown): CanalHorarios | null | string {
   if (raw === null || raw === undefined) return null

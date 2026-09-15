@@ -46,6 +46,17 @@ function boolOrNull(v: unknown): boolean | null {
   return null
 }
 
+/** Aceita número >= 0 (também string com vírgula); null se ausente/inválido. */
+function numberOrNull(v: unknown): number | null {
+  if (v === undefined || v === null || v === '') return null
+  const n =
+    typeof v === 'number'
+      ? v
+      : Number.parseFloat(String(v).trim().replace(',', '.'))
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.round(n * 100) / 100
+}
+
 /** Aceita objeto de taxas ou JSON string; null se vazio/inválido. */
 function taxasCartaoOrNull(v: unknown): Record<string, number> | string | null {
   if (v === undefined || v === null) return null
@@ -156,6 +167,7 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     user_id: strOrNull(body.user_id),
     mensagem_pix_manual: strOrNull(body.mensagem_pix_manual),
     pixType: strOrNull(body.pixType),
+    valor_pedido_minimo: numberOrNull(body.valor_pedido_minimo),
     model: modelOverride || canalCredenciais.model_name || defaultModel,
     max_tool_rounds:
       Number.isFinite(maxRoundsBody) && maxRoundsBody > 0

@@ -191,5 +191,6 @@ export const orcamentoprontoTool: ToolDef = {
     user_id: ctxStr(ctx.user_id),
     mensagem_pix_manual: ctxStr(ctx.mensagem_pix_manual),
     pixType: ctxStr(ctx.pixType),
+    valor_pedido_minimo: ctx.valor_pedido_minimo,
   }),
 }
