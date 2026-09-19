@@ -3,31 +3,34 @@ import { argStr, ctxStr, type ToolDef } from './helpers'
 export const estoqueTool: ToolDef = {
   name: 'estoque',
   description:
-    'Chame essa ferramenta quando precisar de informações sobre nossos produtos.\n\n' +
-    '## Quando o cliente perguntar sobre qualquer produto, chame e acione imediatamente a ferramenta <estoque>!\n\n' +
+    'Busca dados de produto (preço, disponibilidade, id) quando AINDA NÃO tiver essas informações no histórico da conversa.\n\n' +
+    'QUANDO CHAMAR:\n' +
+    '- Cliente pergunta preço/disponibilidade/opções de um produto ainda não consultado nesta conversa.\n' +
+    '- Produto novo no pedido sem id/preço no histórico.\n' +
+    '- Precisa do id numérico e ele NÃO está no histórico (para frete/orçamento).\n' +
+    '- Consulta anterior falhou, veio vazia ou ambígua.\n\n' +
+    'QUANDO NÃO CHAMAR (obrigatório):\n' +
+    '- Já consultou esse produto nesta conversa e ainda tem nome, preço e/ou id no histórico — REUTILIZE esses dados.\n' +
+    '- Cliente só confirma, muda quantidade, pergunta frete ou fecha pedido com produtos já conhecidos.\n' +
+    '- Não chame de novo “por precaução” nem a cada menção do nome do produto.\n\n' +
+    'LISTA DE ITENS:\n' +
+    '- Um produto por chamada.\n' +
+    '- Só chame para itens que ainda faltam dados. Pule os que já estão no histórico.\n' +
+    '- Não precisa chamar todos de novo antes de responder se os dados já existem.\n\n' +
     'REGRA CRÍTICA — NÃO INVENTAR QUANTIDADE:\n' +
     'Nunca coloque "1", "um", "uma" ou qualquer número no campo produtos_ se o cliente NÃO disse quantidade.\n' +
     'Pergunta de preço/valor ("qual o valor...", "quanto custa...", "tem o preço do...") = SEM quantidade.\n' +
     'Ex.: cliente: "qual o valor do latão de Brahma" → envie exatamente "latão de Brahma" (NÃO "1 latão de Brahma").\n' +
-    'Ex.: cliente: "quanto custa a Brahma" → envie "Brahma" (NÃO "1 Brahma").\n' +
     'Só inclua quantidade se o cliente falou número ou por extenso (ex.: "2", "dois", "meio").\n\n' +
-    'Lembrete: Caso o cliente solicite uma lista de produtos, busque sempre um produto de cada vez.\n\n' +
-    'Atenção: caso tenha mais de um produto, chame para cada produto individual!\n\n' +
-    'REGRA CRÍTICA DE PROCESSAMENTO: UM POR UM\n' +
-    'Ao receber um pedido com múltiplos itens, siga o protocolo de Chamada Individual Obrigatória. A ferramenta <estoque> só processa um (1) único produto por vez.\n\n' +
-    'Protocolo de Execução:\n' +
-    '1) Identifique todos os produtos da lista do cliente.\n' +
-    '2) Para CADA item, acione a ferramenta <estoque> de forma independente.\n' +
-    '3) Se houver 7 itens, realize 7 chamadas distintas antes de formular qualquer resposta.\n\n' +
     'REGRA DE QUANTIDADE E EMBALAGEM:\n' +
-    'Quando o cliente informar quantidade e/ou tipo de embalagem/unidade, inclua TUDO no campo produtos_ exatamente como ele pediu — quantidade numérica (ou por extenso convertida), tipo de embalagem/unidade e nome do produto.\n' +
-    'Não resuma nem omita a embalagem. Ex.: "4 fardos de Cimento CP II", não apenas "Cimento CP II".\n' +
+    'Quando o cliente informar quantidade e/ou tipo de embalagem/unidade, inclua TUDO no campo produtos_ exatamente como ele pediu.\n' +
+    'Ex.: "4 fardos de Cimento CP II", não apenas "Cimento CP II".\n' +
     'Se o cliente NÃO informou quantidade: NÃO invente "1" — envie embalagem+nome ou só o nome.\n\n' +
     'Proibido: enviar listas, múltiplos produtos ou termos genéricos em uma única chamada.\n' +
     'Proibido: inventar quantidade (incluindo "1" / "um") quando o cliente não informou.\n\n' +
-    'ID DO PRODUTO (OBRIGATÓRIO PARA ORÇAMENTO):\n' +
-    'A resposta da <estoque> inclui o id numérico do produto (ex.: 7203). ' +
-    'Guarde esse número — ele é o único valor válido para o campo id em <orcamentopronto>. ' +
+    'ID DO PRODUTO (ORÇAMENTO/FRETE):\n' +
+    'A resposta da <estoque> inclui o id numérico do produto (ex.: 7203). Guarde-o.\n' +
+    'Prefira o id já obtido no histórico. Só chame <estoque> de novo se o id estiver faltando ou for inválido.\n' +
     'Nunca use o nome do produto como id.',
   parameters: {
     type: 'object',

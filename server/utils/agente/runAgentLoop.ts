@@ -94,7 +94,13 @@ export async function runAgentLoop(
     for (const call of toolCalls) {
       const name = call.function?.name ?? ''
       const rawArgs = call.function?.arguments ?? '{}'
-      const { result, trace } = await executeAgenteTool(event, name, rawArgs, ctx)
+      const { result, trace } = await executeAgenteTool(
+        event,
+        name,
+        rawArgs,
+        ctx,
+        messages,
+      )
       tool_trace.push(trace)
 
       const toolMsg: OpenAiChatMessage = {

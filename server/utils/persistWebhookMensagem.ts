@@ -112,6 +112,12 @@ function escolherMelhorConversa(
 export type PersistWebhookMensagemOptions = {
   /** `conversas.key` da sessão aberta no app (POST /api/mensagens). */
   conversa_key_hint?: string | null
+  /**
+   * `canais.botao_para_iniciar_ia`.
+   * Se `true` na criação da conversa → `ia_ligada: false` (usuário inicia a I.A. pelo botão).
+   * Se `false`/omitido → mantém o default `ia_ligada: true`.
+   */
+  botao_para_iniciar_ia?: boolean | null
 }
 
 type MensagemExistenteRow = {
@@ -408,11 +414,17 @@ async function updateConversaPreviewExistente(
   return { ok: true }
 }
 
+/** `botao_para_iniciar_ia === true` → conversa nasce com I.A. desligada. */
+function iaLigadaAoCriarConversa(botaoParaIniciarIa: boolean | null | undefined): boolean {
+  return botaoParaIniciarIa === true ? false : true
+}
+
 /** Conversa nova: insert completo em `conversas`. */
 function buildConversaInsertRow(
   normalizada: MensagemNormalizada,
   conversa_key: string,
   updatedAt: string,
+  options: PersistWebhookMensagemOptions = {},
 ): Record<string, unknown> {
   const nameToPersist = !normalizada.from_me ? coalesceStr(normalizada.name, null) : null
   const photoToPersist = !normalizada.from_me ? coalesceStr(normalizada.photo, null) : null
@@ -435,6 +447,7 @@ function buildConversaInsertRow(
     conversa_aberta: normalizada.from_me ? null : true,
     nao_lidas: normalizada.from_me ? 0 : 1,
     is_group: false,
+    ia_ligada: iaLigadaAoCriarConversa(options.botao_para_iniciar_ia),
   }
 }
 
@@ -541,7 +554,7 @@ async function persistIndividual(
   if (!existing) {
     const { error: convErr } = await admin
       .from('conversas')
-      .insert(buildConversaInsertRow(normalizada, conversa_key, updatedAt))
+      .insert(buildConversaInsertRow(normalizada, conversa_key, updatedAt, options))
 
     if (convErr) {
       return { ok: false, step: 'conversa', message: convErr.message }
@@ -582,7 +595,7 @@ async function persistGrupo(
   admin: SupabaseAdmin,
   normalizada: MensagemNormalizada,
   updatedAt: string,
-  _options: PersistWebhookMensagemOptions,
+  options: PersistWebhookMensagemOptions,
 ): Promise<PersistWebhookMensagemResult> {
   let mensagemNoCanal: MensagemExistenteRow | null = null
   try {
@@ -648,6 +661,7 @@ async function persistGrupo(
       is_group: true,
       conversa_aberta: normalizada.from_me ? null : true,
       nao_lidas: normalizada.from_me ? 0 : 1,
+      ia_ligada: iaLigadaAoCriarConversa(options.botao_para_iniciar_ia),
     })
 
     if (convErr) {

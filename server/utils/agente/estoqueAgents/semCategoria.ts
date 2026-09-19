@@ -45,13 +45,21 @@ export async function executeSemCategoriaTool(
       query,
       workspaceId,
       termosPesquisa: null,
-      limit: 10,
+      limit: 25,
     })
     const payload = {
       ok: search.ok,
       query: search.query,
       count: search.count,
-      hits: search.hits.map(({ content, metadata }) => ({ content, metadata })),
+      hits: search.hits.map(({ content, metadata }) => {
+        const meta = metadata as Record<string, unknown> | null
+        const termos =
+          meta && typeof meta.termos_pesquisa === 'string' ? meta.termos_pesquisa : ''
+        return {
+          content,
+          termos_pesquisa: termos,
+        }
+      }),
     }
     const result = JSON.stringify(payload)
     return {

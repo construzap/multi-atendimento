@@ -59,6 +59,8 @@ const totais = computed(() => normalizeTotalOrcamento(props.item.total_orcamento
 
 const enderecoExibicao = computed(() => props.item.endereco?.trim() || null)
 
+const observacoesExibicao = computed(() => props.item.observacoes?.trim() || null)
+
 const temCoordenadasNavegacao = computed(
   () => parseCoordenadasValidas(props.item.latitude, props.item.longitude) != null,
 )
@@ -440,6 +442,14 @@ async function salvarEdicao() {
           </p>
           <p class="mt-0.5 whitespace-pre-wrap text-sm text-on-surface dark:text-dark-on-surface">
             {{ enderecoExibicao }}
+          </p>
+        </div>
+        <div v-if="observacoesExibicao" class="pt-1">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+            Observações
+          </p>
+          <p class="mt-0.5 whitespace-pre-wrap text-sm text-on-surface dark:text-dark-on-surface">
+            {{ observacoesExibicao }}
           </p>
         </div>
       </div>

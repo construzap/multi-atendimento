@@ -3,7 +3,12 @@ import { argAny, argStr, ctxStr, type ToolDef } from './helpers'
 export const freteTool: ToolDef = {
   name: 'frete',
   description:
-    'Chame essa ferramenta quando precisar informar o valor do frete.\n\nPROTOCOLO OBRIGATÓRIO ANTES DE CHAMAR:\n1) Para CADA produto do orçamento, chame primeiro a ferramenta <estoque> (um produto por vez).\n2) Guarde o id retornado pela <estoque> de cada produto.\n3) Só então chame <frete>, enviando em codigo_dos_produtos_e_quantidade_de_cada_produto um array de objetos {id, nome, quantidade} — usando exatamente o id da <estoque>, o nome do produto e a quantidade escolhida.\nProibido: chamar <frete> sem ter obtido os ids via <estoque>. Proibido: inventar id ou enviar array vazio.',
+    'Chame essa ferramenta quando precisar informar o valor do frete.\n\n' +
+    'PROTOCOLO OBRIGATÓRIO ANTES DE CHAMAR:\n' +
+    '1) Use o id NUMÉRICO de cada produto do orçamento.\n' +
+    '2) Prefira ids já obtidos no histórico. Só chame <estoque> de novo para itens sem id válido.\n' +
+    '3) Chame <frete> com codigo_dos_produtos_e_quantidade_de_cada_produto = array de {id, nome, quantidade}.\n' +
+    'Proibido: inventar id ou chamar <frete> sem ids válidos. Proibido: enviar array vazio.',
   parameters: {
     type: 'object',
     properties: {

@@ -60,8 +60,8 @@ export function validateProdutosIdsFromEstoque(
   if (!Array.isArray(produtos) || produtos.length === 0) {
     return (
       `ERRO ao chamar <${toolName}>: o array de produtos está vazio ou inválido. ` +
-      'Chame a ferramenta <estoque> para CADA item do pedido (um produto por chamada), ' +
-      'anote o id numérico de cada resposta e só então chame <' +
+      'Use ids numéricos já obtidos no histórico ou chame <estoque> só para os itens que ainda faltam, ' +
+      'depois chame <' +
       toolName +
       '>.'
     )
@@ -76,9 +76,9 @@ export function validateProdutosIdsFromEstoque(
       const preview = id.length > 80 ? `${id.slice(0, 80)}…` : id
       return (
         `ERRO ao chamar <${toolName}>: produto #${i + 1} tem id inválido "${preview}". ` +
-        'O campo id deve ser APENAS o número retornado pela ferramenta <estoque> (ex.: "7203"). ' +
+        'O campo id deve ser APENAS o número da <estoque> ou do histórico (ex.: "7203"). ' +
         'Nunca use o nome do produto como id. ' +
-        'Chame <estoque> um produto por vez, use o id numérico de cada resposta e tente <' +
+        'Se o id não estiver no histórico, chame <estoque> só para este produto e tente <' +
         toolName +
         '> novamente.'
       )
@@ -87,7 +87,7 @@ export function validateProdutosIdsFromEstoque(
     if (nome && id === nome) {
       return (
         `ERRO ao chamar <${toolName}>: produto #${i + 1} — id e nome são iguais. ` +
-        'O id deve ser o número da <estoque>, não o nome do produto.'
+        'O id deve ser o número da <estoque>/histórico, não o nome do produto.'
       )
     }
   }

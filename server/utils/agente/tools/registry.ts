@@ -1,9 +1,11 @@
 import type { H3Event } from 'h3'
 import type { AgenteContext, AgenteToolTraceItem } from '#shared/types/agente'
+import type { OpenAiChatMessage } from '../memory'
 import type { OpenAiToolDefinition } from '../openaiChat'
 import { executeCalculator } from './calculator'
 import { enviaLocalizacaoTool } from './envia_localizacao'
 import { estoqueTool } from './estoque'
+import { resolveEstoqueCache } from './estoqueCache'
 import { argAny, argStr, validateProdutosIdsFromEstoque, type ToolDef } from './helpers'
 import { postToolHttp } from './httpPost'
 import { orcamentoprontoTool } from './orcamentopronto'
@@ -57,6 +59,7 @@ export async function executeAgenteTool(
   name: string,
   rawArgs: string,
   ctx: AgenteContext,
+  conversationMessages?: OpenAiChatMessage[],
 ): Promise<{ result: string; trace: AgenteToolTraceItem }> {
   let args: Record<string, unknown> = {}
   try {
@@ -89,6 +92,28 @@ export async function executeAgenteTool(
       return {
         result: validationError,
         trace: { name, args, result_preview: validationError },
+      }
+    }
+  }
+
+  // Cache silencioso: se já buscou este produto na conversa, reusa o resultado.
+  if (name === 'estoque') {
+    const produtosQuery = argStr(args, 'produtos_', 'produtos ', 'produtos').trim()
+    if (produtosQuery) {
+      const cached = await resolveEstoqueCache(event, {
+        sessionId: ctx.session_id,
+        produtosQuery,
+        conversationMessages,
+      })
+      if (cached) {
+        return {
+          result: cached,
+          trace: {
+            name,
+            args,
+            result_preview: cached,
+          },
+        }
       }
     }
   }

@@ -94,6 +94,7 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
   const totalPrazo = totais.total_a_prazo != null ? totais.total_a_prazo : soma
   const entrega = item.entrega_ou_retirada?.trim() || ''
   const endereco = item.endereco?.trim() || ''
+  const observacoes = item.observacoes?.trim() || ''
   const pagamento = item.forma_pagamento?.trim() || '—'
   const statusEntrega = item.entrega_status?.trim() || 'separacao'
   const cliente = input.clienteNome?.trim() || '—'
@@ -264,6 +265,7 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
     <div><span class="bold">Cliente:</span> ${esc(cliente)}</div>
     ${telefone ? `<div><span class="bold">Telefone:</span> ${esc(telefone)}</div>` : ''}
     ${endereco ? `<div style="margin-top:6px"><span class="bold">Endereço:</span><br/>${esc(endereco)}</div>` : ''}
+    ${observacoes ? `<div style="margin-top:6px"><span class="bold">Observações:</span><br/>${esc(observacoes)}</div>` : ''}
 
     <hr class="sep" />
 

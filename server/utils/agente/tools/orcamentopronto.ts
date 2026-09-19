@@ -5,9 +5,9 @@ export const orcamentoprontoTool: ToolDef = {
   description:
     'Use essa ferramenta para informar um atendente que o cliente finalizou o orçamento.\n\n' +
     'PROTOCOLO OBRIGATÓRIO ANTES DE CHAMAR:\n' +
-    '1) Com o orçamento completo (todos os produtos e quantidades definidos), chame primeiro a ferramenta <estoque> para CADA produto do orçamento (um por vez).\n' +
-    '2) Guarde o id retornado pela <estoque> de cada produto.\n' +
-    '3) Só então chame <orcamentopronto>, enviando em produtos um array de objetos {id, nome, quantidade} — usando exatamente o id da <estoque>, o nome do produto e a quantidade escolhida, sem preço unitário.\n\n' +
+    '1) Com o orçamento completo (produtos e quantidades definidos), use o id NUMÉRICO de cada produto.\n' +
+    '2) Prefira ids já obtidos no histórico da conversa. Só chame <estoque> de novo para itens sem id válido.\n' +
+    '3) Chame <orcamentopronto> com produtos = array de {id, nome, quantidade} — id numérico, nome e quantidade, sem preço unitário.\n\n' +
     'ITENS INTEIROS vs COMBINAÇÃO (metade/metade, 3 sabores, etc.):\n' +
     '- Item inteiro: apenas {id, nome, quantidade}. NÃO envie grupo nem partes.\n' +
     '- Combinação (ex.: pizza meio a meio): uma linha por sabor, TODAS com o MESMO grupo (ex.: "g1") e o mesmo partes (2, 3 ou 4).\n' +
@@ -15,16 +15,24 @@ export const orcamentoprontoTool: ToolDef = {
     '- Ex. metade/metade:\n' +
     '  [{id:"7203",nome:"Calabresa",quantidade:1,grupo:"g1",partes:2},{id:"7208",nome:"Mussarela",quantidade:1,grupo:"g1",partes:2}]\n' +
     '- Se houver 2 pizzas meio a meio diferentes, use grupos distintos (g1, g2, …).\n\n' +
+    'COMBO + GELOS SABORIZADOS:\n' +
+    '- Envie o COMBO como item INTEIRO no array produtos (só {id, nome, quantidade} do combo).\n' +
+    '- NÃO adicione linhas dos gelos em produtos. NÃO use grupo/partes para combo+gelos.\n' +
+    '- Os sabores dos gelos escolhidos pelo cliente vão SOMENTE no campo observacao.\n' +
+    '- Ex. produtos: [{id:"5411",nome:"Combo Whisky Red Label + 6 Gelos Sabores + Energético Start 2L",quantidade:1}]\n' +
+    '- Ex. observacao: "Combo Red Label; gelos: 1 limão, 1 morango, 1 abacaxi, 1 uva, 1 maracujá, 1 coco"\n' +
+    '- total_do_orcamento = preço do combo (não some gelos).\n\n' +
     'CAMPOS OBRIGATÓRIOS NA CHAMADA:\n' +
     '- produtos, total_do_orcamento, forma_pagamento, entrega_ou_retirada, observacao, frete\n' +
     '- frete: valor do frete (ex.: "15.00") ou "gratis"/"frete gratis" se for entrega gratuita; use "0" ou "retirada" se for retirada na loja.\n' +
     '- Se for ENTREGA: o campo endereco é OBRIGATÓRIO (não coloque o endereço em observacao).\n' +
     '- Se o cliente informou CPF ou CNPJ: preencha documento com o valor informado.\n' +
     '- Se a forma de pagamento for DINHEIRO: o campo troco_para é OBRIGATÓRIO (valor com que o cliente vai pagar).\n\n' +
-    'Proibido: chamar <orcamentopronto> sem ter obtido os ids via <estoque>.\n' +
+    'Proibido: inventar id ou chamar <orcamentopronto> sem ids válidos (do histórico ou de <estoque>).\n' +
     'Proibido: inventar id, enviar array vazio ou incluir preço unitário no array de produtos.\n' +
     'Proibido: usar quantidade fracionária (0.5) — use grupo + partes com quantidade 1 em cada sabor.\n' +
-    'Proibido: colocar endereço, forma de pagamento, troco_para ou "entrega/retirada" dentro de observacao.',
+    'Proibido: colocar endereço, forma de pagamento, troco_para ou "entrega/retirada" dentro de observacao.\n' +
+    'Proibido: em combo com gelos escolhidos, omitir os sabores no campo observacao.',
   parameters: {
     type: 'object',
     properties: {
@@ -34,6 +42,7 @@ export const orcamentoprontoTool: ToolDef = {
           'Array com um objeto por produto do orçamento. Cada item DEVE usar o id da <estoque>, o nome e a quantidade. ' +
           'Formato base: [{id, nome, quantidade}]. ' +
           'Se for combinação (metade/metade, 3 sabores…), adicione grupo (mesmo id nas partes) e partes (2, 3 ou 4). ' +
+          'Combo com gelos: envie só a linha do combo (item inteiro); sabores dos gelos vão em observacao. ' +
           'Sem grupo = item inteiro. Não inclua preço.',
         items: {
           type: 'object',
@@ -57,15 +66,15 @@ export const orcamentoprontoTool: ToolDef = {
             grupo: {
               type: 'string',
               description:
-                'OPCIONAL. Só em combinação: identificador do grupo (ex.: "g1"). ' +
+                'OPCIONAL. Só em combinação (ex.: pizza meio-meio): identificador do grupo (ex.: "g1"). ' +
                 'Todas as partes da mesma unidade devem ter o MESMO grupo. ' +
-                'Omita em item inteiro.',
+                'Omita em item inteiro e em combo (gelos vão em observacao).',
             },
             partes: {
               type: 'number',
               description:
                 'OPCIONAL. Só em combinação: em quantos pedaços a unidade foi dividida (2, 3 ou 4). ' +
-                'Deve ser igual em todas as linhas do mesmo grupo. Omita em item inteiro.',
+                'Deve ser igual em todas as linhas do mesmo grupo. Omita em item inteiro e em combo.',
             },
           },
           required: ['id', 'nome', 'quantidade'],
@@ -78,7 +87,11 @@ export const orcamentoprontoTool: ToolDef = {
       observacao: {
         type: 'string',
         description:
-          'SOMENTE um resumo objetivo da conversa (o que o cliente pediu e o que foi combinado). Não inclua endereço, documento, forma de pagamento, troco_para nem entrega/retirada neste campo.',
+          'SOMENTE um resumo objetivo da conversa (o que o cliente pediu e o que foi combinado).\n' +
+          'COMBO + GELOS: se o cliente escolheu sabores de gelo do combo, liste AQUI os gelos escolhidos ' +
+          '(ex.: "gelos: 1 limão, 1 morango, 1 abacaxi, 1 uva, 1 maracujá, 1 coco"). ' +
+          'Não envie os gelos no array produtos.\n' +
+          'Não inclua endereço, documento, forma de pagamento, troco_para nem entrega/retirada neste campo.',
       },
       forma_pagamento: {
         type: 'string',

@@ -99,7 +99,7 @@ export default defineEventHandler(async (event) => {
   const tCanal = Date.now()
   const { data: canal, error: canalError } = await admin
     .from('canais')
-    .select('id, workspace_id')
+    .select('id, workspace_id, botao_para_iniciar_ia')
     .eq('token', body.token)
     .is('deleted_at', null)
     .maybeSingle()
@@ -144,7 +144,12 @@ export default defineEventHandler(async (event) => {
   log.registrarEtapa(
     'canal_lookup',
     true,
-    { id_canal: canal.id, workspace_id: workspaceId },
+    {
+      id_canal: canal.id,
+      workspace_id: workspaceId,
+      botao_para_iniciar_ia:
+        (canal as { botao_para_iniciar_ia?: unknown }).botao_para_iniciar_ia === true,
+    },
     Date.now() - tCanal,
   )
 
@@ -228,8 +233,15 @@ export default defineEventHandler(async (event) => {
     }
   }
 
+  const botaoParaIniciarIa =
+    canal && typeof canal === 'object' && 'botao_para_iniciar_ia' in canal
+      ? (canal as { botao_para_iniciar_ia?: unknown }).botao_para_iniciar_ia === true
+      : false
+
   const tPersist = Date.now()
-  const saved = await persistWebhookMensagem(admin, normalizada)
+  const saved = await persistWebhookMensagem(admin, normalizada, {
+    botao_para_iniciar_ia: botaoParaIniciarIa,
+  })
 
   if (!saved.ok) {
     console.error(`❌ Falha ao persistir (${saved.step}):`, saved.message)
