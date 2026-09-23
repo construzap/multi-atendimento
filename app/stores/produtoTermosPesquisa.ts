@@ -10,10 +10,15 @@ const LIMITE_LISTA_COMPLETA = 2000
 const LIMITE_TYPEAHEAD = 30
 const PAGE_TODOS_TERMOS = 20
 
+/**
+ * Dedupe de GET em voo — **fora** do `state` do Pinia: `Promise` não é POJO
+ * e quebra o payload SSR (`devalue` → Cannot stringify arbitrary non-POJOs).
+ */
+const fetchesEmCurso = new Map<number, Promise<void>>()
+
 export const useProdutoTermosPesquisaStore = defineStore('produtoTermosPesquisa', {
   state: () => ({
     listaCompletaPorWorkspaceId: {} as Record<number, ProdutoTermoPesquisaItem[] | undefined>,
-    fetchesEmCurso: {} as Record<number, Promise<void>>,
     /** Lista detalhada do modal «Gerenciar termos» (paginada). */
     todos_termos: [] as ProdutoTermoPesquisaDetalhado[],
     todosTermosWorkspaceId: null as number | null,
@@ -45,7 +50,7 @@ export const useProdutoTermosPesquisaStore = defineStore('produtoTermosPesquisa'
     async carregarListaCompletaSeNecessario(workspaceId: number): Promise<void> {
       if (this.listaCompletaPorWorkspaceId[workspaceId] !== undefined) return
 
-      const pendente = this.fetchesEmCurso[workspaceId]
+      const pendente = fetchesEmCurso.get(workspaceId)
       if (pendente) {
         await pendente
         return
@@ -61,11 +66,11 @@ export const useProdutoTermosPesquisaStore = defineStore('produtoTermosPesquisa'
         this.listaCompletaPorWorkspaceId[workspaceId] = res.data ?? []
       })()
 
-      this.fetchesEmCurso[workspaceId] = p
+      fetchesEmCurso.set(workspaceId, p)
       try {
         await p
       } finally {
-        delete this.fetchesEmCurso[workspaceId]
+        fetchesEmCurso.delete(workspaceId)
       }
     },
 
@@ -79,7 +84,11 @@ export const useProdutoTermosPesquisaStore = defineStore('produtoTermosPesquisa'
       const i = lista.findIndex((x) => x.id === t.id)
       if (i >= 0) lista[i] = { ...t }
       else lista.push({ ...t })
-      lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
+      lista.sort(
+        (a, b) =>
+          (a.ordem ?? 0) - (b.ordem ?? 0) ||
+          a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }),
+      )
       this.listaCompletaPorWorkspaceId[workspaceId] = lista
     },
 
@@ -99,13 +108,22 @@ export const useProdutoTermosPesquisaStore = defineStore('produtoTermosPesquisa'
       const i = lista.findIndex((x) => x.id === item.id)
       if (i >= 0) lista[i] = { ...item }
       else lista.push({ ...item })
-      lista.sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
+      lista.sort(
+        (a, b) =>
+          (a.ordem ?? 0) - (b.ordem ?? 0) ||
+          a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }),
+      )
       this.listaCompletaPorWorkspaceId[workspaceId] = lista
+    },
+
+    /** Substitui a lista completa já na ordem desejada (após reordenar). */
+    definirListaCompleta(workspaceId: number, itens: ProdutoTermoPesquisaItem[]) {
+      this.listaCompletaPorWorkspaceId[workspaceId] = itens.map((x) => ({ ...x }))
     },
 
     limparCache(workspaceId: number) {
       delete this.listaCompletaPorWorkspaceId[workspaceId]
-      delete this.fetchesEmCurso[workspaceId]
+      fetchesEmCurso.delete(workspaceId)
     },
 
     limparTodosTermos() {

@@ -22,9 +22,20 @@ const open = defineModel<boolean>('open', { default: false })
 const props = withDefaults(
   defineProps<{
     workspaceId?: number | null
+    /**
+     * Ao abrir o modal: dispara edição ou eliminação desse termo
+     * (após carregar a lista detalhada). `null` = só listar.
+     */
+    acaoInicial?: 'editar' | 'eliminar' | null
+    termoIdInicial?: number | null
+    /** Ajuda a achar o termo na listagem detalhada (filtro `q`). */
+    termoNomeInicial?: string | null
   }>(),
   {
     workspaceId: null,
+    acaoInicial: null,
+    termoIdInicial: null,
+    termoNomeInicial: null,
   },
 )
 
@@ -68,20 +79,20 @@ const iconEliminarClass =
 const subtitulo = computed(() => {
   const n = todos_termos.value.length
   const q = todosTermosQ.value
-  if (todosTermosPending.value && n === 0) return 'A carregar termos…'
+  if (todosTermosPending.value && n === 0) return 'A carregar categorias…'
   if (n === 0) {
     return q
-      ? `Nenhum termo encontrado para «${q}».`
-      : 'Nenhum termo cadastrado neste workspace.'
+      ? `Nenhuma categoria encontrada para «${q}».`
+      : 'Nenhuma categoria cadastrada neste workspace.'
   }
   if (todosTermosHasMore.value) {
     return q
       ? `${n} resultado${n === 1 ? '' : 's'} para «${q}» — há mais na lista.`
-      : `${n} termos carregados — há mais na lista.`
+      : `${n} categorias carregadas — há mais na lista.`
   }
   return q
     ? `${n} resultado${n === 1 ? '' : 's'} para «${q}».`
-    : `${n} termo${n === 1 ? '' : 's'} no workspace.`
+    : `${n} categoria${n === 1 ? '' : 's'} no workspace.`
 })
 
 const textoAlertaEliminar = computed(() => {
@@ -94,14 +105,14 @@ const textoAlertaPerguntarTransferir = computed(() => {
   const item = termoAEliminar.value
   if (!item) return ''
   const n = item.total_usos
-  return `O termo «${item.nome}» está em ${n} produto${n === 1 ? '' : 's'} ativo${n === 1 ? '' : 's'}. Deseja transferir esses produtos para outro termo antes de eliminar?`
+  return `A categoria «${item.nome}» está em ${n} produto${n === 1 ? '' : 's'} ativo${n === 1 ? '' : 's'}. Deseja transferir esses produtos para outra categoria antes de eliminar?`
 })
 
 const textoAlertaTransferir = computed(() => {
   const item = termoAEliminar.value
   if (!item) return ''
   const n = item.produtos?.length ?? 0
-  return `Selecione o termo de destino para transferir ${n} produto${n === 1 ? '' : 's'} vinculado${n === 1 ? '' : 's'} a «${item.nome}».`
+  return `Selecione a categoria de destino para transferir ${n} produto${n === 1 ? '' : 's'} vinculado${n === 1 ? '' : 's'} a «${item.nome}».`
 })
 
 const textoConfirmarTransferencia = computed(() => {
@@ -109,7 +120,7 @@ const textoConfirmarTransferencia = computed(() => {
   const destino = termoDestino.value
   if (!origem || !destino) return ''
   const n = origem.produtos?.length ?? 0
-  return `Transferir ${n} produto${n === 1 ? '' : 's'} de «${origem.nome}» para «${destino.nome}» e eliminar o termo de origem?`
+  return `Transferir ${n} produto${n === 1 ? '' : 's'} de «${origem.nome}» para «${destino.nome}» e eliminar a categoria de origem?`
 })
 
 const destinosTransferencia = computed(() => {
@@ -137,7 +148,7 @@ async function carregarLista(q?: string) {
     })
   } catch (err) {
     erroInicial.value = true
-    toast.error(mensagemErroFetch(err, 'Não foi possível carregar os termos.'))
+    toast.error(mensagemErroFetch(err, 'Não foi possível carregar as categorias.'))
   }
 }
 
@@ -146,7 +157,7 @@ async function carregarMais() {
   try {
     await store.carregarMaisTodosTermos()
   } catch (err) {
-    toast.error(mensagemErroFetch(err, 'Não foi possível carregar mais termos.'))
+    toast.error(mensagemErroFetch(err, 'Não foi possível carregar mais categorias.'))
   }
 }
 
@@ -246,6 +257,45 @@ function pedirEliminar(termo: ProdutoTermoPesquisaDetalhado) {
   alertaEliminarAberto.value = true
 }
 
+/** Localiza o termo (paginando se preciso) e abre edição ou eliminação. */
+async function aplicarAcaoInicial() {
+  const acao = props.acaoInicial
+  const id = props.termoIdInicial
+  if (!acao || id == null || id < 1) return
+
+  async function localizarTermo(): Promise<ProdutoTermoPesquisaDetalhado | null> {
+    let termo = todos_termos.value.find((t) => t.id === id) ?? null
+    let guard = 0
+    while (!termo && todosTermosHasMore.value && guard < 50) {
+      guard++
+      try {
+        await store.carregarMaisTodosTermos()
+      } catch {
+        break
+      }
+      termo = todos_termos.value.find((t) => t.id === id) ?? null
+    }
+    return termo
+  }
+
+  let termo = await localizarTermo()
+  if (!termo && filtroBusca.value.trim()) {
+    filtroBusca.value = ''
+    await carregarLista('')
+    termo = await localizarTermo()
+  }
+
+  if (!termo) {
+    toast.error('Não foi possível localizar a categoria para esta ação.')
+    return
+  }
+
+  expandidoId.value = termo.id
+  await nextTick()
+  if (acao === 'editar') iniciarEdicao(termo)
+  else pedirEliminar(termo)
+}
+
 function limparFluxoTransferencia() {
   alertaPerguntarTransferirAberto.value = false
   alertaTransferirAberto.value = false
@@ -297,7 +347,7 @@ async function abrirTransferencia() {
     await store.carregarListaCompletaSeNecessario(wid)
     const destinos = store.getListaCompletaCopia(wid).filter((t) => t.id !== item.id)
     if (!destinos.length) {
-      toast.error('Não há outro termo para transferir. Crie um termo novo antes de eliminar este.')
+      toast.error('Não há outra categoria para transferir. Crie uma categoria nova antes de eliminar esta.')
       return
     }
     alertaPerguntarTransferirAberto.value = false
@@ -306,7 +356,7 @@ async function abrirTransferencia() {
     termoDestino.value = null
     alertaTransferirAberto.value = true
   } catch (err) {
-    toast.error(mensagemErroFetch(err, 'Não foi possível carregar os termos de destino.'))
+    toast.error(mensagemErroFetch(err, 'Não foi possível carregar as categorias de destino.'))
   } finally {
     carregandoDestinos.value = false
   }
@@ -359,7 +409,7 @@ function escolherDestino(item: ProdutoTermoPesquisaItem) {
 
 function continuarTransferencia() {
   if (!termoDestino.value || !termoAEliminar.value) {
-    toast.error('Selecione um termo de destino.')
+    toast.error('Selecione uma categoria de destino.')
     return
   }
   alertaTransferirAberto.value = false
@@ -415,9 +465,9 @@ async function confirmarTransferenciaEEliminar() {
     alertaConfirmarTransferenciaAberto.value = false
     limparFluxoTransferencia()
     termoAEliminar.value = null
-    toast.success(`Produtos transferidos para «${destino.nome}» e termo eliminado.`)
+    toast.success(`Produtos transferidos para «${destino.nome}» e categoria eliminada.`)
   } catch (err) {
-    toast.error(mensagemErroFetch(err, 'Não foi possível transferir e eliminar o termo.'))
+    toast.error(mensagemErroFetch(err, 'Não foi possível transferir e eliminar a categoria.'))
   } finally {
     transferindo.value = false
     eliminandoId.value = null
@@ -430,10 +480,12 @@ function fechar() {
 
 watch(
   () => open.value,
-  (isOpen) => {
+  async (isOpen) => {
     if (isOpen) {
-      filtroBusca.value = ''
-      void carregarLista('')
+      const nomeFoco = (props.termoNomeInicial ?? '').trim()
+      filtroBusca.value = props.acaoInicial && nomeFoco ? nomeFoco : ''
+      await carregarLista(filtroBusca.value)
+      await aplicarAcaoInicial()
       return
     }
     if (debounceBusca) {
@@ -457,7 +509,7 @@ onUnmounted(() => {
 <template>
   <BaseModal
     v-model:open="open"
-    title="Gerenciar termos"
+    title="Gerenciar categorias"
     panel-class="w-full max-w-2xl"
     body-class="!overflow-hidden !p-0"
     @close="fechar"
@@ -473,7 +525,7 @@ onUnmounted(() => {
           v-model="filtroBusca"
           type="search"
           autocomplete="off"
-          placeholder="Buscar termo pelo nome…"
+          placeholder="Buscar categoria pelo nome…"
         />
       </div>
 
@@ -502,8 +554,8 @@ onUnmounted(() => {
       >
         {{
           todosTermosQ
-            ? `Nenhum termo encontrado para «${todosTermosQ}».`
-            : 'Nenhum termo de pesquisa encontrado.'
+            ? `Nenhuma categoria encontrada para «${todosTermosQ}».`
+            : 'Nenhuma categoria encontrada.'
         }}
       </div>
 
@@ -682,7 +734,7 @@ onUnmounted(() => {
 
   <ModalAlerta
     v-model:open="alertaPerguntarTransferirAberto"
-    title="Termo em uso"
+    title="Categoria em uso"
     :texto="textoAlertaPerguntarTransferir"
     variante="aviso"
     texto-confirmar="Sim, transferir"
@@ -712,13 +764,13 @@ onUnmounted(() => {
         v-model="filtroTransferencia"
         type="search"
         autocomplete="off"
-        placeholder="Buscar termo…"
+        placeholder="Buscar categoria…"
       />
       <ul
         class="max-h-56 overflow-y-auto rounded-xl border border-outline/30 dark:border-dark-outline/30"
       >
         <li v-if="!destinosTransferencia.length" class="px-3 py-4 text-center text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
-          Nenhum termo encontrado.
+          Nenhuma categoria encontrada.
         </li>
         <li
           v-for="item in destinosTransferencia"

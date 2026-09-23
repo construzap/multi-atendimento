@@ -59,9 +59,10 @@ export default defineEventHandler(async (event): Promise<ProdutosTermosPesquisaL
 
   let query = admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome')
+    .select('id, nome, ordem')
     .eq('workspace_id', workspaceId)
-    .order('nome', { ascending: true })
+    .order('ordem', { ascending: true })
+    .order('id', { ascending: true })
     .limit(limit)
 
   if (searchRaw.length > 0) {

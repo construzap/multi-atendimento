@@ -23,10 +23,13 @@ const props = withDefaults(
   defineProps<{
     workspaceId?: number | null
     termoBusca?: string
+    /** Quando definido, a lista após importar filtra por este termo (vínculo). */
+    termoId?: number | null
   }>(),
   {
     workspaceId: null,
     termoBusca: '',
+    termoId: null,
   },
 )
 
@@ -139,13 +142,17 @@ async function executarImportacao(
       importacaoProcessadas.value += chunk.length
     }
 
-    produtosStore.ultimoSnapshotKey = null
     produtosStore.page = 1
+    if (props.termoId != null && props.termoId > 0) {
+      produtosStore.invalidarCacheTermo(workspaceId, props.termoId)
+    }
     await produtosStore.fetchPagina(workspaceId, {
       page: 1,
       q: props.termoBusca ?? '',
+      termoId: props.termoId,
+      force: true,
     })
-    useProdutoTermosPesquisaStore().invalidarWorkspace(workspaceId)
+    useProdutoTermosPesquisaStore().limparCache(workspaceId)
     importacaoFase.value = 'concluido'
     emit('importado')
   } catch (err) {

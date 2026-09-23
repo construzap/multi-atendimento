@@ -1,6 +1,6 @@
 import { watch } from 'vue'
 import { useWorkspacesStore } from '~/stores/workspaces'
-import { isRotaEntregaPublica } from '~/utils/isRotaEntregaPublica'
+import { isRotaPublica } from '~/utils/isRotaEntregaPublica'
 
 export default defineNuxtPlugin(() => {
   const workspaces = useWorkspacesStore()
@@ -8,7 +8,7 @@ export default defineNuxtPlugin(() => {
   const route = useRoute()
 
   async function refreshIfLoggedIn(force = false) {
-    if (isRotaEntregaPublica(route.path)) return
+    if (isRotaPublica(route.path)) return
     if (!session.value) return
     try {
       await workspaces.ensureAllLoaded({ force })
@@ -21,7 +21,7 @@ export default defineNuxtPlugin(() => {
   watch(
     session,
     async (next, prev) => {
-      if (isRotaEntregaPublica(route.path)) return
+      if (isRotaPublica(route.path)) return
       if (!next) {
         workspaces.items = []
         workspaces.error = null
@@ -41,8 +41,8 @@ export default defineNuxtPlugin(() => {
   watch(
     () => route.path,
     (path, prev) => {
-      if (isRotaEntregaPublica(path)) return
-      if (prev && isRotaEntregaPublica(prev)) {
+      if (isRotaPublica(path)) return
+      if (prev && isRotaPublica(prev)) {
         void refreshIfLoggedIn(false)
       }
     },

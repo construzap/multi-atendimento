@@ -8,7 +8,7 @@ import type {
 } from '#shared/types/mensagensProntas'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
-import { mapColunaDestinoId, mapFecharPedidoEmAberto, mapIaLigada } from '../../utils/mensagensProntasColunaDestino'
+import { mapColunaDestinoId, mapFecharPedidoEmAberto, mapIaLigada, mapPagamentoRealizado } from '../../utils/mensagensProntasColunaDestino'
 import { MENSAGEM_PRONTA_PASSOS_SELECT, mapPassoFromDbRow } from '../../utils/mensagensProntasPassos'
 
 /**
@@ -52,7 +52,7 @@ export default defineEventHandler(async (event): Promise<ListarMensagensProntasR
   let seqQuery = admin
     .from('mensagens_prontas_sequencias')
     .select(
-      'id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada, fechar_pedido_em_aberto',
+      'id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada, fechar_pedido_em_aberto, pagamento_realizado',
     )
     .eq('workspace_id', workspaceId)
 
@@ -104,6 +104,7 @@ export default defineEventHandler(async (event): Promise<ListarMensagensProntasR
       coluna_destino_id: mapColunaDestinoId(row.coluna_destino_id),
       ia_ligada: mapIaLigada(row.ia_ligada),
       fechar_pedido_em_aberto: mapFecharPedidoEmAberto(row.fechar_pedido_em_aberto),
+      pagamento_realizado: mapPagamentoRealizado(row.pagamento_realizado),
     }
     return {
       sequencia,

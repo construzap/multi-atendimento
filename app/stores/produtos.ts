@@ -133,16 +133,63 @@ export const PRODUTOS_PAGE_SIZE_TODOS = 0
 
 const PRODUTOS_BUSCA_CHUNK_SIZE = 1000
 
+/** Máximo de termos com produtos em cache no Pinia (FIFO via `keyOrder`). */
+const MAX_CACHE_TERMOS = 10
+
+export type ProdutosTermoBucketKey = string
+
+export function produtosTermoBucketKey(workspaceId: number, termoId: number): ProdutosTermoBucketKey {
+  return `${Math.trunc(workspaceId)}:${Math.trunc(termoId)}`
+}
+
+type TermoProdutosBucket = {
+  workspaceId: number
+  termoId: number
+  items: ProdutoWorkspaceItem[]
+  total: number
+  page: number
+  pageSize: number
+  q: string
+  ultimoSnapshotKey: string | null
+  loadedAt: number | null
+}
+
+function emptyTermoBucket(
+  workspaceId: number,
+  termoId: number,
+  pageSize: number,
+): TermoProdutosBucket {
+  return {
+    workspaceId,
+    termoId,
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize,
+    q: '',
+    ultimoSnapshotKey: null,
+    loadedAt: null,
+  }
+}
+
 export const useProdutosStore = defineStore('produtos', {
   state: () => ({
+    /** Vista ativa (termo selecionado). Espelha `byKey[activeKey]`. */
     items: [] as ProdutoWorkspaceItem[],
     total: 0,
     page: 1,
     pageSize: 10,
     listPending: false,
     listError: null as string | null,
-    /** Evita refetch quando já temos a mesma página em cache. */
+    /** Evita refetch quando já temos a mesma página em cache no bucket ativo. */
     ultimoSnapshotKey: null as string | null,
+
+    /** Termo ativo: `${workspaceId}:${termoId}`. */
+    activeKey: null as ProdutosTermoBucketKey | null,
+    /** Cache de listagens por termo (máx. `MAX_CACHE_TERMOS`). */
+    byKey: {} as Record<ProdutosTermoBucketKey, TermoProdutosBucket>,
+    /** Ordem de uso (mais antigo → mais recente). */
+    keyOrder: [] as ProdutosTermoBucketKey[],
     /** Rascunho do modal «Criar produtos em massa» (ids negativos até gravar). */
     criarEmMassaItems: [] as ProdutoWorkspaceItem[],
     criarEmMassaNextTempId: -1,
@@ -187,6 +234,12 @@ export const useProdutosStore = defineStore('produtos', {
       return Math.ceil(state.total / state.pageSize)
     },
 
+    activeTermoId(state): number | null {
+      if (!state.activeKey) return null
+      const b = state.byKey[state.activeKey]
+      return b?.termoId ?? null
+    },
+
     /** Primeiro selecionado — alvo típico de modais que editam uma linha. */
     selecionadoAtivo(state): ProdutoSelecionadoRef | null {
       return state.selecionados[0] ?? null
@@ -201,38 +254,197 @@ export const useProdutosStore = defineStore('produtos', {
     },
   },
   actions: {
-    makeSnapshotKey(workspaceId: number, input: { page: number; q: string }): string {
+    touchKey(key: ProdutosTermoBucketKey) {
+      const idx = this.keyOrder.indexOf(key)
+      if (idx !== -1) this.keyOrder.splice(idx, 1)
+      this.keyOrder.push(key)
+    },
+
+    pruneCache() {
+      while (this.keyOrder.length > MAX_CACHE_TERMOS) {
+        const oldest = this.keyOrder.shift()
+        if (!oldest) break
+        if (oldest === this.activeKey) {
+          this.keyOrder.push(oldest)
+          break
+        }
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete this.byKey[oldest]
+      }
+    },
+
+    setActiveKey(key: ProdutosTermoBucketKey | null, meta?: { workspaceId: number; termoId: number }) {
+      this.activeKey = key
+      if (!key || !meta) return
+      if (!this.byKey[key]) {
+        this.byKey[key] = emptyTermoBucket(meta.workspaceId, meta.termoId, this.pageSize)
+      }
+      this.touchKey(key)
+      this.pruneCache()
+    },
+
+    /** Copia o bucket para a vista ativa (sem GET). */
+    hydrateFromBucket(bucket: TermoProdutosBucket) {
+      this.items = bucket.items
+      this.total = bucket.total
+      this.page = bucket.page
+      this.pageSize = bucket.pageSize
+      this.ultimoSnapshotKey = bucket.ultimoSnapshotKey
+      this.listError = null
+      this.listPending = false
+    },
+
+    /** Persiste a vista ativa no cache do termo. */
+    persistActiveBucket(workspaceId: number, termoId: number, q: string) {
+      const key = produtosTermoBucketKey(workspaceId, termoId)
+      this.byKey[key] = {
+        workspaceId,
+        termoId,
+        items: this.items,
+        total: this.total,
+        page: this.page,
+        pageSize: this.pageSize,
+        q: (q ?? '').trim(),
+        ultimoSnapshotKey: this.ultimoSnapshotKey,
+        loadedAt: Date.now(),
+      }
+      this.activeKey = key
+      this.touchKey(key)
+      this.pruneCache()
+    },
+
+    /** Após mutações locais na vista ativa, espelha no bucket. */
+    syncActiveBucketFromView() {
+      const key = this.activeKey
+      if (!key) return
+      const prev = this.byKey[key]
+      if (!prev) return
+      this.byKey[key] = {
+        ...prev,
+        items: this.items,
+        total: this.total,
+        page: this.page,
+        pageSize: this.pageSize,
+        ultimoSnapshotKey: this.ultimoSnapshotKey,
+        loadedAt: prev.loadedAt ?? Date.now(),
+      }
+    },
+
+    /** Invalida cache do termo (próximo fetchPagina refaz GET). */
+    invalidarCacheTermo(workspaceId: number, termoId: number) {
+      const key = produtosTermoBucketKey(workspaceId, termoId)
+      const b = this.byKey[key]
+      if (b) {
+        b.loadedAt = null
+        b.ultimoSnapshotKey = null
+      }
+      if (this.activeKey === key) this.ultimoSnapshotKey = null
+    },
+
+    limparVistaLista() {
+      this.items = []
+      this.total = 0
+      this.page = 1
+      this.listPending = false
+      this.listError = null
+      this.ultimoSnapshotKey = null
+      this.activeKey = null
+    },
+
+    limparCacheTermos() {
+      this.byKey = {}
+      this.keyOrder = []
+      this.activeKey = null
+    },
+
+    makeSnapshotKey(
+      workspaceId: number,
+      input: { page: number; q: string; termoId?: number | null },
+    ): string {
       const q = (input.q ?? '').trim()
       const page =
         this.pageSize === PRODUTOS_PAGE_SIZE_TODOS ? 1 : input.page
-      return [workspaceId, page, this.pageSize, q].join('|')
+      const termo =
+        input.termoId != null && Number.isFinite(input.termoId) && input.termoId > 0
+          ? Math.trunc(input.termoId)
+          : ''
+      return [workspaceId, page, this.pageSize, q, termo].join('|')
     },
 
-    temSnapshot(workspaceId: number, input: { page: number; q: string }): boolean {
-      if (this.items.length === 0 && this.total === 0) return false
+    temSnapshot(
+      workspaceId: number,
+      input: { page: number; q: string; termoId?: number | null },
+    ): boolean {
+      if (this.items.length === 0 && this.total === 0) {
+        const tid = input.termoId
+        if (tid == null || tid < 1) return false
+        const b = this.byKey[produtosTermoBucketKey(workspaceId, tid)]
+        if (!b || b.loadedAt == null) return false
+      }
       const k = this.makeSnapshotKey(workspaceId, input)
       return this.ultimoSnapshotKey === k
     },
 
     /**
-     * GET /api/produtos/buscar — lista paginada; `q` filtra só pelo nome (ilike).
+     * GET /api/produtos/buscar — lista paginada por termo.
+     * Se o termo já está em `byKey` com a mesma página/`q`, só ativa o cache (sem GET).
      */
-    async fetchPagina(workspaceId: number, input: { page: number; q: string }) {
+    async fetchPagina(
+      workspaceId: number,
+      input: { page: number; q: string; termoId?: number | null; force?: boolean },
+    ) {
       if (!Number.isFinite(workspaceId) || workspaceId < 1) {
         this.reset()
         return
       }
 
+      const termoId =
+        input.termoId != null && Number.isFinite(input.termoId) && input.termoId > 0
+          ? Math.trunc(input.termoId)
+          : null
+
+      if (termoId == null) {
+        this.limparVistaLista()
+        return
+      }
+
+      const key = produtosTermoBucketKey(workspaceId, termoId)
+      this.setActiveKey(key, { workspaceId, termoId })
+      const bucket = this.byKey[key]!
+
+      const qNorm = (input.q ?? '').trim()
+      const pageReq =
+        this.pageSize === PRODUTOS_PAGE_SIZE_TODOS ? 1 : input.page
+
+      const cacheHit =
+        !input.force &&
+        bucket.loadedAt != null &&
+        bucket.workspaceId === workspaceId &&
+        bucket.termoId === termoId &&
+        bucket.q === qNorm &&
+        bucket.pageSize === this.pageSize &&
+        (this.pageSize === PRODUTOS_PAGE_SIZE_TODOS || bucket.page === pageReq)
+
+      if (cacheHit) {
+        this.hydrateFromBucket(bucket)
+        this.touchKey(key)
+        this.pruneCache()
+        return
+      }
+
       const snapshotInput =
         this.pageSize === PRODUTOS_PAGE_SIZE_TODOS
-          ? { page: 1, q: input.q }
-          : input
-
-      // Se já temos exatamente esta página, não refaz a chamada.
-      if (this.temSnapshot(workspaceId, snapshotInput)) return
+          ? { page: 1, q: input.q, termoId }
+          : { page: input.page, q: input.q, termoId }
 
       this.listPending = true
       this.listError = null
+
+      const queryBase: Record<string, string | number> = {
+        workspace_id: workspaceId,
+        termo_id: termoId,
+      }
+      if (input.q) queryBase.q = input.q
 
       try {
         if (this.pageSize === PRODUTOS_PAGE_SIZE_TODOS) {
@@ -245,10 +457,9 @@ export const useProdutosStore = defineStore('produtos', {
             const res = await $fetch<ProdutosBuscaResponse>('/api/produtos/buscar', {
               method: 'GET',
               query: {
-                workspace_id: workspaceId,
+                ...queryBase,
                 page,
                 page_size: PRODUTOS_BUSCA_CHUNK_SIZE,
-                ...(input.q ? { q: input.q } : {}),
               },
             })
             allItems.push(...(res.data ?? []))
@@ -261,28 +472,40 @@ export const useProdutosStore = defineStore('produtos', {
           this.total = total
           this.page = 1
           this.ultimoSnapshotKey = this.makeSnapshotKey(workspaceId, snapshotInput)
+          this.persistActiveBucket(workspaceId, termoId, qNorm)
           return
         }
 
         const res = await $fetch<ProdutosBuscaResponse>('/api/produtos/buscar', {
           method: 'GET',
           query: {
-            workspace_id: workspaceId,
+            ...queryBase,
             page: input.page,
             page_size: this.pageSize,
-            ...(input.q ? { q: input.q } : {}),
           },
         })
         this.items = res.data ?? []
         this.total = res.total
         this.page = res.page
         this.pageSize = res.page_size
-        this.ultimoSnapshotKey = this.makeSnapshotKey(workspaceId, { page: res.page, q: input.q })
+        this.ultimoSnapshotKey = this.makeSnapshotKey(workspaceId, {
+          page: res.page,
+          q: input.q,
+          termoId,
+        })
+        this.persistActiveBucket(workspaceId, termoId, qNorm)
       } catch (err) {
         this.items = []
         this.total = 0
         this.listError = mensagemErroFetch(err, 'Não foi possível carregar os produtos.')
         this.ultimoSnapshotKey = null
+        const b = this.byKey[key]
+        if (b) {
+          b.loadedAt = null
+          b.ultimoSnapshotKey = null
+          b.items = []
+          b.total = 0
+        }
       } finally {
         this.listPending = false
       }
@@ -302,6 +525,7 @@ export const useProdutosStore = defineStore('produtos', {
           tem_variacoes: prev.tem_variacoes,
         })
         this.ultimoSnapshotKey = null
+        this.syncActiveBucketFromView()
         return
       }
       for (let i = 0; i < this.items.length; i++) {
@@ -318,8 +542,59 @@ export const useProdutosStore = defineStore('produtos', {
         }
         this.items.splice(i, 1, { ...pai, variacoes: nextVars })
         this.ultimoSnapshotKey = null
+        this.syncActiveBucketFromView()
         return
       }
+    },
+
+    /**
+     * Move um produto pai de `fromIndex` para `toIndex` na lista ativa.
+     * Reatribui `ordem_no_termo` com os valores ordenados da página.
+     * Retorna os pares a persistir (só os que mudaram), ou null se inválido.
+     */
+    moverProdutoParaIndice(
+      fromIndex: number,
+      toIndex: number,
+    ): { id: number; ordem: number }[] | null {
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= this.items.length ||
+        toIndex >= this.items.length ||
+        fromIndex === toIndex
+      ) {
+        return null
+      }
+
+      const next = this.items.map((p) => ({
+        ...p,
+        variacoes: (p.variacoes ?? []).map((v) => ({ ...v })),
+      }))
+      const [moved] = next.splice(fromIndex, 1)
+      if (!moved) return null
+      next.splice(toIndex, 0, moved)
+
+      const ordens = this.items
+        .map((p, i) => (typeof p.ordem_no_termo === 'number' ? p.ordem_no_termo : i))
+        .sort((a, b) => a - b)
+
+      const antes = new Map(this.items.map((p) => [p.id, p.ordem_no_termo ?? null]))
+      for (let i = 0; i < next.length; i++) {
+        next[i] = { ...next[i]!, ordem_no_termo: ordens[i] ?? i }
+      }
+
+      this.items = next
+      this.ultimoSnapshotKey = null
+      this.syncActiveBucketFromView()
+
+      const payload: { id: number; ordem: number }[] = []
+      for (const p of next) {
+        const nova = p.ordem_no_termo ?? 0
+        if (antes.get(p.id) !== nova) {
+          payload.push({ id: p.id, ordem: nova })
+        }
+      }
+      return payload.length ? payload : null
     },
 
     /**
@@ -363,6 +638,7 @@ export const useProdutosStore = defineStore('produtos', {
       this.items = next
       this.total = Math.max(0, this.total - paisRemovidos)
       this.ultimoSnapshotKey = null
+      this.syncActiveBucketFromView()
       return snapshot
     },
 
@@ -377,6 +653,7 @@ export const useProdutosStore = defineStore('produtos', {
       }))
       this.total = snapshot.total
       this.ultimoSnapshotKey = null
+      this.syncActiveBucketFromView()
     },
 
     reset() {
@@ -387,6 +664,7 @@ export const useProdutosStore = defineStore('produtos', {
       this.listPending = false
       this.listError = null
       this.ultimoSnapshotKey = null
+      this.limparCacheTermos()
       this.limparCriarEmMassa()
       this.resetOportunidadesVendas()
     },
@@ -604,6 +882,7 @@ export const useProdutosStore = defineStore('produtos', {
 
       this.removerOportunidadeVenda(opts.item)
       this.ultimoSnapshotKey = null
+      this.syncActiveBucketFromView()
     },
 
     /** Limpa o rascunho de criação em massa (após envio bem-sucedido ou cancelar). */
@@ -712,6 +991,7 @@ export const useProdutosStore = defineStore('produtos', {
           ...(imagens !== undefined ? { imagens } : {}),
           ...(imagem_url !== undefined ? { imagem_url } : {}),
         })
+        this.syncActiveBucketFromView()
         return
       }
 
@@ -727,6 +1007,7 @@ export const useProdutosStore = defineStore('produtos', {
         ...(imagem_url !== undefined ? { imagem_url } : {}),
       }
       this.items.splice(pIdx, 1, { ...pai, variacoes: nextVars })
+      this.syncActiveBucketFromView()
     },
 
     normalizarOrdensImagensEdicao() {
@@ -1121,6 +1402,7 @@ export const useProdutosStore = defineStore('produtos', {
           imagem_url,
         })
         this.ultimoSnapshotKey = null
+        this.syncActiveBucketFromView()
         this.limparEstadoEdicaoImagens()
         this.limparSelecionados()
         this.modalImagensAberto = false
@@ -1199,6 +1481,7 @@ export const useProdutosStore = defineStore('produtos', {
       })
 
       this.ultimoSnapshotKey = null
+      this.syncActiveBucketFromView()
     },
 
     /**

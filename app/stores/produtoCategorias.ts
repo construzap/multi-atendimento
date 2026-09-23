@@ -5,6 +5,12 @@ const LIMITE_LISTA_COMPLETA = 2000
 const LIMITE_TYPEAHEAD = 30
 
 /**
+ * Dedupe de GET em voo — **fora** do `state` do Pinia: `Promise` não é POJO
+ * e quebra o payload SSR (`devalue`).
+ */
+const fetchesEmCurso = new Map<number, Promise<void>>()
+
+/**
  * Cache em memória da lista completa de categorias por workspace (`GET` sem `q`).
  * Evita pedidos repetidos; `aposCriarOuExistirCategoria` mantém a lista após `POST`.
  */
@@ -12,8 +18,6 @@ export const useProdutoCategoriasStore = defineStore('produtoCategorias', {
   state: () => ({
     /** `undefined` = ainda não carregou para este `workspace_id`. */
     listaCompletaPorWorkspaceId: {} as Record<number, ProdutoCategoriaItem[] | undefined>,
-    /** Deduplica pedidos em curso ao mesmo workspace. */
-    fetchesEmCurso: {} as Record<number, Promise<void>>,
   }),
 
   actions: {
@@ -41,7 +45,7 @@ export const useProdutoCategoriasStore = defineStore('produtoCategorias', {
     async carregarListaCompletaSeNecessario(workspaceId: number): Promise<void> {
       if (this.listaCompletaPorWorkspaceId[workspaceId] !== undefined) return
 
-      const pendente = this.fetchesEmCurso[workspaceId]
+      const pendente = fetchesEmCurso.get(workspaceId)
       if (pendente) {
         await pendente
         return
@@ -57,11 +61,11 @@ export const useProdutoCategoriasStore = defineStore('produtoCategorias', {
         this.listaCompletaPorWorkspaceId[workspaceId] = res.data ?? []
       })()
 
-      this.fetchesEmCurso[workspaceId] = p
+      fetchesEmCurso.set(workspaceId, p)
       try {
         await p
       } finally {
-        delete this.fetchesEmCurso[workspaceId]
+        fetchesEmCurso.delete(workspaceId)
       }
     },
 
@@ -104,7 +108,7 @@ export const useProdutoCategoriasStore = defineStore('produtoCategorias', {
 
     invalidarWorkspace(workspaceId: number) {
       delete this.listaCompletaPorWorkspaceId[workspaceId]
-      delete this.fetchesEmCurso[workspaceId]
+      fetchesEmCurso.delete(workspaceId)
     },
   },
 })

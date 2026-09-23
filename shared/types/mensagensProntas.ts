@@ -39,6 +39,11 @@ export type MensagemProntaSequenciaResumo = {
   ia_ligada: boolean
   /** Se deve fechar pedidos da I.A. em aberto após o envio. Default `false`. */
   fechar_pedido_em_aberto: boolean
+  /**
+   * Se, ao enviar a sequência, marca pedido em aberto como pagamento realizado
+   * (`mensagens_prontas_sequencias.pagamento_realizado`). Default `false`.
+   */
+  pagamento_realizado: boolean
 }
 
 export type MensagemProntaPasso = {
@@ -68,6 +73,7 @@ export type CriarMensagemProntaBody = {
   coluna_destino_id?: number | null
   ia_ligada?: boolean
   fechar_pedido_em_aberto?: boolean
+  pagamento_realizado?: boolean
 }
 
 export type CriarMensagemProntaResponse = {
@@ -106,6 +112,8 @@ export type WebhookN8nMensagemProntaBody = {
   ia_ligada: boolean
   /** Espelha `mensagem_pronta.sequencia.fechar_pedido_em_aberto`. */
   fechar_pedido_em_aberto: boolean
+  /** Espelha `mensagem_pronta.sequencia.pagamento_realizado`. */
+  pagamento_realizado: boolean
 }
 
 export type WebhookN8nMensagemProntaResponse = {
@@ -119,6 +127,7 @@ export type AtualizarMensagemProntaBody = {
   coluna_destino_id?: number | null
   ia_ligada?: boolean
   fechar_pedido_em_aberto?: boolean
+  pagamento_realizado?: boolean
 }
 
 export type AtualizarMensagemProntaResponse = {

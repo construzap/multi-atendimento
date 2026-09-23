@@ -53,7 +53,7 @@ function submit() {
         />
       </label>
       <label>
-        <span class="mb-1 block text-xs text-gray-500">metadata.termos_pesquisa (filtro opcional)</span>
+        <span class="mb-1 block text-xs text-gray-500">Categorias (filtro opcional)</span>
         <input
           v-model="categorias"
           type="text"

@@ -158,7 +158,7 @@ export default defineNuxtConfig({
     redirectOptions: {
       login: '/login',
       callback: '/confirm',
-      exclude: ['/esqueci-senha', '/redefinir-senha', '/entrega/**', '/api/public/**']
+      exclude: ['/esqueci-senha', '/redefinir-senha', '/entrega/**', '/loja', '/loja/**', '/api/public/**']
     }
   }
 })

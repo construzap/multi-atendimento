@@ -25,10 +25,13 @@ const props = withDefaults(
     workspaceId?: number | null
     /** Se `null`/omitido com modal aberto → modo criar. */
     row?: ProdutoWorkspaceCampos | null
+    /** Em modo criar: termos já pré-selecionados (ex.: termo ativo da listagem). */
+    termosIniciais?: ProdutoTermoPesquisaItem[]
   }>(),
   {
     workspaceId: null,
     row: null,
+    termosIniciais: () => [],
   },
 )
 
@@ -121,14 +124,21 @@ function limpar() {
 }
 
 watch(
-  () => [open.value, props.row] as const,
+  () => [open.value, props.row, props.termosIniciais] as const,
   ([isOpen, row]) => {
     if (!isOpen) {
       limpar()
       return
     }
-    if (row) popularDoRow(row)
-    else limpar()
+    if (row) {
+      popularDoRow(row)
+      return
+    }
+    limpar()
+    const iniciais = props.termosIniciais ?? []
+    if (iniciais.length) {
+      termosSelecionados.value = iniciais.map((t) => ({ ...t }))
+    }
   },
   { immediate: true },
 )

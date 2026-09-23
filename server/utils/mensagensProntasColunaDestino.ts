@@ -46,6 +46,26 @@ export function parseFecharPedidoEmAbertoBody(raw: unknown): boolean {
 }
 
 /**
+ * Default `false` (coluna DB `pagamento_realizado boolean null default false`).
+ * Null / ausente → `false`.
+ */
+export function mapPagamentoRealizado(raw: unknown): boolean {
+  if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true
+  return false
+}
+
+/** Body: se omitido, default `false`. */
+export function parsePagamentoRealizadoBody(raw: unknown): boolean {
+  if (raw === undefined || raw === null || String(raw).trim() === '') return false
+  if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true
+  if (raw === false || raw === 'false' || raw === 0 || raw === '0') return false
+  throw createError({
+    statusCode: 400,
+    statusMessage: 'pagamento_realizado inválido (true ou false).',
+  })
+}
+
+/**
  * Garante que a coluna existe, não está soft-deleted e pertence ao workspace.
  */
 export async function assertColunaDestinoDoWorkspace(

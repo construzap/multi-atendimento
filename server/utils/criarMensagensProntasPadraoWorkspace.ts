@@ -13,6 +13,7 @@ type ColunaInserida = {
 type SequenciaPadraoDef = {
   nome: string
   fechar_pedido_em_aberto: boolean
+  pagamento_realizado: boolean
   /** Nome exato da coluna nativa em `funil_workspace_colunas`. */
   colunaNome: string
   passos: Array<{
@@ -32,6 +33,7 @@ export const MENSAGENS_PRONTAS_SEQUENCIAS_PADRAO: SequenciaPadraoDef[] = [
   {
     nome: 'PEDIDO CONFIRMADO ✅',
     fechar_pedido_em_aberto: false,
+    pagamento_realizado: false,
     colunaNome: 'Pedidos Novos',
     passos: [
       {
@@ -47,6 +49,7 @@ export const MENSAGENS_PRONTAS_SEQUENCIAS_PADRAO: SequenciaPadraoDef[] = [
   {
     nome: 'SEU PEDIDO SAIU PARA ENTREGA 🚀',
     fechar_pedido_em_aberto: true,
+    pagamento_realizado: false,
     colunaNome: 'Entregas em Andamento',
     passos: [
       {
@@ -62,6 +65,7 @@ export const MENSAGENS_PRONTAS_SEQUENCIAS_PADRAO: SequenciaPadraoDef[] = [
   {
     nome: 'ENTREGA CHEGOU NO LOCAL',
     fechar_pedido_em_aberto: true,
+    pagamento_realizado: false,
     colunaNome: 'Entrega Chegou no Destino',
     passos: [
       {
@@ -84,6 +88,7 @@ export const MENSAGENS_PRONTAS_SEQUENCIAS_PADRAO: SequenciaPadraoDef[] = [
   {
     nome: 'PEDIDO ENTREGUE',
     fechar_pedido_em_aberto: true,
+    pagamento_realizado: false,
     colunaNome: 'Pedidos Entregues',
     passos: [
       {
@@ -139,6 +144,7 @@ export async function criarMensagensProntasPadraoWorkspace(params: {
         coluna_destino_id: null,
         ia_ligada: true,
         fechar_pedido_em_aberto: def.fechar_pedido_em_aberto,
+        pagamento_realizado: def.pagamento_realizado,
       })
       .select('id')
       .maybeSingle()

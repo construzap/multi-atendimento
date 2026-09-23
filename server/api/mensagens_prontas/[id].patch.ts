@@ -12,9 +12,11 @@ import {
   mapColunaDestinoId,
   mapFecharPedidoEmAberto,
   mapIaLigada,
+  mapPagamentoRealizado,
   parseFecharPedidoEmAbertoBody,
   parseIaLigadaBody,
   parseOptionalColunaDestinoId,
+  parsePagamentoRealizadoBody,
 } from '../../utils/mensagensProntasColunaDestino'
 import {
   MENSAGEM_PRONTA_PASSOS_SELECT,
@@ -31,6 +33,7 @@ type Body = {
   coluna_destino_id?: unknown
   ia_ligada?: unknown
   fechar_pedido_em_aberto?: unknown
+  pagamento_realizado?: unknown
 }
 
 function strRequired(raw: unknown, label: string): string {
@@ -51,7 +54,7 @@ function parseUuid(raw: string | undefined, label: string): string {
 
 /**
  * PATCH /api/mensagens_prontas/:id
- * Body: `{ workspace_id, nome, passos[], coluna_destino_id?, ia_ligada?, fechar_pedido_em_aberto? }`
+ * Body: `{ workspace_id, nome, passos[], coluna_destino_id?, ia_ligada?, fechar_pedido_em_aberto?, pagamento_realizado? }`
  * Atualiza a capa e substitui todos os passos da sequência.
  */
 export default defineEventHandler(async (event): Promise<AtualizarMensagemProntaResponse> => {
@@ -81,6 +84,7 @@ export default defineEventHandler(async (event): Promise<AtualizarMensagemPronta
   const colunaDestinoId = parseOptionalColunaDestinoId(body.coluna_destino_id)
   const iaLigada = parseIaLigadaBody(body.ia_ligada)
   const fecharPedidoEmAberto = parseFecharPedidoEmAbertoBody(body.fechar_pedido_em_aberto)
+  const pagamentoRealizado = parsePagamentoRealizadoBody(body.pagamento_realizado)
 
   await checkWorkspace(event, workspaceId, userId)
 
@@ -111,11 +115,12 @@ export default defineEventHandler(async (event): Promise<AtualizarMensagemPronta
       coluna_destino_id: colunaDestinoId,
       ia_ligada: iaLigada,
       fechar_pedido_em_aberto: fecharPedidoEmAberto,
+      pagamento_realizado: pagamentoRealizado,
     })
     .eq('id', sequenciaId)
     .eq('workspace_id', workspaceId)
     .select(
-      'id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada, fechar_pedido_em_aberto',
+      'id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada, fechar_pedido_em_aberto, pagamento_realizado',
     )
     .maybeSingle()
 
@@ -159,6 +164,7 @@ export default defineEventHandler(async (event): Promise<AtualizarMensagemPronta
     coluna_destino_id: mapColunaDestinoId(sequencia.coluna_destino_id),
     ia_ligada: mapIaLigada(sequencia.ia_ligada),
     fechar_pedido_em_aberto: mapFecharPedidoEmAberto(sequencia.fechar_pedido_em_aberto),
+    pagamento_realizado: mapPagamentoRealizado(sequencia.pagamento_realizado),
   }
 
   const passosOut: MensagemProntaPasso[] = (passosCriados ?? []).map((row: Record<string, unknown>) =>

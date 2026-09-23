@@ -70,7 +70,7 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaAt
 
   const { data: atual, error: selErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome')
+    .select('id, nome, ordem')
     .eq('id', termoId)
     .eq('workspace_id', workspaceId)
     .maybeSingle()
@@ -112,7 +112,7 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaAt
     .update({ nome })
     .eq('id', termoId)
     .eq('workspace_id', workspaceId)
-    .select('id, nome')
+    .select('id, nome, ordem')
     .single()
 
   if (upErr) {

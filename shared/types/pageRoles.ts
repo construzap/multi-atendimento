@@ -17,6 +17,7 @@ export type PageRoleSlug =
   | 'logs'
   | 'configuracoes'
   | 'disparo-em-massa'
+  | 'relatorios'
 
 /** Mensagem quando o perfil não tem o slug em `page_roles.pages`. */
 export const MSG_SEM_PERMISSAO_PAGINA =

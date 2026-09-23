@@ -24,6 +24,7 @@ type Body = {
   mover_contato?: unknown
   ia_ligada?: unknown
   fechar_pedido_em_aberto?: unknown
+  pagamento_realizado?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -86,6 +87,11 @@ function parseMensagemPronta(raw: unknown): MensagemProntaComPassos {
       s.fechar_pedido_em_aberto === 'true' ||
       s.fechar_pedido_em_aberto === 1 ||
       s.fechar_pedido_em_aberto === '1',
+    pagamento_realizado:
+      s.pagamento_realizado === true ||
+      s.pagamento_realizado === 'true' ||
+      s.pagamento_realizado === 1 ||
+      s.pagamento_realizado === '1',
   }
 
   if (!Array.isArray(o.passos) && coercePassosInput(o.passos).length === 0) {
@@ -173,6 +179,21 @@ export default defineEventHandler(async (event): Promise<WebhookN8nMensagemPront
   }
   mensagem_pronta.sequencia.fechar_pedido_em_aberto = fechar_pedido_em_aberto
 
+  // Preferência: top-level do body → sequencia; default false.
+  let pagamento_realizado = mensagem_pronta.sequencia.pagamento_realizado === true
+  if (
+    body.pagamento_realizado !== undefined &&
+    body.pagamento_realizado !== null &&
+    String(body.pagamento_realizado).trim() !== ''
+  ) {
+    pagamento_realizado =
+      body.pagamento_realizado === true ||
+      body.pagamento_realizado === 'true' ||
+      body.pagamento_realizado === 1 ||
+      body.pagamento_realizado === '1'
+  }
+  mensagem_pronta.sequencia.pagamento_realizado = pagamento_realizado
+
   await checkWorkspace(event, workspace_id, userId)
 
   const payload = JSON.parse(
@@ -187,6 +208,7 @@ export default defineEventHandler(async (event): Promise<WebhookN8nMensagemPront
       mover_contato,
       ia_ligada,
       fechar_pedido_em_aberto,
+      pagamento_realizado,
     }),
   )
 

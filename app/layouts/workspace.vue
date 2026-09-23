@@ -36,6 +36,7 @@ type NavItem = {
     | 'frete'
     | 'cobranca'
     | 'agendamento'
+    | 'relatorios'
     | 'logs'
     | 'configuracoes'
 }
@@ -101,6 +102,7 @@ const items = computed<NavItem[]>(() => {
     { label: 'Frete', to: `${base.value}/frete`, page: 'frete', icon: 'frete' },
     { label: 'Cobrança', to: `${base.value}/cobranca`, page: 'cobranca', icon: 'cobranca' },
     { label: 'Agendamento de mensagens', to: `${base.value}/agendamento-mensagens`, page: 'agendamento-mensagens', icon: 'agendamento' },
+    { label: 'Relatórios', to: `${base.value}/relatorios`, page: 'relatorios', icon: 'relatorios' },
   ]
   if (isAdmin.value) {
     nav.push({ label: 'Logs de webhook', to: `${base.value}/logs`, page: 'logs', icon: 'logs' })
@@ -122,6 +124,13 @@ function isActive(to: string) {
   }
   return path === to
 }
+
+/** Produtos: o main não rola — só a lista de termos e a tabela. */
+const travaViewportMain = computed(() => {
+  const p = route.path
+  if (p.includes('/produtos/enviar-para-ia')) return false
+  return /\/workspaces\/[^/]+\/produtos\/?$/.test(p)
+})
 
 const sidebarCollapsed = computed(() => !sidebarHovered.value)
 
@@ -254,6 +263,10 @@ function closeMobileSidebar() {
                 <rect x="3" y="4" width="18" height="18" rx="2" />
                 <path d="M16 2v4M8 2v4M3 10h18" />
                 <path d="M12 14v3M10.5 15.5h3" />
+              </svg>
+              <svg v-else-if="it.icon === 'relatorios'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 19V5M4 19h16" />
+                <path d="M8 17V10M12 17V7M16 17v-4" />
               </svg>
               <svg v-else-if="it.icon === 'logs'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -411,6 +424,10 @@ function closeMobileSidebar() {
               <path d="M16 2v4M8 2v4M3 10h18" />
               <path d="M12 14v3M10.5 15.5h3" />
             </svg>
+            <svg v-else-if="it.icon === 'relatorios'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19V5M4 19h16" />
+              <path d="M8 17V10M12 17V7M16 17v-4" />
+            </svg>
             <svg v-else-if="it.icon === 'logs'" class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
@@ -479,10 +496,15 @@ function closeMobileSidebar() {
     </aside>
 
     <main
-      class="relative min-w-0 flex-1 overflow-y-auto transition-colors"
+      class="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-colors"
       :style="{ backgroundColor: pageBg }"
     >
-      <slot />
+      <div
+        class="min-h-0 flex-1"
+        :class="travaViewportMain ? 'overflow-hidden' : 'overflow-y-auto'"
+      >
+        <slot />
+      </div>
     </main>
   </div>
 </template>

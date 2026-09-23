@@ -81,6 +81,11 @@ export type ProdutoWorkspaceCampos = {
   parent_id: number | null
   atributos: Record<string, unknown> | null
   imagens: ProdutoImagemItem[]
+  /**
+   * Ordem do produto dentro do termo ativo (`produto_termo_de_pesquisa_vinculo.ordem`).
+   * Só preenchido em listagens filtradas por `termo_id`.
+   */
+  ordem_no_termo?: number | null
 }
 
 /** Variação filha (`parent_id` preenchido). */
@@ -238,6 +243,25 @@ export type ProdutosCriarEmMassaResponse = {
 export type ProdutoTermoPesquisaItem = {
   id: number
   nome: string
+  /** Posição na lista do workspace (menor = primeiro). */
+  ordem?: number
+}
+
+/** Item de reordenação (termos ou produtos no vínculo). */
+export type ProdutoOrdemItem = {
+  id: number
+  ordem: number
+}
+
+/** Resposta de `POST /api/produtos/termos-de-pesquisa/reordenar`. */
+export type ProdutosTermosPesquisaReordenarResponse = {
+  atualizados: number
+  data: ProdutoTermoPesquisaItem[]
+}
+
+/** Resposta de `POST /api/produtos/termos-de-pesquisa/reordenar-produtos`. */
+export type ProdutosVinculoReordenarResponse = {
+  atualizados: number
 }
 
 /** Produto resumido em `view_termos_pesquisa_detalhada.produtos`. */
@@ -251,6 +275,7 @@ export type ProdutoTermoPesquisaDetalhado = {
   id: number
   nome: string
   workspace_id: number
+  ordem?: number
   total_usos: number
   produtos: ProdutoTermoPesquisaDetalhadoProduto[]
   em_uso: boolean

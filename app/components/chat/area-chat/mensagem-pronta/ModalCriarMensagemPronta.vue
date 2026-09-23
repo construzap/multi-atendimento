@@ -74,6 +74,8 @@ const colunaDestinoId = ref<number | null>(null)
 const iaLigada = ref(true)
 /** Fechar pedidos da I.A. em aberto após o envio (default false). */
 const fecharPedidoEmAberto = ref(false)
+/** Marcar pedido aberto como pagamento realizado (`pagamento_realizado`). */
+const pagamentoRealizado = ref(false)
 
 /** Qual passo está gravando áudio (só um por vez). */
 const gravandoPassoKey = ref<string | null>(null)
@@ -243,6 +245,7 @@ function resetForm() {
   colunaDestinoId.value = null
   iaLigada.value = true
   fecharPedidoEmAberto.value = false
+  pagamentoRealizado.value = false
   pending.value = false
 }
 
@@ -316,6 +319,7 @@ async function hidratarEdicao(sequenciaId: string) {
   nome.value = item.sequencia.nome
   iaLigada.value = item.sequencia.ia_ligada !== false
   fecharPedidoEmAberto.value = item.sequencia.fechar_pedido_em_aberto === true
+  pagamentoRealizado.value = item.sequencia.pagamento_realizado === true
   const ordenados = [...item.passos].sort((a, b) => a.ordem - b.ordem)
   passos.value =
     ordenados.length > 0
@@ -720,6 +724,7 @@ async function salvar() {
         coluna_destino_id: colunaDestino,
         ia_ligada: iaLigada.value,
         fechar_pedido_em_aberto: fecharPedidoEmAberto.value,
+        pagamento_realizado: pagamentoRealizado.value,
       })
       toast.success('Mensagem pronta atualizada.')
     } else {
@@ -730,6 +735,7 @@ async function salvar() {
         coluna_destino_id: colunaDestino,
         ia_ligada: iaLigada.value,
         fechar_pedido_em_aberto: fecharPedidoEmAberto.value,
+        pagamento_realizado: pagamentoRealizado.value,
       })
       toast.success('Mensagem pronta criada.')
     }
@@ -1241,6 +1247,21 @@ async function salvar() {
             <span class="block text-sm font-semibold">Fechar pedidos da I.A. em aberto</span>
             <span class="mt-0.5 block text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
               Encerra pedidos/orçamentos da I.A. que ainda estiverem abertos para este contato após a sequência.
+            </span>
+          </span>
+        </label>
+
+        <label class="flex cursor-pointer items-start gap-2.5 border-t border-outline/25 pt-3 dark:border-dark-outline/25">
+          <input
+            v-model="pagamentoRealizado"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 rounded border-outline/50 text-primary focus:ring-primary/30"
+            :disabled="pending"
+          />
+          <span class="min-w-0">
+            <span class="block text-sm font-semibold">Marcar pedido aberto como pagamento realizado</span>
+            <span class="mt-0.5 block text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+              Ao enviar a sequência, marca o pedido em aberto deste contato como pagamento realizado.
             </span>
           </span>
         </label>

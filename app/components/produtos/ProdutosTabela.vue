@@ -231,6 +231,10 @@ const props = withDefaults(
     total?: number
     /** Limite de produtos do workspace (`null` = sem limite). */
     limiteProdutos?: number | null
+    /** Termo ativo: habilita reordenação de produtos no vínculo. */
+    termoId?: number | null
+    /** Com busca textual ativa, não permite reordenar. */
+    permitirReordenar?: boolean
   }>(),
   {
     workspaceId: null,
@@ -246,6 +250,8 @@ const props = withDefaults(
     error: null,
     items: () => [],
     limiteProdutos: null,
+    termoId: null,
+    permitirReordenar: true,
   },
 )
 
@@ -260,6 +266,104 @@ const emit = defineEmits<{
   /** Quando o user muda o tamanho da página (10/50/100/1000). */
   'page-size-changed': [pageSize: number]
 }>()
+
+/** Há produtos além do limite atual da listagem. */
+const podeMostrarMais = computed(() => {
+  if (props.modo !== 'api') return false
+  if (props.pageSize === PRODUTOS_PAGE_SIZE_TODOS) return false
+  const total = props.total
+  if (total == null || !Number.isFinite(total) || total <= 0) return false
+  return total > itemsExibicao.value.length
+})
+
+const restantesOcultos = computed(() => {
+  const total = props.total ?? 0
+  return Math.max(0, total - itemsExibicao.value.length)
+})
+
+function mostrarMaisProdutos() {
+  if (!podeMostrarMais.value || props.pending) return
+  emit('page-size-changed', PRODUTOS_PAGE_SIZE_TODOS)
+}
+
+const reordenandoProdutos = ref(false)
+const dragProdutoId = ref<number | null>(null)
+const dragOverProdutoId = ref<number | null>(null)
+
+const podeReordenarProdutos = computed(
+  () =>
+    props.modo === 'api' &&
+    props.permitirReordenar !== false &&
+    props.termoId != null &&
+    props.termoId >= 1 &&
+    !props.pending,
+)
+
+function onProdutoDragStart(produtoId: number, ev: DragEvent) {
+  if (!podeReordenarProdutos.value || reordenandoProdutos.value) {
+    ev.preventDefault()
+    return
+  }
+  dragProdutoId.value = produtoId
+  ev.dataTransfer?.setData('text/plain', String(produtoId))
+  if (ev.dataTransfer) {
+    ev.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+function onProdutoDragOver(produtoId: number, ev: DragEvent) {
+  if (!podeReordenarProdutos.value || dragProdutoId.value == null) return
+  if (produtoId === dragProdutoId.value) return
+  ev.preventDefault()
+  if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move'
+  dragOverProdutoId.value = produtoId
+}
+
+async function onProdutoDrop(produtoId: number, ev: DragEvent) {
+  ev.preventDefault()
+  const fromId = dragProdutoId.value
+  dragOverProdutoId.value = null
+  dragProdutoId.value = null
+  if (fromId == null || fromId === produtoId) return
+  if (!podeReordenarProdutos.value || reordenandoProdutos.value) return
+
+  const wid = props.workspaceId
+  const tid = props.termoId
+  if (wid == null || tid == null) return
+
+  const fromIndex = itemsExibicao.value.findIndex((p) => p.id === fromId)
+  const toIndex = itemsExibicao.value.findIndex((p) => p.id === produtoId)
+  if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return
+
+  const snapshot = itemsExibicao.value.map((p) => ({
+    ...p,
+    variacoes: (p.variacoes ?? []).map((v) => ({ ...v })),
+  }))
+  const itens = produtosStore.moverProdutoParaIndice(fromIndex, toIndex)
+  if (!itens) return
+
+  reordenandoProdutos.value = true
+  try {
+    await $fetch('/api/produtos/termos-de-pesquisa/reordenar-produtos', {
+      method: 'POST',
+      body: {
+        workspace_id: wid,
+        termo_id: tid,
+        itens,
+      },
+    })
+  } catch (err) {
+    produtosStore.restaurarProdutosOtimista({ items: snapshot, total: produtosStore.total })
+    toast.error(mensagemErroFetch(err, 'Não foi possível reordenar o produto.'))
+  } finally {
+    reordenandoProdutos.value = false
+  }
+}
+
+function onProdutoDragEnd() {
+  dragProdutoId.value = null
+  dragOverProdutoId.value = null
+}
 
 /** Texto do canto superior esquerdo: total + quanto ainda pode adicionar. */
 const textoResumoTabela = computed(() => {
@@ -1384,11 +1488,11 @@ onUnmounted(() => {
 
 <template>
   <div
-    class="w-full min-w-0 overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+    class="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
   >
     <div
       v-if="mostrarLimiteLinhas"
-      class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950"
+      class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-950"
     >
       <p
         class="text-sm font-semibold"
@@ -1415,28 +1519,28 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div v-if="error" class="border-b border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
+    <div v-if="error" class="shrink-0 border-b border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
       {{ error }}
     </div>
 
     <div
       v-else-if="!pending && itemsExibicao.length === 0 && !forcarTabelaVazia"
-      class="m-6 rounded-xl border border-dashed border-zinc-200 py-12 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
+      class="m-6 shrink-0 rounded-xl border border-dashed border-zinc-200 py-12 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
     >
       Nenhum produto encontrado.
     </div>
 
-    <div v-else class="w-full min-w-0 max-w-full">
+    <div v-else class="flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden">
       <p
         v-if="!podeGravar()"
-        class="border-b border-amber-200/80 bg-amber-50/90 px-4 py-2.5 text-xs text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100"
+        class="shrink-0 border-b border-amber-200/80 bg-amber-50/90 px-4 py-2.5 text-xs text-amber-950 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100"
       >
         Abra esta página dentro de um workspace para poder editar produtos.
       </p>
 
       <div
         v-if="mostrarSelecao && modo === 'api' && podeGravar()"
-        class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/80"
+        class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/80"
       >
         <div class="flex min-w-0 items-center gap-3">
           <label
@@ -1535,7 +1639,7 @@ onUnmounted(() => {
       <!-- Lista em cards (listagem API e rascunho criar em massa) -->
       <div
         ref="tabelaScrollRef"
-        class="w-full min-w-0 max-w-full"
+        class="min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-auto overflow-y-auto"
         :class="{ 'pointer-events-none opacity-50': excluindo || editandoMassa }"
       >
         <div
@@ -1556,13 +1660,20 @@ onUnmounted(() => {
             :mostrar-selecao="mostrarSelecao"
             :desabilitado="rowDesabilitada(row)"
             :mostrar-imagens="mostrarImagens"
-            :mostrar-nova-variacao="modo === 'api'"
+            :mostrar-nova-variacao="false"
+            :mostrar-ordem="podeReordenarProdutos && tipo === 'pai'"
+            :reordenando="reordenandoProdutos"
             :tem-variacoes-visiveis="!!(pai && paiTemVariacoesVisiveis(pai))"
             :expandido="estaExpandido(row.id)"
             :salvando-variacao="salvandoVariacao"
             :url-imagem="urlImagemLinha(row)"
             :contagem-imagens="contagemImagensLinha(row)"
             :resumo-variacao="tipo === 'variacao' ? resumoVariacao(row) : ''"
+            :class="{
+              'opacity-40': dragProdutoId === row.id,
+              'ring-2 ring-inset ring-primary/40':
+                dragOverProdutoId === row.id && dragProdutoId != null && dragProdutoId !== row.id,
+            }"
             @toggle-selecionado="alternarSelecionado(row.id, $event)"
             @toggle-status="alternarStatus(row)"
             @toggle-expandir="toggleExpandir(row.id)"
@@ -1571,7 +1682,38 @@ onUnmounted(() => {
             @editar="abrirEdicaoCompleta(row)"
             @apagar="pedirApagar(row)"
             @commit-termo="commitCatalogo(row, $event)"
+            @commit="commitCatalogo(row, $event)"
+            @drag-start="tipo === 'pai' ? onProdutoDragStart(row.id, $event) : undefined"
+            @drag-over="tipo === 'pai' ? onProdutoDragOver(row.id, $event) : undefined"
+            @drop="tipo === 'pai' ? onProdutoDrop(row.id, $event) : undefined"
+            @drag-end="onProdutoDragEnd"
           />
+
+          <div
+            v-if="podeMostrarMais"
+            class="flex flex-col items-center gap-1 border-t border-zinc-200 px-4 py-4 dark:border-zinc-800"
+          >
+            <BaseButton
+              type="button"
+              variant="secondary"
+              size="sm"
+              :block="false"
+              class="gap-2"
+              :disabled="pending"
+              @click="mostrarMaisProdutos"
+            >
+              <span class="material-symbols-outlined text-[18px]" aria-hidden="true">
+                expand_more
+              </span>
+              {{ pending ? 'A carregar…' : 'Mostrar mais produtos' }}
+            </BaseButton>
+            <p class="text-xs text-zinc-500 dark:text-zinc-400">
+              {{ restantesOcultos.toLocaleString('pt-BR') }}
+              produto{{ restantesOcultos === 1 ? '' : 's' }} restante{{
+                restantesOcultos === 1 ? '' : 's'
+              }}
+            </p>
+          </div>
         </template>
       </div>
     </div>

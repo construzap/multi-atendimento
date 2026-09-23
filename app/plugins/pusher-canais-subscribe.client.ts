@@ -12,9 +12,18 @@ import { useMensagensStore } from '~/stores/mensagens'
 import { useWorkspacesStore } from '~/stores/workspaces'
 import { deveTocarSomPedidoNovo } from '~/components/kanban/notificacoes_ia/parseProdutosNotificacao'
 
-/** Inscreve em `String(id_canal)` conforme `canais.items` + canais dos cards do kanban. */
+function workspaceIdDaRota(path: string): number | null {
+  const m = String(path ?? '').match(/^\/workspaces\/(\d+)(?:\/|$)/)
+  if (!m) return null
+  const id = Number.parseInt(m[1]!, 10)
+  if (!Number.isFinite(id) || id < 1) return null
+  return id
+}
+
+/** Inscreve em `String(id_canal)` só em `/workspaces/:id...`. Fora disso, não conecta. */
 export default defineNuxtPlugin(() => {
   const config = useRuntimeConfig()
+  const route = useRoute()
   const appKey = typeof config.public.pusherKey === 'string' ? config.public.pusherKey.trim() : ''
   const cluster =
     typeof config.public.pusherCluster === 'string' ? config.public.pusherCluster.trim() : ''
@@ -28,6 +37,16 @@ export default defineNuxtPlugin(() => {
       client = new Pusher(appKey, { cluster })
     }
     return client
+  }
+
+  function desligarPusher() {
+    if (!client) return
+    for (const id of subscribedIds) {
+      client.unsubscribe(String(id))
+    }
+    subscribedIds.clear()
+    client.disconnect()
+    client = null
   }
 
   const canais = useCanaisStore()
@@ -114,8 +133,13 @@ export default defineNuxtPlugin(() => {
   }
 
   watch(
-    () => canalIdsParaInscrever().join(','),
+    () => [workspaceIdDaRota(route.path), canalIdsParaInscrever().join(',')] as const,
     () => {
+      if (workspaceIdDaRota(route.path) == null) {
+        desligarPusher()
+        return
+      }
+
       const p = getClient()
       const want = new Set(canalIdsParaInscrever())
 

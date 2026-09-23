@@ -66,11 +66,11 @@ defineExpose({ refresh })
       <h3
         class="mb-2 mt-5 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
       >
-        Termos de pesquisa
+        Categorias
       </h3>
       <dl class="grid grid-cols-2 gap-3 text-center sm:grid-cols-4">
         <div class="rounded-md bg-zinc-100 p-3 dark:bg-zinc-900">
-          <dt class="text-xs text-zinc-500 dark:text-zinc-400">Termos em uso</dt>
+          <dt class="text-xs text-zinc-500 dark:text-zinc-400">Categorias em uso</dt>
           <dd class="text-xl font-semibold text-zinc-900 dark:text-zinc-100">{{ data.total_termos }}</dd>
         </div>
         <div class="rounded-md bg-emerald-50 p-3 dark:bg-emerald-950/40">
@@ -91,7 +91,7 @@ defineExpose({ refresh })
         </div>
       </dl>
       <p class="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
-        Documentos na vector store de termos: {{ data.total_documentos_termos }}.
+        Documentos na vector store de categorias: {{ data.total_documentos_termos }}.
         Sincronize para remover excluídos e enviar o que falta.
       </p>
     </template>

@@ -10,9 +10,15 @@ export { normalizarTermoImportacao, parseTermosImportacaoCelula }
 export function mapTermoPesquisaRow(r: Record<string, unknown>): ProdutoTermoPesquisaItem {
   const id = typeof r.id === 'number' ? r.id : Number(r.id)
   const nomeRaw = String(r.nome ?? '').trim()
+  const ordemRaw = r.ordem
+  const ordem =
+    typeof ordemRaw === 'number'
+      ? Math.trunc(ordemRaw)
+      : Number.parseInt(String(ordemRaw ?? '0'), 10)
   return {
     id: Number.isFinite(id) ? id : 0,
     nome: nomeRaw.length ? nomeRaw.toLocaleUpperCase('pt-BR') : '',
+    ordem: Number.isFinite(ordem) ? ordem : 0,
   }
 }
 
@@ -43,7 +49,7 @@ export async function obterOuCriarTermoPesquisa(
   const literal = escapeIlikeLiteral(nome)
   const { data: existente, error: selErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome')
+    .select('id, nome, ordem')
     .eq('workspace_id', workspaceId)
     .ilike('nome', literal)
     .limit(1)
@@ -65,10 +71,24 @@ export async function obterOuCriarTermoPesquisa(
     }
   }
 
+  const { data: maxRow } = await admin
+    .from('produto_termo_de_pesquisa')
+    .select('ordem')
+    .eq('workspace_id', workspaceId)
+    .order('ordem', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const maxOrdem =
+    typeof maxRow?.ordem === 'number'
+      ? maxRow.ordem
+      : Number.parseInt(String(maxRow?.ordem ?? '-1'), 10)
+  const ordem = (Number.isFinite(maxOrdem) ? maxOrdem : -1) + 1
+
   const { data: inserted, error: insErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .insert({ workspace_id: workspaceId, nome })
-    .select('id, nome')
+    .insert({ workspace_id: workspaceId, nome, ordem })
+    .select('id, nome, ordem')
     .single()
 
   if (insErr) throw insErr
@@ -110,7 +130,7 @@ async function mapaNomeMinusculoParaTermoItem(
 ): Promise<Map<string, ProdutoTermoPesquisaItem>> {
   const { data, error } = await admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome')
+    .select('id, nome, ordem')
     .eq('workspace_id', workspaceId)
 
   if (error) throw error
@@ -186,6 +206,7 @@ export function parseTermosPesquisaIdsInput(raw: unknown, legadoTermoId?: unknow
 /**
  * Substitui vínculos do produto em `produto_termo_de_pesquisa_vinculo`.
  * `termoIds` vazio remove todos os vínculos.
+ * Novos vínculos recebem `ordem = max(ordem)+1` dentro de cada termo.
  */
 export async function sincronizarTermosVinculo(
   admin: { from: (table: string) => any },
@@ -193,6 +214,21 @@ export async function sincronizarTermosVinculo(
   termoIds: number[],
 ): Promise<void> {
   const uniq = [...new Set(termoIds.filter((id) => Number.isInteger(id) && id >= 1))]
+
+  const { data: existentes, error: selErr } = await admin
+    .from('produto_termo_de_pesquisa_vinculo')
+    .select('termo_id, ordem')
+    .eq('produto_id', produtoId)
+
+  if (selErr) throw selErr
+
+  const ordemPorTermoExistente = new Map<number, number>()
+  for (const row of existentes ?? []) {
+    const tid = typeof row.termo_id === 'number' ? row.termo_id : Number(row.termo_id)
+    const ord =
+      typeof row.ordem === 'number' ? row.ordem : Number.parseInt(String(row.ordem ?? '0'), 10)
+    if (Number.isFinite(tid)) ordemPorTermoExistente.set(tid, Number.isFinite(ord) ? ord : 0)
+  }
 
   const { error: delErr } = await admin
     .from('produto_termo_de_pesquisa_vinculo')
@@ -202,9 +238,49 @@ export async function sincronizarTermosVinculo(
   if (delErr) throw delErr
   if (!uniq.length) return
 
-  const rows = uniq.map((termo_id) => ({ produto_id: produtoId, termo_id }))
+  const rows: { produto_id: number; termo_id: number; ordem: number }[] = []
+  for (const termo_id of uniq) {
+    const kept = ordemPorTermoExistente.get(termo_id)
+    if (kept != null) {
+      rows.push({ produto_id: produtoId, termo_id, ordem: kept })
+      continue
+    }
+    const { data: maxRow } = await admin
+      .from('produto_termo_de_pesquisa_vinculo')
+      .select('ordem')
+      .eq('termo_id', termo_id)
+      .order('ordem', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const maxOrdem =
+      typeof maxRow?.ordem === 'number'
+        ? maxRow.ordem
+        : Number.parseInt(String(maxRow?.ordem ?? '-1'), 10)
+    const ordem = (Number.isFinite(maxOrdem) ? maxOrdem : -1) + 1
+    rows.push({ produto_id: produtoId, termo_id, ordem })
+  }
+
   const { error: insErr } = await admin.from('produto_termo_de_pesquisa_vinculo').insert(rows)
   if (insErr) throw insErr
+}
+
+/** Próxima ordem livre para um termo (fim da lista). */
+export async function proximaOrdemVinculoNoTermo(
+  admin: { from: (table: string) => any },
+  termoId: number,
+): Promise<number> {
+  const { data: maxRow } = await admin
+    .from('produto_termo_de_pesquisa_vinculo')
+    .select('ordem')
+    .eq('termo_id', termoId)
+    .order('ordem', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const maxOrdem =
+    typeof maxRow?.ordem === 'number'
+      ? maxRow.ordem
+      : Number.parseInt(String(maxRow?.ordem ?? '-1'), 10)
+  return (Number.isFinite(maxOrdem) ? maxOrdem : -1) + 1
 }
 
 /** Aplica o mesmo conjunto de termos a vários produtos (edição em massa — só adiciona, não remove). */
@@ -219,10 +295,17 @@ export async function adicionarTermosVinculoEmMassa(
   const uniqTermos = [...new Set(termoIds.filter((id) => Number.isInteger(id) && id >= 1))]
   if (!uniqTermos.length) return
 
-  const rows: { produto_id: number; termo_id: number }[] = []
+  const nextOrdemPorTermo = new Map<number, number>()
+  for (const termo_id of uniqTermos) {
+    nextOrdemPorTermo.set(termo_id, await proximaOrdemVinculoNoTermo(admin, termo_id))
+  }
+
+  const rows: { produto_id: number; termo_id: number; ordem: number }[] = []
   for (const produto_id of ids) {
     for (const termo_id of uniqTermos) {
-      rows.push({ produto_id, termo_id })
+      const ordem = nextOrdemPorTermo.get(termo_id) ?? 0
+      rows.push({ produto_id, termo_id, ordem })
+      nextOrdemPorTermo.set(termo_id, ordem + 1)
     }
   }
 
@@ -241,11 +324,11 @@ export async function sincronizarTermosVinculoEmMassa(
 /** Insere vínculos produto↔termo após create/import (ignora pares duplicados). */
 export async function inserirTermosVinculoLote(
   admin: { from: (table: string) => any },
-  pares: { produto_id: number; termo_id: number }[],
+  pares: { produto_id: number; termo_id: number; ordem?: number }[],
 ): Promise<void> {
   if (!pares.length) return
   const seen = new Set<string>()
-  const rows: { produto_id: number; termo_id: number }[] = []
+  const pending: { produto_id: number; termo_id: number; ordem?: number }[] = []
   for (const p of pares) {
     if (!Number.isFinite(p.produto_id) || !Number.isFinite(p.termo_id) || p.produto_id < 1 || p.termo_id < 1) {
       continue
@@ -253,9 +336,24 @@ export async function inserirTermosVinculoLote(
     const k = `${p.produto_id}:${p.termo_id}`
     if (seen.has(k)) continue
     seen.add(k)
-    rows.push(p)
+    pending.push(p)
   }
-  if (!rows.length) return
+  if (!pending.length) return
+
+  const nextOrdemPorTermo = new Map<number, number>()
+  const rows: { produto_id: number; termo_id: number; ordem: number }[] = []
+  for (const p of pending) {
+    let ordem = p.ordem
+    if (ordem == null || !Number.isFinite(ordem)) {
+      if (!nextOrdemPorTermo.has(p.termo_id)) {
+        nextOrdemPorTermo.set(p.termo_id, await proximaOrdemVinculoNoTermo(admin, p.termo_id))
+      }
+      ordem = nextOrdemPorTermo.get(p.termo_id)!
+      nextOrdemPorTermo.set(p.termo_id, ordem + 1)
+    }
+    rows.push({ produto_id: p.produto_id, termo_id: p.termo_id, ordem })
+  }
+
   const { error } = await admin.from('produto_termo_de_pesquisa_vinculo').upsert(rows, {
     onConflict: 'produto_id,termo_id',
     ignoreDuplicates: true,

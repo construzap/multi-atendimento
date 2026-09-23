@@ -171,7 +171,16 @@ function parseTermoPesquisaItem(rec: Record<string, unknown>): ProdutoTermoPesqu
   const id = typeof rec.id === 'number' ? rec.id : Number(rec.id)
   const nome = String(rec.nome ?? '').trim()
   if (!Number.isFinite(id) || id < 1 || !nome.length) return null
-  return { id, nome: nome.toLocaleUpperCase('pt-BR') }
+  const ordemRaw = rec.ordem
+  const ordem =
+    typeof ordemRaw === 'number'
+      ? Math.trunc(ordemRaw)
+      : Number.parseInt(String(ordemRaw ?? '0'), 10)
+  return {
+    id,
+    nome: nome.toLocaleUpperCase('pt-BR'),
+    ordem: Number.isFinite(ordem) ? ordem : 0,
+  }
 }
 
 function parseTermosPesquisa(raw: unknown): ProdutoTermoPesquisaItem[] {
@@ -179,7 +188,7 @@ function parseTermosPesquisa(raw: unknown): ProdutoTermoPesquisaItem[] {
   if (typeof raw === 'string') {
     const texto = raw.trim()
     if (!texto.length) return []
-    return [{ id: 0, nome: texto.toLocaleUpperCase('pt-BR') }]
+    return [{ id: 0, nome: texto.toLocaleUpperCase('pt-BR'), ordem: 0 }]
   }
   if (Array.isArray(raw)) {
     const out: ProdutoTermoPesquisaItem[] = []
@@ -188,7 +197,11 @@ function parseTermosPesquisa(raw: unknown): ProdutoTermoPesquisaItem[] {
       const t = parseTermoPesquisaItem(item as Record<string, unknown>)
       if (t) out.push(t)
     }
-    out.sort((a, b) => a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }))
+    out.sort(
+      (a, b) =>
+        (a.ordem ?? 0) - (b.ordem ?? 0) ||
+        a.nome.localeCompare(b.nome, 'pt', { sensitivity: 'base' }),
+    )
     return out
   }
   if (typeof raw === 'object') {

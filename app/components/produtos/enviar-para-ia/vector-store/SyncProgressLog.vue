@@ -82,8 +82,8 @@ const interrompido = computed(() => props.cancelled && !props.syncing)
 const labelFase = computed(() => {
   if (props.phase === 'cleanup') return 'Removendo produtos excluídos da I.A.…'
   if (props.phase === 'embed') return 'Enviando produtos para a I.A.…'
-  if (props.phase === 'termos_cleanup') return 'Removendo termos não usados…'
-  if (props.phase === 'termos_embed') return 'Enviando termos para a I.A.…'
+  if (props.phase === 'termos_cleanup') return 'Removendo categorias não usadas…'
+  if (props.phase === 'termos_embed') return 'Enviando categorias para a I.A.…'
   return ''
 })
 

@@ -41,6 +41,11 @@ function mapFecharPedidoEmAberto(raw: unknown): boolean {
   return false
 }
 
+function mapPagamentoRealizado(raw: unknown): boolean {
+  if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true
+  return false
+}
+
 function normalizeItem(item: MensagemProntaComPassos): MensagemProntaComPassos {
   return {
     sequencia: {
@@ -48,6 +53,7 @@ function normalizeItem(item: MensagemProntaComPassos): MensagemProntaComPassos {
       coluna_destino_id: mapColunaDestinoId(item.sequencia.coluna_destino_id),
       ia_ligada: mapIaLigada(item.sequencia.ia_ligada),
       fechar_pedido_em_aberto: mapFecharPedidoEmAberto(item.sequencia.fechar_pedido_em_aberto),
+      pagamento_realizado: mapPagamentoRealizado(item.sequencia.pagamento_realizado),
     },
     passos: item.passos ?? [],
   }
@@ -260,6 +266,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
       coluna_destino_id?: number | null
       ia_ligada?: boolean
       fechar_pedido_em_aberto?: boolean
+      pagamento_realizado?: boolean
     }) {
       const res = await $fetch<CriarMensagemProntaResponse>('/api/mensagens_prontas', {
         method: 'POST',
@@ -270,6 +277,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
           coluna_destino_id: input.coluna_destino_id ?? null,
           ia_ligada: input.ia_ligada ?? true,
           fechar_pedido_em_aberto: input.fechar_pedido_em_aberto ?? false,
+          pagamento_realizado: input.pagamento_realizado ?? false,
         },
       })
       this.adicionarDoCreate(input.workspaceId, res)
@@ -284,6 +292,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
       coluna_destino_id?: number | null
       ia_ligada?: boolean
       fechar_pedido_em_aberto?: boolean
+      pagamento_realizado?: boolean
     }) {
       const res = await $fetch<AtualizarMensagemProntaResponse>(
         `/api/mensagens_prontas/${encodeURIComponent(input.sequenciaId)}`,
@@ -296,6 +305,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
             coluna_destino_id: input.coluna_destino_id ?? null,
             ia_ligada: input.ia_ligada ?? true,
             fechar_pedido_em_aberto: input.fechar_pedido_em_aberto ?? false,
+            pagamento_realizado: input.pagamento_realizado ?? false,
           },
         },
       )
@@ -359,6 +369,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
       const coluna_destino_id = mensagem_pronta.sequencia.coluna_destino_id ?? null
       const ia_ligada = mensagem_pronta.sequencia.ia_ligada !== false
       const fechar_pedido_em_aberto = mensagem_pronta.sequencia.fechar_pedido_em_aberto === true
+      const pagamento_realizado = mensagem_pronta.sequencia.pagamento_realizado === true
 
       const body: WebhookN8nMensagemProntaBody = {
         workspace_id: input.workspaceId,
@@ -371,6 +382,7 @@ export const useMensagensProntasStore = defineStore('mensagensProntas', {
         mover_contato: coluna_destino_id != null,
         ia_ligada,
         fechar_pedido_em_aberto,
+        pagamento_realizado,
       }
 
       return await $fetch<WebhookN8nMensagemProntaResponse>(

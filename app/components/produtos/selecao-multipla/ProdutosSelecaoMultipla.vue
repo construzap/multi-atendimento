@@ -27,12 +27,18 @@ const props = withDefaults(
     disabled?: boolean
     produtoId?: number
     termos?: ProdutoTermoPesquisaItem[]
+    /**
+     * Clique só no conteúdo (chips / placeholder), sem esticar `w-full`
+     * — útil no card da listagem (`ItemTabela`).
+     */
+    compact?: boolean
   }>(),
   {
     workspaceId: null,
     disabled: false,
     produtoId: undefined,
     termos: () => [],
+    compact: false,
   },
 )
 
@@ -430,8 +436,17 @@ function hoverDestaque(i: number) {
 
 const chipClass =
   'inline-flex max-w-full items-center gap-0.5 rounded-full bg-zinc-200/90 px-2 py-0.5 text-[11px] font-medium text-zinc-700 dark:bg-zinc-700/90 dark:text-zinc-200'
-const celulaClass =
-  'flex min-h-[2.75rem] w-full cursor-pointer flex-wrap items-center gap-1 px-3 py-2 transition-colors duration-150 hover:bg-zinc-100/80 dark:hover:bg-zinc-800/50'
+const celulaClass = computed(() =>
+  [
+    'flex cursor-pointer flex-wrap items-center gap-1 transition-colors duration-150',
+    props.compact
+      ? 'w-fit max-w-full min-h-0 rounded-lg px-1.5 py-1 hover:bg-zinc-100/80 dark:hover:bg-zinc-800/50'
+      : 'min-h-[2.75rem] w-full px-3 py-2 hover:bg-zinc-100/80 dark:hover:bg-zinc-800/50',
+  ].join(' '),
+)
+const rootClass = computed(() =>
+  props.compact ? 'relative min-w-0 w-fit max-w-full' : 'relative min-w-0 w-full',
+)
 const painelDropdownRootClass =
   'flex flex-col overflow-hidden rounded-xl border border-slate-600/90 bg-slate-900 text-slate-100 shadow-2xl ring-1 ring-white/10 dark:border-slate-500/80 dark:bg-slate-950 dark:ring-white/5'
 const painelHeaderClass =
@@ -453,7 +468,7 @@ const itemSugestaoClass = (idx: number, selecionado: boolean) =>
 </script>
 
 <template>
-  <div ref="rootRef" class="relative min-w-0 w-full">
+  <div ref="rootRef" :class="rootClass">
     <div :class="celulaClass" @click="abrirPainel">
       <template v-if="selecionados.length">
         <span v-for="item in selecionados" :key="item.id" :class="chipClass">

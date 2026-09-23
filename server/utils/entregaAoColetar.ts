@@ -154,7 +154,7 @@ async function carregarMensagemPronta(
   const { data: seq, error: seqErr } = await admin
     .from('mensagens_prontas_sequencias')
     .select(
-      'id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada, fechar_pedido_em_aberto',
+      'id, nome, workspace_id, user_id, created_at, coluna_destino_id, ia_ligada, fechar_pedido_em_aberto, pagamento_realizado',
     )
     .eq('id', sequenciaId)
     .eq('workspace_id', workspaceId)
@@ -215,6 +215,11 @@ async function carregarMensagemPronta(
         seq.fechar_pedido_em_aberto === 'true' ||
         seq.fechar_pedido_em_aberto === 1 ||
         seq.fechar_pedido_em_aberto === '1',
+      pagamento_realizado:
+        seq.pagamento_realizado === true ||
+        seq.pagamento_realizado === 'true' ||
+        seq.pagamento_realizado === 1 ||
+        seq.pagamento_realizado === '1',
     },
     passos,
   }
@@ -242,6 +247,7 @@ async function dispararWebhookAgendamento(input: {
       mover_contato: coluna_destino_id != null,
       ia_ligada: mensagem_pronta.sequencia.ia_ligada !== false,
       fechar_pedido_em_aberto: mensagem_pronta.sequencia.fechar_pedido_em_aberto === true,
+      pagamento_realizado: mensagem_pronta.sequencia.pagamento_realizado === true,
     }),
   )
 

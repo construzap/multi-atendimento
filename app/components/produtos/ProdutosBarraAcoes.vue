@@ -5,6 +5,16 @@ import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
 import { useWorkspacesStore } from '~/stores/workspaces'
 
+const props = withDefaults(
+  defineProps<{
+    /** Esconde o botão Novo (ex.: painel com «Adicionar item» próprio). */
+    ocultarNovo?: boolean
+  }>(),
+  {
+    ocultarNovo: false,
+  },
+)
+
 const emit = defineEmits<{
   exportar: []
   importar: []
@@ -65,7 +75,14 @@ async function enviarParaIa() {
       </span>
     </BaseButton>
 
-    <BaseButton variant="primary" :block="false" size="md" type="button" @click="emit('novo')">
+    <BaseButton
+      v-if="!ocultarNovo"
+      variant="primary"
+      :block="false"
+      size="md"
+      type="button"
+      @click="emit('novo')"
+    >
       <span class="inline-flex items-center gap-2">
         <span class="material-symbols-outlined text-[20px]" style="font-variation-settings: 'FILL' 1" aria-hidden="true">
           add_circle

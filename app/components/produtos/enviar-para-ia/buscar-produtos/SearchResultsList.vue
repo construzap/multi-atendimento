@@ -26,7 +26,7 @@ function tituloFromMeta(meta: SearchHit['metadata'], content: string): string {
   if (meta && typeof meta === 'object') {
     const rec = meta as Record<string, unknown>
     const termo = rec.termo_pesquisa
-    if (termo != null && String(termo).trim()) return `Termo ${termo}`
+    if (termo != null && String(termo).trim()) return `Categoria ${termo}`
   }
 
   return 'Produto'
@@ -38,7 +38,7 @@ function metaLabel(meta: SearchHit['metadata']): string | null {
   const parts: string[] = []
   if (rec.workspace_id != null) parts.push(`workspace ${rec.workspace_id}`)
   const termos = rec.termos_pesquisa ?? rec.categorias
-  if (termos != null && String(termos).trim()) parts.push(`termos ${termos}`)
+  if (termos != null && String(termos).trim()) parts.push(`categorias ${termos}`)
   return parts.length ? parts.join(' · ') : null
 }
 </script>
@@ -51,7 +51,7 @@ function metaLabel(meta: SearchHit['metadata']): string | null {
       Filtros:
       <code class="text-gray-600">workspace_id={{ filters.empresa_id }}</code>
       <template v-if="filters.categorias">
-        · <code class="text-gray-600">termos_pesquisa~="{{ filters.categorias }}"</code>
+        · <code class="text-gray-600">categorias~="{{ filters.categorias }}"</code>
       </template>
     </p>
 

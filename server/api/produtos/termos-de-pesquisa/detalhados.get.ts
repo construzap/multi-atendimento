@@ -51,10 +51,16 @@ function mapRow(r: Record<string, unknown>): ProdutoTermoPesquisaDetalhado {
   const workspaceId = typeof r.workspace_id === 'number' ? r.workspace_id : Number(r.workspace_id)
   const totalUsos =
     typeof r.total_usos === 'number' ? r.total_usos : Number.parseInt(String(r.total_usos ?? 0), 10)
+  const ordemRaw = r.ordem
+  const ordem =
+    typeof ordemRaw === 'number'
+      ? Math.trunc(ordemRaw)
+      : Number.parseInt(String(ordemRaw ?? '0'), 10)
   return {
     id: Number.isFinite(id) ? id : 0,
     nome: String(r.nome ?? '').trim(),
     workspace_id: Number.isFinite(workspaceId) ? workspaceId : 0,
+    ordem: Number.isFinite(ordem) ? ordem : 0,
     total_usos: Number.isFinite(totalUsos) ? totalUsos : 0,
     produtos: parseProdutos(r.produtos),
     em_uso: Boolean(r.em_uso),
@@ -92,7 +98,7 @@ export default defineEventHandler(async (event): Promise<ProdutosTermosPesquisaD
   const admin = serverSupabaseServiceRole<any>(event)
   let query = admin
     .from('view_termos_pesquisa_detalhada')
-    .select('id, nome, workspace_id, total_usos, produtos, em_uso')
+    .select('id, nome, workspace_id, ordem, total_usos, produtos, em_uso')
     .eq('workspace_id', workspaceId)
 
   // Filtro opcional por nome
@@ -100,9 +106,9 @@ export default defineEventHandler(async (event): Promise<ProdutosTermosPesquisaD
     query = query.ilike('nome', `%${escapeIlikeLiteral(searchRaw)}%`)
   }
 
-  // Sempre ordem alfabética por nome (A→Z), com ou sem busca
   const { data, error } = await query
-    .order('nome', { ascending: true })
+    .order('ordem', { ascending: true })
+    .order('id', { ascending: true })
     .range(from, to)
 
   if (error) {
