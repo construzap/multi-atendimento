@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { LojaGeocodeReverso } from '#shared/types/loja'
+import type { LojaEndereco, LojaGeocodeReverso } from '#shared/types/loja'
 import { resumoEndereco } from '~/components/loja/endereco/enderecosMock'
 import { useLojaWorkspaceStore } from '~/stores/loja/workspace'
 
 const props = defineProps<{
   geo: LojaGeocodeReverso
+  inicial?: LojaEndereco | null
 }>()
 
 const emit = defineEmits<{
@@ -17,11 +18,11 @@ const emit = defineEmits<{
 const loja = useLojaWorkspaceStore()
 const resumo = computed(() => resumoEndereco(props.geo))
 
-const numero = ref(props.geo.numero || '')
-const complemento = ref('')
-const pontoReferencia = ref('')
-const apelido = ref('')
-const padrao = ref(false)
+const numero = ref(props.inicial?.numero || props.geo.numero || '')
+const complemento = ref(props.inicial?.complemento || '')
+const pontoReferencia = ref(props.inicial?.ponto_referencia || '')
+const apelido = ref(props.inicial?.apelido || '')
+const padrao = ref(props.inicial?.padrao === true)
 
 const salvando = ref(false)
 const erroSalvar = ref('')
@@ -36,7 +37,7 @@ async function salvar() {
   salvando.value = true
   erroSalvar.value = ''
   try {
-    await loja.adicionarEndereco({
+    const payload = {
       rua: props.geo.rua,
       numero: numeroTrim,
       complemento: complemento.value.trim() || null,
@@ -49,7 +50,12 @@ async function salvar() {
       padrao: padrao.value,
       lat: props.geo.lat,
       lon: props.geo.lon,
-    })
+    }
+    if (props.inicial?.id != null) {
+      await loja.atualizarEndereco(props.inicial.id, payload)
+    } else {
+      await loja.adicionarEndereco(payload)
+    }
     emit('salvo')
   } catch {
     erroSalvar.value = 'Não foi possível salvar o endereço.'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import type { LojaGeocodeReverso } from '#shared/types/loja'
+import { computed, ref, watch } from 'vue'
+import type { LojaEndereco, LojaGeocodeReverso } from '#shared/types/loja'
 import { camposGeocodeFaltando, geocodeCompleto, mensagemGeocodeIncompleto } from '#shared/utils/lojaGeocode'
 import LojaEnderecoConfirmarMapa from '~/components/loja/endereco/LojaEnderecoConfirmarMapa.vue'
 import LojaEnderecoDetalhes from '~/components/loja/endereco/LojaEnderecoDetalhes.vue'
@@ -8,7 +8,11 @@ import LojaEnderecoFormularioManual from '~/components/loja/endereco/LojaEnderec
 
 const props = defineProps<{
   open: boolean
+  endereco?: LojaEndereco | null
 }>()
+
+const editando = computed(() => Boolean(props.endereco?.id))
+const titulo = computed(() => (editando.value ? 'Editar endereço' : 'Adicionar endereço'))
 
 const emit = defineEmits<{
   'update:open': [value: boolean]
@@ -132,7 +136,7 @@ async function confirmarMapa(payload: { lat: number; lon: number; enderecoPreenc
       class="fixed inset-0 z-[70] flex items-end justify-center bg-black/30"
       role="dialog"
       aria-modal="true"
-      aria-label="Adicionar endereço"
+      :aria-label="titulo"
       @click.self="fechar"
     >
       <section
@@ -143,7 +147,7 @@ async function confirmarMapa(payload: { lat: number; lon: number; enderecoPreenc
         <template v-if="passo === 'busca'">
           <header class="flex items-center justify-between px-5 py-3">
             <h2 class="text-lg font-semibold text-on-surface dark:text-dark-on-surface">
-              Adicionar endereço
+              {{ titulo }}
             </h2>
             <button
               type="button"
@@ -177,7 +181,12 @@ async function confirmarMapa(payload: { lat: number; lon: number; enderecoPreenc
               Ou digite seu endereço:
             </p>
 
-            <LojaEnderecoFormularioManual @salvo="fechar" @iniciar="erro = ''" />
+            <LojaEnderecoFormularioManual
+              :key="props.endereco?.id ?? 'novo'"
+              :inicial="props.endereco"
+              @salvo="fechar"
+              @iniciar="erro = ''"
+            />
           </div>
         </template>
 
@@ -196,6 +205,7 @@ async function confirmarMapa(payload: { lat: number; lon: number; enderecoPreenc
         <LojaEnderecoDetalhes
           v-else-if="passo === 'detalhes' && geo"
           :geo="geo"
+          :inicial="props.endereco"
           @voltar="passo = 'mapa'"
           @fechar="fechar"
           @salvo="fechar"

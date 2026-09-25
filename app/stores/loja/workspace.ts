@@ -10,6 +10,9 @@ import type {
   LojaFormaPagamento,
   LojaLogin,
   LojaModoRecebimento,
+  LojaPedidoCreateResponse,
+  LojaPedidoGetResponse,
+  LojaPedidoPublico,
   LojaProdutoPublico,
   LojaTermoPublico,
   LojaWorkspacePublico,
@@ -43,6 +46,9 @@ export const useLojaWorkspaceStore = defineStore('loja-workspace', {
     enderecosLoading: false,
     formaPagamento: null as LojaFormaPagamento | null,
     login: null as LojaLogin | null,
+    pedidoAtual: null as LojaPedidoPublico | null,
+    pedidoLoading: false,
+    pedidoErro: null as string | null,
   }),
 
   getters: {
@@ -91,6 +97,9 @@ export const useLojaWorkspaceStore = defineStore('loja-workspace', {
       this.enderecoSelecionadoId = null
       this.enderecosLoading = false
       this.formaPagamento = null
+      this.pedidoAtual = null
+      this.pedidoLoading = false
+      this.pedidoErro = null
     },
 
     setCardapio(data: LojaCardapioPublico, slug: string) {
@@ -112,6 +121,7 @@ export const useLojaWorkspaceStore = defineStore('loja-workspace', {
       this.erro = null
       this.hidratarCarrinho(slug)
       this.hidratarLogin(slug)
+      this.hidratarPedido(slug)
     },
 
     appendCardapio(data: LojaCardapioPublico) {
@@ -140,6 +150,7 @@ export const useLojaWorkspaceStore = defineStore('loja-workspace', {
       if (slug && this.slug === slug && this.id != null && this.nome != null && this.buscou && !this.erro) {
         this.hidratarCarrinho(slug)
         this.hidratarLogin(slug)
+        this.hidratarPedido(slug)
         return true
       }
 
@@ -420,6 +431,99 @@ export const useLojaWorkspaceStore = defineStore('loja-workspace', {
       this.formaPagamento = forma
     },
 
+    hidratarPedido(slugRaw?: string) {
+      if (!import.meta.client) return
+      const slug = String(slugRaw ?? this.slug ?? '').trim().toLowerCase()
+      if (!slug) return
+      if (this.pedidoAtual?.id) return
+      const id = lerPedidoLocal(slug)
+      if (id) {
+        this.pedidoAtual = {
+          id,
+          status: 'aguardando',
+          forma: this.formaPagamento === 'credito_online' ? 'credito_online' : 'pix',
+          valor: this.carrinhoTotal,
+          pix: null,
+          checkoutUrl: null,
+        }
+      }
+    },
+
+    persistirPedido() {
+      if (!import.meta.client) return
+      const slug = String(this.slug ?? '').trim().toLowerCase()
+      if (!slug) return
+      gravarPedidoLocal(slug, this.pedidoAtual?.id ?? null)
+    },
+
+    async criarPedido() {
+      const idCanal = this.canal?.id
+      const conversaKey = this.login?.key?.trim()
+      const forma = this.formaPagamento
+      if (!idCanal || !conversaKey) {
+        throw new Error('Faça login para confirmar o pedido.')
+      }
+      if (forma !== 'pix' && forma !== 'credito_online') {
+        throw new Error('Pagamento online disponível só para PIX e cartão de crédito.')
+      }
+      if (!this.carrinhoAtual.length) {
+        throw new Error('Seu carrinho está vazio.')
+      }
+      if (this.modoRecebimento === 'entrega' && this.enderecoSelecionadoId == null) {
+        throw new Error('Selecione o endereço de entrega.')
+      }
+
+      this.pedidoLoading = true
+      this.pedidoErro = null
+      try {
+        const res = await $fetch<LojaPedidoCreateResponse>('/api/public/loja/pedido', {
+          method: 'POST',
+          body: {
+            id_canal: idCanal,
+            conversa_key: conversaKey,
+            forma_pagamento: forma,
+            modo_recebimento: this.modoRecebimento,
+            endereco_id: this.modoRecebimento === 'entrega' ? this.enderecoSelecionadoId : null,
+            observacoes: this.observacaoPedido,
+            itens: this.carrinhoAtual.map((item) => ({
+              produto_id: item.produto_id,
+              nome: item.nome,
+              quantidade: item.quantidade,
+              preco_unitario: item.preco_unitario,
+              observacao: item.observacao || undefined,
+            })),
+          },
+        })
+        this.pedidoAtual = res.data
+        this.persistirPedido()
+        return res.data
+      } catch (err) {
+        this.pedidoErro = mensagemErro(err, 'Não foi possível criar o pedido.')
+        throw err
+      } finally {
+        this.pedidoLoading = false
+      }
+    },
+
+    async consultarPedido(idRaw?: number) {
+      const idCanal = this.canal?.id
+      const conversaKey = this.login?.key?.trim()
+      const id = idRaw ?? this.pedidoAtual?.id
+      if (!idCanal || !conversaKey || !id) {
+        throw new Error('Pedido não encontrado.')
+      }
+
+      const res = await $fetch<LojaPedidoGetResponse>(`/api/public/loja/pedido/${id}`, {
+        query: { id_canal: idCanal, conversa_key: conversaKey },
+      })
+      this.pedidoAtual = res.data
+      this.persistirPedido()
+      if (res.data.status === 'pago') {
+        this.limparCarrinho()
+      }
+      return res.data
+    },
+
     setLogin(dados: LojaLogin) {
       this.login = {
         nome: dados.nome.trim(),
@@ -551,6 +655,35 @@ function gravarLoginLocal(slug: string, login: LojaLogin | null) {
   }
 }
 
+const PEDIDO_STORAGE_PREFIX = 'loja-pedido:'
+
+function chavePedido(slug: string): string {
+  return `${PEDIDO_STORAGE_PREFIX}${slug}`
+}
+
+function lerPedidoLocal(slug: string): number | null {
+  try {
+    const raw = sessionStorage.getItem(chavePedido(slug))
+    if (!raw) return null
+    const n = Number.parseInt(raw, 10)
+    return Number.isFinite(n) && n > 0 ? n : null
+  } catch {
+    return null
+  }
+}
+
+function gravarPedidoLocal(slug: string, id: number | null) {
+  try {
+    if (id == null) {
+      sessionStorage.removeItem(chavePedido(slug))
+      return
+    }
+    sessionStorage.setItem(chavePedido(slug), String(id))
+  } catch {
+    // quota / modo privado
+  }
+}
+
 function gravarCarrinhoLocal(slug: string, itens: LojaCarrinhoItem[], observacaoPedido: string) {
   try {
     localStorage.setItem(
@@ -583,6 +716,10 @@ function normalizarItemCarrinho(row: unknown): LojaCarrinhoItem | null {
     quantidade,
     observacao,
   }
+}
+
+export function mensagemErroLoja(err: unknown, fallback: string): string {
+  return mensagemErro(err, fallback)
 }
 
 function mensagemErro(err: unknown, fallback: string): string {

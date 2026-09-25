@@ -2,6 +2,11 @@ import Pusher from 'pusher'
 import type { H3Event } from 'h3'
 import type { PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
+import {
+  canalPusherLojaPedido,
+  PUSHER_EVENTO_LOJA_PEDIDO_PAGO,
+  type PusherLojaPedidoPagoPayload,
+} from '#shared/utils/lojaPedidoPusher'
 
 let pusherClient: Pusher | null = null
 let pusherConfigKey = ''
@@ -96,5 +101,34 @@ export async function triggerKanbanAtualizacao(
     await pusher.trigger(channel, 'kanban-atualizacao', payload)
   } catch (err) {
     console.warn('[pusher] Falha ao disparar kanban-atualizacao:', err)
+  }
+}
+
+/**
+ * Evento: `pedido-pago` — webhook (ou GET) confirmou pagamento da loja.
+ * Canal = `loja-pedido-{id}`.
+ */
+export async function triggerLojaPedidoPago(
+  event: H3Event,
+  pedidoId: number,
+): Promise<void> {
+  if (!Number.isFinite(pedidoId) || pedidoId < 1) {
+    console.warn('[pusher] triggerLojaPedidoPago: pedidoId inválido.')
+    return
+  }
+
+  const id = Math.trunc(pedidoId)
+  const payload: PusherLojaPedidoPagoPayload = { id, status: 'pago' }
+
+  try {
+    const pusher = getPusher(event)
+    if (!pusher) {
+      console.warn('[pusher] Broadcast ignorado: NUXT_PUBLIC_PUSHER_* / NUXT_PUSHER_SECRET ausentes.')
+      return
+    }
+
+    await pusher.trigger(canalPusherLojaPedido(id), PUSHER_EVENTO_LOJA_PEDIDO_PAGO, payload)
+  } catch (err) {
+    console.warn('[pusher] Falha ao disparar pedido-pago:', err)
   }
 }

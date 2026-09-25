@@ -3,6 +3,7 @@ import type { CanalHorarios } from '#shared/types/canal'
 import type {
   LojaCanalPublico,
   LojaCardapioPublico,
+  LojaFormasPagamentoPublico,
   LojaProdutoPublico,
   LojaTermoPublico,
   LojaWorkspacePublico,
@@ -55,6 +56,30 @@ function asText(raw: unknown): string | null {
   return s.length ? s : null
 }
 
+const FORMA_PAGAMENTO_CHAVE_RE = /^[a-z][a-z0-9_]{0,40}$/
+
+function chavesFormaAtivas(raw: unknown): string[] {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) return []
+  const rec = raw as Record<string, unknown>
+  const ativas: string[] = []
+  for (const chave of Object.keys(rec)) {
+    if (!FORMA_PAGAMENTO_CHAVE_RE.test(chave)) continue
+    if (rec[chave] === true) ativas.push(chave)
+  }
+  return ativas
+}
+
+export function parseFormasPagamento(raw: unknown): LojaFormasPagamentoPublico {
+  if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { online: [], entrega: [] }
+  }
+  const rec = raw as Record<string, unknown>
+  return {
+    online: chavesFormaAtivas(rec.online),
+    entrega: chavesFormaAtivas(rec.entrega),
+  }
+}
+
 function asFiniteNumber(raw: unknown): number | null {
   if (raw == null || raw === '') return null
   const n = typeof raw === 'number' ? raw : Number(raw)
@@ -83,6 +108,7 @@ export function parseLojaCanalRow(raw: unknown): LojaCanalPublico | null {
     loja_aberta: rec.loja_aberta !== false,
     agenda_pedido: rec.agenda_pedido === true,
     valor_pedido_minimo: Math.max(asMoney(rec.valor_pedido_minimo) ?? 0, 0),
+    formas_pagamento: parseFormasPagamento(rec.formas_pagamento),
   }
 }
 

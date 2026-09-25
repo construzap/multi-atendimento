@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { LojaCepLookup } from '#shared/types/loja'
+import type { LojaCepLookup, LojaEndereco } from '#shared/types/loja'
 import { cepCompleto, formatarCep, normalizarCep } from '#shared/utils/lojaCep'
 import { useLojaWorkspaceStore } from '~/stores/loja/workspace'
+
+const props = defineProps<{
+  inicial?: LojaEndereco | null
+}>()
 
 const emit = defineEmits<{
   salvo: []
@@ -10,6 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const loja = useLojaWorkspaceStore()
+const editandoId = ref<number | null>(null)
 
 const cep = ref('')
 const rua = ref('')
@@ -31,6 +36,25 @@ const ultimoCepBuscado = ref('')
 
 const inputClass =
   'mt-2 h-12 w-full rounded-full border border-outline/35 bg-transparent px-4 text-sm outline-none placeholder:text-on-surface-variant dark:border-dark-outline/35 dark:text-dark-on-surface dark:placeholder:text-dark-on-surface-variant'
+
+function aplicarInicial(e: LojaEndereco) {
+  editandoId.value = e.id
+  ultimoCepBuscado.value = normalizarCep(e.cep)
+  cep.value = formatarCep(e.cep)
+  rua.value = e.rua
+  numero.value = e.numero
+  complemento.value = e.complemento || ''
+  bairro.value = e.bairro
+  cidade.value = e.cidade
+  estado.value = e.uf
+  pontoReferencia.value = e.ponto_referencia || ''
+  apelido.value = e.apelido || ''
+  padrao.value = e.padrao === true
+  lat.value = e.lat ?? null
+  lon.value = e.lon ?? null
+}
+
+if (props.inicial) aplicarInicial(props.inicial)
 
 function aplicarCep(valor: LojaCepLookup) {
   cep.value = valor.cep
@@ -128,7 +152,11 @@ async function salvar() {
   salvando.value = true
   erro.value = ''
   try {
-    await loja.adicionarEndereco(payload)
+    if (editandoId.value != null) {
+      await loja.atualizarEndereco(editandoId.value, payload)
+    } else {
+      await loja.adicionarEndereco(payload)
+    }
     emit('salvo')
   } catch {
     erro.value = 'Não foi possível salvar o endereço.'
@@ -196,7 +224,7 @@ async function salvar() {
       <input
         v-model="estado"
         type="text"
-        maxlength="2"
+        maxlength="40"
         placeholder="UF"
         class="mt-2 h-12 w-full rounded-full border border-outline/35 bg-transparent px-4 text-sm uppercase outline-none placeholder:text-on-surface-variant dark:border-dark-outline/35 dark:text-dark-on-surface"
         :disabled="salvando"

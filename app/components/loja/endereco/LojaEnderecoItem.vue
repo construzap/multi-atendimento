@@ -9,6 +9,11 @@ const props = defineProps<{
   selecionado: boolean
 }>()
 
+const emit = defineEmits<{
+  editar: [endereco: LojaEndereco]
+  apagar: [endereco: LojaEndereco]
+}>()
+
 const loja = useLojaWorkspaceStore()
 const linhas = computed(() => formatarEnderecoLinhas(props.endereco))
 </script>
@@ -59,6 +64,7 @@ const linhas = computed(() => formatarEnderecoLinhas(props.endereco))
         type="button"
         class="text-on-surface-variant dark:text-dark-on-surface-variant"
         aria-label="Editar endereço"
+        @click="emit('editar', endereco)"
       >
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M4 20h4l10-10-4-4L4 16v4z" stroke-linejoin="round" />
@@ -68,7 +74,7 @@ const linhas = computed(() => formatarEnderecoLinhas(props.endereco))
         type="button"
         class="text-on-surface-variant dark:text-dark-on-surface-variant"
         aria-label="Apagar endereço"
-        @click="void loja.apagarEndereco(endereco.id)"
+        @click="emit('apagar', endereco)"
       >
         <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M5 7h14M10 7V5h4v2M8 7l1 12h6l1-12" stroke-linejoin="round" />

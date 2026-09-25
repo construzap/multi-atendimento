@@ -1,15 +1,26 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { LojaLogin } from '#shared/types/loja'
 
-const props = defineProps<{
-  inicial?: LojaLogin | null
-  pending?: boolean
-  erro?: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    inicial?: { nome?: string; celular?: string; cpf?: string } | null
+    pending?: boolean
+    erro?: string
+    pedirNome?: boolean
+    pedirCelular?: boolean
+    pedirCpf?: boolean
+    textoBotao?: string
+  }>(),
+  {
+    pedirNome: false,
+    pedirCelular: false,
+    pedirCpf: false,
+    textoBotao: 'Continuar',
+  },
+)
 
 const emit = defineEmits<{
-  entrar: [dados: { nome: string; celular: string; cpf: string }]
+  enviar: [dados: { nome: string; celular: string; cpf: string }]
   cancelar: []
 }>()
 
@@ -20,9 +31,9 @@ const cpf = ref('')
 watch(
   () => props.inicial,
   (dados) => {
-    nome.value = dados?.nome ?? ''
-    celular.value = dados?.celular ? mascararCelular(dados.celular) : ''
-    cpf.value = dados?.cpf ? mascararCpf(dados.cpf) : ''
+    if (props.pedirNome) nome.value = dados?.nome ?? ''
+    if (props.pedirCelular) celular.value = dados?.celular ? mascararCelular(dados.celular) : ''
+    if (props.pedirCpf) cpf.value = dados?.cpf ? mascararCpf(dados.cpf) : ''
   },
   { immediate: true },
 )
@@ -48,16 +59,17 @@ function mascararCpf(valor: string) {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`
 }
 
-const podeEntrar = computed(() =>
-  Boolean(nome.value.trim())
-    && soDigitos(celular.value, 11).length >= 10
-    && cpf.value.replace(/\D/g, '').length === 11
-    && !props.pending,
-)
+const podeEnviar = computed(() => {
+  if (props.pending) return false
+  if (props.pedirNome && !nome.value.trim()) return false
+  if (props.pedirCelular && soDigitos(celular.value, 11).length < 10) return false
+  if (props.pedirCpf && cpf.value.replace(/\D/g, '').length !== 11) return false
+  return props.pedirNome || props.pedirCelular || props.pedirCpf
+})
 
-function entrar() {
-  if (!podeEntrar.value) return
-  emit('entrar', {
+function enviar() {
+  if (!podeEnviar.value) return
+  emit('enviar', {
     nome: nome.value.trim(),
     celular: celular.value.trim(),
     cpf: cpf.value.trim(),
@@ -66,8 +78,8 @@ function entrar() {
 </script>
 
 <template>
-  <form class="flex flex-1 flex-col px-5 pb-6" @submit.prevent="entrar">
-    <label class="block text-sm text-on-surface dark:text-dark-on-surface">
+  <form class="flex flex-1 flex-col px-5 pb-6" @submit.prevent="enviar">
+    <label v-if="pedirNome" class="block text-sm text-on-surface dark:text-dark-on-surface">
       Nome
       <input
         v-model="nome"
@@ -78,7 +90,11 @@ function entrar() {
       >
     </label>
 
-    <label class="mt-5 block text-sm text-on-surface dark:text-dark-on-surface">
+    <label
+      v-if="pedirCelular"
+      class="block text-sm text-on-surface dark:text-dark-on-surface"
+      :class="pedirNome ? 'mt-5' : ''"
+    >
       Celular
       <span class="mt-2 flex h-12 items-center gap-2 rounded-full border border-outline/35 px-3 dark:border-dark-outline/35">
         <span class="flex shrink-0 items-center gap-1 text-lg" aria-hidden="true">
@@ -103,7 +119,11 @@ function entrar() {
       </span>
     </label>
 
-    <label class="mt-5 block text-sm text-on-surface dark:text-dark-on-surface">
+    <label
+      v-if="pedirCpf"
+      class="block text-sm text-on-surface dark:text-dark-on-surface"
+      :class="pedirNome || pedirCelular ? 'mt-5' : ''"
+    >
       CPF
       <input
         :value="cpf"
@@ -122,9 +142,9 @@ function entrar() {
       <button
         type="submit"
         class="flex h-12 items-center justify-center rounded-full bg-[#00C853] text-sm font-semibold text-white disabled:opacity-60"
-        :disabled="!podeEntrar"
+        :disabled="!podeEnviar"
       >
-        {{ pending ? 'Entrando…' : 'Entrar' }}
+        {{ pending ? 'Aguarde…' : textoBotao }}
       </button>
       <button
         type="button"

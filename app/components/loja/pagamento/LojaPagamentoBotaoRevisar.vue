@@ -4,9 +4,16 @@ import { storeToRefs } from 'pinia'
 import { useLojaWorkspaceStore } from '~/stores/loja/workspace'
 
 const loja = useLojaWorkspaceStore()
-const { formaPagamento } = storeToRefs(loja)
+const router = useRouter()
+const { formaPagamento, slug } = storeToRefs(loja)
 
 const podeRevisar = computed(() => formaPagamento.value != null)
+
+function revisar() {
+  const destino = slug.value?.trim()
+  if (!destino || !podeRevisar.value) return
+  void router.push(`/loja/${encodeURIComponent(destino)}/revisao`)
+}
 </script>
 
 <template>
@@ -22,6 +29,7 @@ const podeRevisar = computed(() => formaPagamento.value != null)
           : 'bg-surface-container text-on-surface-variant dark:bg-dark-surface-container dark:text-dark-on-surface-variant'
       "
       :disabled="!podeRevisar"
+      @click="revisar"
     >
       Revisar pedido
     </button>

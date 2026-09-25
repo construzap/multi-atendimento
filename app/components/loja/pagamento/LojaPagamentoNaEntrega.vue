@@ -1,14 +1,16 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import LojaPagamentoOpcao from '~/components/loja/pagamento/LojaPagamentoOpcao.vue'
 import { useLojaWorkspaceStore } from '~/stores/loja/workspace'
 
 const loja = useLojaWorkspaceStore()
-const { formaPagamento } = storeToRefs(loja)
+const { formaPagamento, canal } = storeToRefs(loja)
+const ativas = computed(() => canal.value?.formas_pagamento.entrega ?? [])
 </script>
 
 <template>
-  <section class="px-4 pt-6">
+  <section v-if="ativas.length" class="px-4 pt-6">
     <p class="mb-3 flex items-center gap-2 text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
       <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
         <path d="M4 10l8-6 8 6v9a1 1 0 01-1 1h-5v-6H10v6H5a1 1 0 01-1-1v-9z" stroke-linejoin="round" />
@@ -17,6 +19,7 @@ const { formaPagamento } = storeToRefs(loja)
     </p>
     <div class="flex flex-col gap-3">
       <LojaPagamentoOpcao
+        v-if="ativas.includes('dinheiro')"
         titulo="Dinheiro"
         :selecionado="formaPagamento === 'dinheiro'"
         @selecionar="loja.setFormaPagamento('dinheiro')"
@@ -29,6 +32,7 @@ const { formaPagamento } = storeToRefs(loja)
         </template>
       </LojaPagamentoOpcao>
       <LojaPagamentoOpcao
+        v-if="ativas.includes('cartao_credito')"
         titulo="Cartão de crédito"
         :selecionado="formaPagamento === 'credito_entrega'"
         @selecionar="loja.setFormaPagamento('credito_entrega')"
@@ -41,6 +45,7 @@ const { formaPagamento } = storeToRefs(loja)
         </template>
       </LojaPagamentoOpcao>
       <LojaPagamentoOpcao
+        v-if="ativas.includes('cartao_debito')"
         titulo="Cartão de débito"
         :selecionado="formaPagamento === 'debito'"
         @selecionar="loja.setFormaPagamento('debito')"
@@ -53,6 +58,7 @@ const { formaPagamento } = storeToRefs(loja)
         </template>
       </LojaPagamentoOpcao>
       <LojaPagamentoOpcao
+        v-if="ativas.includes('vale_refeicao')"
         titulo="Vale refeição"
         detalhe="Taxa adicional de 2%"
         :selecionado="formaPagamento === 'vale_refeicao'"

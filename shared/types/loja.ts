@@ -7,6 +7,12 @@ export type LojaWorkspacePublico = {
   logo_url: string | null
 }
 
+/** Métodos ativos do canal (só as chaves `true` de `canais.formas_pagamento`). */
+export type LojaFormasPagamentoPublico = {
+  online: string[]
+  entrega: string[]
+}
+
 /** Canal da vitrine pública (whitelist; sem token, chave ou credencial). */
 export type LojaCanalPublico = {
   id: number
@@ -19,6 +25,7 @@ export type LojaCanalPublico = {
   loja_aberta: boolean
   agenda_pedido: boolean
   valor_pedido_minimo: number
+  formas_pagamento: LojaFormasPagamentoPublico
 }
 
 /** Termo de pesquisa usado como categoria/aba da vitrine. */
@@ -138,7 +145,9 @@ export type LojaCepLookup = {
 
 export type LojaFormaPagamento =
   | 'pix'
+  | 'boleto'
   | 'credito_online'
+  | 'debito_online'
   | 'dinheiro'
   | 'credito_entrega'
   | 'debito'
@@ -162,4 +171,42 @@ export type LojaLoginCriarResponse = {
   ok: true
   criado: boolean
   data: LojaLogin
+}
+
+export type LojaLoginCompletarResponse = {
+  ok: true
+  data: LojaLogin
+}
+
+export type LojaPedidoPix = {
+  payload: string
+  qrCodeBase64: string | null
+  expiraEm: string | null
+}
+
+export type LojaPedidoPublico = {
+  id: number
+  status: 'aguardando' | 'pago' | 'expirado'
+  forma: 'pix' | 'credito_online'
+  valor: number
+  pix: LojaPedidoPix | null
+  checkoutUrl: string | null
+}
+
+export type LojaPedidoItemInput = {
+  produto_id: number
+  nome: string
+  quantidade: number
+  preco_unitario: number
+  observacao?: string
+}
+
+export type LojaPedidoCreateResponse = {
+  ok: true
+  data: LojaPedidoPublico
+}
+
+export type LojaPedidoGetResponse = {
+  ok: true
+  data: LojaPedidoPublico
 }

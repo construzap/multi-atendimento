@@ -119,9 +119,58 @@ async function colunaOrigemOpcional(
   return { coluna_id: colunaId, funil_id: funilId }
 }
 
-function documentoCpf(raw: unknown): string {
+export function documentoCpf(raw: unknown): string {
   const d = String(raw ?? '').replace(/\D/g, '')
   return d.length === 11 ? d : ''
+}
+
+/** Completa nome e/ou CPF da conversa com o que o cliente preencheu. */
+export async function completarDocumentoLogin(
+  admin: Admin,
+  params: { conversaKey: string; idCanal: number; cpf?: unknown; nome?: unknown },
+): Promise<LojaLogin> {
+  const documento = params.cpf === undefined ? '' : documentoCpf(params.cpf)
+  if (params.cpf !== undefined && !documento) {
+    throw createError({ statusCode: 400, statusMessage: 'CPF inválido.' })
+  }
+  const nome = String(params.nome ?? '').trim()
+  if (params.nome !== undefined && !nome) {
+    throw createError({ statusCode: 400, statusMessage: 'Informe o nome.' })
+  }
+  if (!documento && !nome) {
+    throw createError({ statusCode: 400, statusMessage: 'Informe nome ou CPF.' })
+  }
+
+  const { data, error } = await admin
+    .from('conversas')
+    .select('key, name, phone, documento')
+    .eq('key', params.conversaKey)
+    .eq('id_canal', params.idCanal)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  if (error) throw createError({ statusCode: 500, statusMessage: error.message })
+  const atual = data ? mapearLogin(data as ConversaLoginRow) : null
+  if (!atual) {
+    throw createError({ statusCode: 404, statusMessage: 'Cliente não encontrado.' })
+  }
+
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (documento) patch.documento = documento
+  if (nome) patch.name = nome
+
+  const { error: updErr } = await admin
+    .from('conversas')
+    .update(patch)
+    .eq('key', atual.key)
+    .eq('id_canal', params.idCanal)
+
+  if (updErr) throw createError({ statusCode: 500, statusMessage: updErr.message })
+  return {
+    ...atual,
+    cpf: documento || atual.cpf,
+    nome: nome || atual.nome,
+  }
 }
 
 export async function criarConversaLoja(
@@ -142,11 +191,11 @@ export async function criarConversaLoja(
 
   const existente = await buscarConversaPorCelular(admin, canal.id, phone)
   if (existente) {
-    if (!existente.cpf) {
-      await admin.from('conversas').update({ documento }).eq('key', existente.key)
-      return { ...existente, cpf: documento }
-    }
-    return existente
+    return completarDocumentoLogin(admin, {
+      conversaKey: existente.key,
+      idCanal: canal.id,
+      cpf: documento,
+    })
   }
 
   const origem = await colunaOrigemOpcional(admin, canal.workspace_id)
