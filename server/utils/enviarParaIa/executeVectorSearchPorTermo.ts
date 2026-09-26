@@ -1,14 +1,23 @@
+import { createError } from 'h3'
 import type { H3Event } from 'h3'
 import type { VectorSearchResult } from '#shared/types/vectorStore'
 import { loadWorkspaceOpenAiCredenciais } from '../agente/loadCanalCredenciais'
-import { searchSimilar } from './documentsVectorStore'
+import { searchSimilarPorTermo } from './documentsVectorStorePorTermo'
 import { createEmbedding } from './openaiEmbeddings'
 import type { BuscarParams } from './parseBuscarParams'
 
-export async function executeVectorSearch(
+export async function executeVectorSearchPorTermo(
   event: H3Event,
   params: BuscarParams,
 ): Promise<VectorSearchResult> {
+  const termosPesquisa = params.termosPesquisa?.trim() || ''
+  if (!termosPesquisa) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'termos_pesquisa é obrigatório para filtrar-produtos.',
+    })
+  }
+
   const credenciais = await loadWorkspaceOpenAiCredenciais(event, params.workspaceId)
   const queryEmbedding = await createEmbedding(
     credenciais.api_key,
@@ -17,9 +26,9 @@ export async function executeVectorSearch(
     params.workspaceId,
   )
 
-  const hits = await searchSimilar(
+  const hits = await searchSimilarPorTermo(
     event,
-    { workspaceId: params.workspaceId },
+    { workspaceId: params.workspaceId, termosPesquisa },
     queryEmbedding,
     params.limit,
   )
@@ -28,11 +37,9 @@ export async function executeVectorSearch(
     ok: true,
     query: params.query,
     workspace_id: String(params.workspaceId),
-    termos_pesquisa: params.termosPesquisa,
-    /** @deprecated use workspace_id */
+    termos_pesquisa: termosPesquisa,
     empresa_id: String(params.workspaceId),
-    /** @deprecated use termos_pesquisa */
-    categorias: params.termosPesquisa,
+    categorias: termosPesquisa,
     count: hits.length,
     hits,
   }

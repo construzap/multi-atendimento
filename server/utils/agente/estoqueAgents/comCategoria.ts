@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import type { AgenteToolTraceItem } from '#shared/types/agente'
 import type { OpenAiToolDefinition } from '../openaiChat'
-import { executeVectorSearch } from '../../enviarParaIa/executeVectorSearch'
+import { executeVectorSearchPorTermo } from '../../enviarParaIa/executeVectorSearchPorTermo'
 import {
   parseCodigoProdutoFromContent,
   parseEnviaFoto,
@@ -45,7 +45,7 @@ export async function executeComCategoriaTool(
   }
 
   try {
-    const search = await executeVectorSearch(event, {
+    const search = await executeVectorSearchPorTermo(event, {
       query,
       workspaceId: params.workspaceId,
       termosPesquisa: params.termosPesquisa,

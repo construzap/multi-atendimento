@@ -6,7 +6,7 @@ import { getSupabaseVectorClient } from './supabaseVector'
 
 const DEFAULT_TABLE = 'documentsconstruzapmulti'
 
-function getDocumentsTable(event: H3Event): string {
+export function getDocumentsTable(event: H3Event): string {
   const config = useRuntimeConfig(event)
   const table = String(config.vectorDocumentsTable ?? '').trim()
   return table || DEFAULT_TABLE
@@ -33,7 +33,7 @@ function workspaceMetadataOrFilter(workspaceId: number): string {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- query builder do Supabase
-function scopeByWorkspace(query: any, workspaceId: number) {
+export function scopeByWorkspace(query: any, workspaceId: number) {
   return query.or(workspaceMetadataOrFilter(workspaceId))
 }
 
@@ -223,7 +223,7 @@ export async function insertDocument(
   }
 }
 
-function parseEmbedding(raw: unknown): number[] | null {
+export function parseEmbedding(raw: unknown): number[] | null {
   if (Array.isArray(raw)) {
     return raw.map((v) => Number(v)).filter((v) => Number.isFinite(v))
   }
@@ -238,7 +238,7 @@ function parseEmbedding(raw: unknown): number[] | null {
   return null
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
+export function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length || !a.length) return 0
   let dot = 0
   let na = 0
@@ -252,14 +252,14 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return denom === 0 ? 0 : dot / denom
 }
 
+/** Busca sem filtro de termo: lote do workspace (usada por sem-categoria). */
 export async function searchSimilar(
   event: H3Event,
-  filters: VectorStoreSearchFilters,
+  filters: Pick<VectorStoreSearchFilters, 'workspaceId'>,
   queryEmbedding: number[],
   limit = 10,
 ): Promise<SearchHit[]> {
-  const { workspaceId, termosPesquisa } = filters
-  const termosFilter = termosPesquisa?.trim().toLowerCase() ?? ''
+  const { workspaceId } = filters
 
   const client = getSupabaseVectorClient(event)
   const maxDocs = 3000
@@ -278,13 +278,6 @@ export async function searchSimilar(
   for (const row of data ?? []) {
     const meta = row.metadata
     if (!matchesWorkspaceMetadata(meta, workspaceId)) continue
-
-    if (termosFilter) {
-      const rec = meta as Record<string, unknown> | null
-      const termos = rec?.termos_pesquisa ?? rec?.categorias
-      const termosText = typeof termos === 'string' ? termos.toLowerCase() : ''
-      if (!termosText.includes(termosFilter)) continue
-    }
 
     const emb = parseEmbedding(row.embedding)
     if (!emb) continue
