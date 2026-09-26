@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import type { ProdutoTermoPesquisaItem } from '#shared/types/produtos'
+import type {
+  ProdutoTermoPesquisaItem,
+  ProdutosListaFiltroId,
+  ProdutosListaSelecao,
+} from '#shared/types/produtos'
 import BaseButton from '~/components/BaseButton.vue'
 import ProdutosBarraAcoes from '~/components/produtos/ProdutosBarraAcoes.vue'
 import ProdutosBuscaInput from '~/components/produtos/ProdutosBuscaInput.vue'
@@ -10,7 +14,12 @@ import FerramentaImportarProduto from '~/components/produtos/FerramentaImportarP
 import ProdutosListaTermosPesquisa from '~/components/produtos/ProdutosListaTermosPesquisa.vue'
 import ProdutosModalEditarProduto from '~/components/produtos/ProdutosModalEditarProduto.vue'
 import ProdutosTabela from '~/components/produtos/ProdutosTabela.vue'
-import { useProdutosStore, PRODUTOS_PAGE_SIZE_TODOS, produtosTermoBucketKey } from '~/stores/produtos'
+import {
+  useProdutosStore,
+  PRODUTOS_PAGE_SIZE_TODOS,
+  isFiltroCategoriaId,
+  produtosTermoBucketKey,
+} from '~/stores/produtos'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
 import { useWorkspacesStore } from '~/stores/workspaces'
 
@@ -55,9 +64,17 @@ const limiteProdutos = computed(() => {
   return Math.trunc(lim)
 })
 
-/** Termo ativo na coluna da direita. */
+/** Filtro ativo na coluna da direita (categoria, todos ou sem categoria). */
+const filtroAtivo = ref<ProdutosListaFiltroId | null>(null)
 const termoAtivo = ref<ProdutoTermoPesquisaItem | null>(null)
-const termoAtivoId = computed(() => termoAtivo.value?.id ?? null)
+const termoAtivoId = computed(() =>
+  isFiltroCategoriaId(filtroAtivo.value) ? filtroAtivo.value : null,
+)
+const tituloVista = computed(() => {
+  if (filtroAtivo.value === 'todos') return 'Todos os produtos'
+  if (filtroAtivo.value === 'sem_categoria') return 'Sem categoria'
+  return termoAtivo.value?.nome ?? ''
+})
 
 const bootstrapPending = ref(true)
 const bootstrapError = ref<string | null>(null)
@@ -73,7 +90,7 @@ function aoClicarImportar() {
 }
 
 function aoClicarNovo() {
-  if (termoAtivo.value == null) return
+  if (filtroAtivo.value == null) return
   modalNovoProdutoAberto.value = true
 }
 
@@ -91,37 +108,66 @@ function aoPesquisar(q: string) {
   produtosStore.page = 1
 }
 
-function qDoBucket(wid: number, termoId: number): string {
-  return produtosStore.byKey[produtosTermoBucketKey(wid, termoId)]?.q ?? ''
+function qDoBucket(wid: number, filtroId: ProdutosListaFiltroId): string {
+  return produtosStore.byKey[produtosTermoBucketKey(wid, filtroId)]?.q ?? ''
 }
 
-function pageDoBucket(wid: number, termoId: number): number {
-  return produtosStore.byKey[produtosTermoBucketKey(wid, termoId)]?.page ?? 1
+function pageDoBucket(wid: number, filtroId: ProdutosListaFiltroId): number {
+  return produtosStore.byKey[produtosTermoBucketKey(wid, filtroId)]?.page ?? 1
 }
 
-/** Termo a restaurar a partir do cache de produtos (activeKey / keyOrder). */
-function termoDoCacheProdutos(
+function selecaoDeFiltro(
+  filtroId: ProdutosListaFiltroId,
+  termos: ProdutoTermoPesquisaItem[],
+): ProdutosListaSelecao | null {
+  if (filtroId === 'todos' || filtroId === 'sem_categoria') return { tipo: filtroId }
+  const t = termos.find((x) => x.id === filtroId)
+  return t ? { tipo: 'categoria', termo: { ...t } } : null
+}
+
+/** Vista a restaurar a partir do cache de produtos (activeKey / keyOrder). */
+function vistaDoCacheProdutos(
   wid: number,
   termos: ProdutoTermoPesquisaItem[],
-): ProdutoTermoPesquisaItem | null {
-  const ativoId = produtosStore.activeTermoId
-  if (ativoId != null) {
-    const t = termos.find((x) => x.id === ativoId)
-    if (t) return { ...t }
+): ProdutosListaSelecao | null {
+  const ativo = produtosStore.activeFiltroId
+  if (ativo != null) {
+    const sel = selecaoDeFiltro(ativo, termos)
+    if (sel) return sel
   }
   for (let i = produtosStore.keyOrder.length - 1; i >= 0; i--) {
     const key = produtosStore.keyOrder[i]!
     const bucket = produtosStore.byKey[key]
     if (!bucket || bucket.workspaceId !== wid) continue
-    const t = termos.find((x) => x.id === bucket.termoId)
-    if (t) return { ...t }
+    const sel = selecaoDeFiltro(bucket.filtroId, termos)
+    if (sel) return sel
   }
   return null
 }
 
-function aplicarTermoAtivo(termo: ProdutoTermoPesquisaItem, wid: number) {
-  const mesmo = termoAtivo.value?.id === termo.id
+function aplicarSelecao(sel: ProdutosListaSelecao, wid: number | null) {
+  if (sel.tipo === 'todos' || sel.tipo === 'sem_categoria') {
+    const mesmo = filtroAtivo.value === sel.tipo
+    filtroAtivo.value = sel.tipo
+    termoAtivo.value = null
+    if (wid == null) {
+      busca.value = ''
+      termoPesquisa.value = ''
+      return
+    }
+    const qCache = qDoBucket(wid, sel.tipo)
+    busca.value = qCache
+    termoPesquisa.value = qCache
+    produtosStore.page = pageDoBucket(wid, sel.tipo)
+    if (mesmo) return
+    return
+  }
+
+  const termo = sel.termo
+  const mesmo = filtroAtivo.value === termo.id
+  filtroAtivo.value = termo.id
   termoAtivo.value = { ...termo }
+  if (wid == null) return
   const qCache = qDoBucket(wid, termo.id)
   busca.value = qCache
   termoPesquisa.value = qCache
@@ -129,20 +175,8 @@ function aplicarTermoAtivo(termo: ProdutoTermoPesquisaItem, wid: number) {
   if (mesmo) return
 }
 
-function aoSelecionarTermo(termo: ProdutoTermoPesquisaItem | null) {
-  if (!termo) {
-    termoAtivo.value = null
-    busca.value = ''
-    termoPesquisa.value = ''
-    produtosStore.limparVistaLista()
-    return
-  }
-  const wid = workspaceId.value
-  if (wid == null) {
-    termoAtivo.value = { ...termo }
-    return
-  }
-  aplicarTermoAtivo(termo, wid)
+function aoSelecionarTermo(sel: ProdutosListaSelecao) {
+  aplicarSelecao(sel, workspaceId.value)
 }
 
 /**
@@ -167,6 +201,7 @@ async function bootstrapPagina() {
 
     const wid = workspaceId.value
     if (wid == null) {
+      filtroAtivo.value = null
       termoAtivo.value = null
       produtosStore.limparVistaLista()
       return
@@ -175,20 +210,13 @@ async function bootstrapPagina() {
     await termosStore.carregarListaCompletaSeNecessario(wid)
     const termos = termosStore.getListaCompletaCopia(wid)
 
-    if (!termos.length) {
-      termoAtivo.value = null
-      produtosStore.limparVistaLista()
-      return
-    }
-
-    const restaurado = termoDoCacheProdutos(wid, termos)
-    const escolhido = restaurado ?? { ...termos[0]! }
-    aplicarTermoAtivo(escolhido, wid)
+    const escolhido = vistaDoCacheProdutos(wid, termos) ?? { tipo: 'todos' as const }
+    aplicarSelecao(escolhido, wid)
 
     await produtosStore.fetchPagina(wid, {
       page: produtosStore.page,
       q: termoPesquisa.value,
-      termoId: escolhido.id,
+      filtroId: filtroAtivo.value,
     })
   } catch (err) {
     bootstrapError.value =
@@ -203,15 +231,15 @@ async function bootstrapPagina() {
 async function carregarLista(opts?: { force?: boolean }) {
   if (bootstrapPending.value) return
   const wid = workspaceId.value
-  const tid = termoAtivoId.value
-  if (wid == null || tid == null) {
+  const filtroId = filtroAtivo.value
+  if (wid == null || filtroId == null) {
     produtosStore.limparVistaLista()
     return
   }
   await produtosStore.fetchPagina(wid, {
     page: produtosStore.page,
     q: termoPesquisa.value,
-    termoId: tid,
+    filtroId,
     force: opts?.force === true,
   })
 }
@@ -225,14 +253,15 @@ watch([() => produtosStore.page, termoPesquisa], () => {
   void carregarLista()
 })
 
-watch(termoAtivoId, (tid, prev) => {
+watch(filtroAtivo, (filtro, prev) => {
   if (bootstrapPending.value) return
-  if (tid == null || tid === prev) return
+  if (filtro == null || filtro === prev) return
   void carregarLista()
 })
 
 watch(workspaceId, (wid, prev) => {
   if (prev !== undefined && wid !== prev) {
+    filtroAtivo.value = null
     termoAtivo.value = null
     busca.value = ''
     termoPesquisa.value = ''
@@ -256,9 +285,9 @@ function paginaProxima() {
 
 async function aposEliminados() {
   const wid = workspaceId.value
-  const tid = termoAtivoId.value
-  if (wid != null && tid != null) {
-    produtosStore.invalidarCacheTermo(wid, tid)
+  const filtroId = filtroAtivo.value
+  if (wid != null && filtroId != null) {
+    produtosStore.invalidarCacheTermo(wid, filtroId)
   }
   await carregarLista({ force: true })
   if (produtosStore.page > produtosStore.totalPages) {
@@ -269,14 +298,14 @@ async function aposEliminados() {
 
 async function aoProdutoNovoGravado() {
   const wid = workspaceId.value
-  const tid = termoAtivoId.value
-  if (wid == null || tid == null) return
-  produtosStore.invalidarCacheTermo(wid, tid)
+  const filtroId = filtroAtivo.value
+  if (wid == null || filtroId == null) return
+  produtosStore.invalidarCacheTermo(wid, filtroId)
   produtosStore.page = 1
   await produtosStore.fetchPagina(wid, {
     page: 1,
     q: termoPesquisa.value,
-    termoId: tid,
+    filtroId,
     force: true,
   })
   await workspacesStore.ensureAllLoaded({ force: true })
@@ -285,14 +314,14 @@ async function aoProdutoNovoGravado() {
 /** Após cadastrar via oportunidades de vendas e fechar o modal: refresca workspace + lista/total. */
 async function aposOportunidadesSincronizar() {
   const wid = workspaceId.value
-  const tid = termoAtivoId.value
+  const filtroId = filtroAtivo.value
   await workspacesStore.ensureAllLoaded({ force: true })
-  if (wid == null || tid == null) return
-  produtosStore.invalidarCacheTermo(wid, tid)
+  if (wid == null || filtroId == null) return
+  produtosStore.invalidarCacheTermo(wid, filtroId)
   await produtosStore.fetchPagina(wid, {
     page: produtosStore.page,
     q: termoPesquisa.value,
-    termoId: tid,
+    filtroId,
     force: true,
   })
 }
@@ -301,11 +330,11 @@ const exibindoTodos = computed(() => pageSize.value === PRODUTOS_PAGE_SIZE_TODOS
 
 function onPageSizeChanged(n: number) {
   const wid = workspaceId.value
-  const tid = termoAtivoId.value
+  const filtroId = filtroAtivo.value
   produtosStore.pageSize = n
   produtosStore.page = 1
-  if (wid != null && tid != null) {
-    produtosStore.invalidarCacheTermo(wid, tid)
+  if (wid != null && filtroId != null) {
+    produtosStore.invalidarCacheTermo(wid, filtroId)
   }
   void carregarLista({ force: true })
 }
@@ -342,6 +371,7 @@ function aposImportacao() {
       :workspace-id="workspaceId"
       :termo-busca="termoPesquisa"
       :termo-id="termoAtivoId"
+      :filtro-id="filtroAtivo"
       @importado="aposImportacao"
     />
     <ProdutosModalEditarProduto
@@ -362,7 +392,7 @@ function aposImportacao() {
         <ProdutosListaTermosPesquisa
           class="h-full min-h-0"
           :workspace-id="workspaceId"
-          :selected-id="termoAtivoId"
+          :selected-filtro="filtroAtivo"
           @selecionar="aoSelecionarTermo"
         />
       </aside>
@@ -387,12 +417,12 @@ function aposImportacao() {
           </BaseButton>
         </div>
 
-        <template v-else-if="termoAtivo">
+        <template v-else-if="filtroAtivo">
           <div
             class="flex shrink-0 flex-col gap-3 border-b border-outline/25 px-4 py-3 dark:border-dark-outline/25 sm:flex-row sm:items-center sm:justify-between"
           >
             <h2 class="min-w-0 truncate font-headline text-xl font-bold text-on-surface dark:text-dark-on-surface">
-              {{ termoAtivo.nome }}
+              {{ tituloVista }}
             </h2>
             <BaseButton
               variant="primary"
@@ -433,7 +463,7 @@ function aposImportacao() {
               :pending="listPending"
               :error="listError"
               :termo-id="termoAtivoId"
-              :permitir-reordenar="!termoPesquisa.trim()"
+              :permitir-reordenar="!!termoAtivoId && !termoPesquisa.trim()"
               @atualizado="produtosStore.aplicarLinhaAtualizada($event)"
               @erro-salvamento="void carregarLista()"
               @eliminados="aposEliminados"

@@ -60,7 +60,9 @@ function sortByIdOrder<T extends { id: number }>(rows: T[], orderedIds: number[]
  *
  * Lista paginada de produtos pai via `view_produtos_com_variacoes` (após `checkWorkspace`).
  * Com `q` não vazio, filtra por **nome** ou **termos de pesquisa** (`termos_pesquisa_busca`, ilike).
- * Com `termo_id`, restringe aos produtos em `produto_termo_de_pesquisa_vinculo` e ordena por `vinculo.ordem`.
+ * Sem `termo_id`: todos os produtos do workspace.
+ * `termo_id=null`: produtos **sem** vínculo em `produto_termo_de_pesquisa_vinculo`.
+ * Com `termo_id` numérico: restringe aos produtos do vínculo e ordena por `vinculo.ordem`.
  */
 export default defineEventHandler(async (event): Promise<ProdutosBuscaResponse> => {
   const client = await serverSupabaseClient(event)
@@ -83,8 +85,12 @@ export default defineEventHandler(async (event): Promise<ProdutosBuscaResponse> 
   const page_size = parsePageSize(q.page_size, 10)
   const searchRaw = typeof q.q === 'string' ? q.q.trim() : ''
 
+  const termoRaw = String(Array.isArray(q.termo_id) ? q.termo_id[0] : q.termo_id ?? '').trim()
   let termoId: number | null = null
-  if (q.termo_id !== undefined && q.termo_id !== null && String(q.termo_id).trim() !== '') {
+  let somenteSemCategoria = false
+  if (termoRaw === 'null') {
+    somenteSemCategoria = true
+  } else if (termoRaw !== '') {
     termoId = parsePositiveInt(q.termo_id, 'termo_id')
   }
 
@@ -209,6 +215,36 @@ export default defineEventHandler(async (event): Promise<ProdutosBuscaResponse> 
     const total = filtrados.length
     const total_pages = total === 0 ? 1 : Math.ceil(total / page_size)
     const rows = filtrados.slice(from, to + 1)
+
+    return { data: rows, total, page, page_size, total_pages }
+  }
+
+  // Sem categoria: workspace + produtos sem vínculo (termos_pesquisa_busca IS NULL).
+  if (somenteSemCategoria) {
+    let querySem = admin
+      .from('view_produtos_com_variacoes')
+      .select(SELECT, { count: 'exact' })
+      .eq('workspace_id', workspaceId)
+      .is('termos_pesquisa_busca', null)
+
+    if (searchRaw.length > 0) {
+      const esc = escapeIlike(searchRaw)
+      const p = quotePostgrestFilterValue(`%${esc}%`)
+      querySem = querySem.or(`nome.ilike.${p}`)
+    }
+
+    const { data, error, count } = await querySem
+      .order('updated_at', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      throw createError({ statusCode: 500, statusMessage: error.message })
+    }
+
+    const total = typeof count === 'number' && Number.isFinite(count) ? count : 0
+    const total_pages = total === 0 ? 1 : Math.ceil(total / page_size)
+    const rows = (data ?? []).map((r: Record<string, unknown>) => mapViewProdutoComVariacoesRow(r))
 
     return { data: rows, total, page, page_size, total_pages }
   }

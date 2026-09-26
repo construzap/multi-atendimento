@@ -247,6 +247,15 @@ export type ProdutoTermoPesquisaItem = {
   ordem?: number
 }
 
+/** Filtro da coluna esquerda na listagem de produtos. */
+export type ProdutosListaFiltroId = number | 'todos' | 'sem_categoria'
+
+/** Seleção emitida pela lista de categorias. */
+export type ProdutosListaSelecao =
+  | { tipo: 'todos' }
+  | { tipo: 'sem_categoria' }
+  | { tipo: 'categoria'; termo: ProdutoTermoPesquisaItem }
+
 /** Item de reordenação (termos ou produtos no vínculo). */
 export type ProdutoOrdemItem = {
   id: number

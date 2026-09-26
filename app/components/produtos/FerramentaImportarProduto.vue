@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import type { ProdutosImportarLoteResponse } from '#shared/types/produtos'
+import type { ProdutosImportarLoteResponse, ProdutosListaFiltroId } from '#shared/types/produtos'
 import MapeamentoDeColunas from '~/components/produtos/MapeamentoDeColunas.vue'
 import ProdutosModalImportarProgresso from '~/components/produtos/ProdutosModalImportarProgresso.vue'
 import { mensagemErroFetch } from '~/stores/canais'
@@ -25,11 +25,14 @@ const props = withDefaults(
     termoBusca?: string
     /** Quando definido, a lista após importar filtra por este termo (vínculo). */
     termoId?: number | null
+    /** Filtro ativo da listagem (todos / sem categoria / id da categoria). */
+    filtroId?: ProdutosListaFiltroId | null
   }>(),
   {
     workspaceId: null,
     termoBusca: '',
     termoId: null,
+    filtroId: null,
   },
 )
 
@@ -143,13 +146,14 @@ async function executarImportacao(
     }
 
     produtosStore.page = 1
-    if (props.termoId != null && props.termoId > 0) {
-      produtosStore.invalidarCacheTermo(workspaceId, props.termoId)
-    }
+    const filtroId: ProdutosListaFiltroId =
+      props.filtroId ??
+      (props.termoId != null && props.termoId > 0 ? props.termoId : 'todos')
+    produtosStore.invalidarCacheTermo(workspaceId, filtroId)
     await produtosStore.fetchPagina(workspaceId, {
       page: 1,
       q: props.termoBusca ?? '',
-      termoId: props.termoId,
+      filtroId,
       force: true,
     })
     useProdutoTermosPesquisaStore().limparCache(workspaceId)

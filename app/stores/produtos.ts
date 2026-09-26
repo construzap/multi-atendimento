@@ -13,6 +13,7 @@ import type {
   ProdutosOportunidadesVendasExcluirResponse,
   ProdutosOportunidadesVendasListaResponse,
   ProdutosOportunidadesVendasTotalResponse,
+  ProdutosListaFiltroId,
 } from '#shared/types/produtos'
 import { resolverPrecoPrazo } from '#shared/utils/resolverPrecoPrazo'
 import { mensagemErroFetch } from '~/stores/canais'
@@ -138,13 +139,24 @@ const MAX_CACHE_TERMOS = 10
 
 export type ProdutosTermoBucketKey = string
 
-export function produtosTermoBucketKey(workspaceId: number, termoId: number): ProdutosTermoBucketKey {
-  return `${Math.trunc(workspaceId)}:${Math.trunc(termoId)}`
+export function isFiltroCategoriaId(
+  filtroId: ProdutosListaFiltroId | null | undefined,
+): filtroId is number {
+  return typeof filtroId === 'number' && Number.isFinite(filtroId) && filtroId >= 1
+}
+
+export function produtosTermoBucketKey(
+  workspaceId: number,
+  filtroId: ProdutosListaFiltroId,
+): ProdutosTermoBucketKey {
+  const wid = Math.trunc(workspaceId)
+  if (filtroId === 'todos' || filtroId === 'sem_categoria') return `${wid}:${filtroId}`
+  return `${wid}:${Math.trunc(filtroId)}`
 }
 
 type TermoProdutosBucket = {
   workspaceId: number
-  termoId: number
+  filtroId: ProdutosListaFiltroId
   items: ProdutoWorkspaceItem[]
   total: number
   page: number
@@ -156,12 +168,12 @@ type TermoProdutosBucket = {
 
 function emptyTermoBucket(
   workspaceId: number,
-  termoId: number,
+  filtroId: ProdutosListaFiltroId,
   pageSize: number,
 ): TermoProdutosBucket {
   return {
     workspaceId,
-    termoId,
+    filtroId,
     items: [],
     total: 0,
     page: 1,
@@ -170,6 +182,26 @@ function emptyTermoBucket(
     ultimoSnapshotKey: null,
     loadedAt: null,
   }
+}
+
+function resolverFiltroId(input: {
+  filtroId?: ProdutosListaFiltroId | null
+  termoId?: number | null
+}): ProdutosListaFiltroId | null {
+  if (input.filtroId === 'todos' || input.filtroId === 'sem_categoria') return input.filtroId
+  if (isFiltroCategoriaId(input.filtroId)) return Math.trunc(input.filtroId)
+  if (isFiltroCategoriaId(input.termoId)) return Math.trunc(input.termoId)
+  return null
+}
+
+function queryBuscarPorFiltro(
+  workspaceId: number,
+  filtroId: ProdutosListaFiltroId,
+): Record<string, string | number> {
+  const query: Record<string, string | number> = { workspace_id: workspaceId }
+  if (filtroId === 'sem_categoria') query.termo_id = 'null'
+  else if (isFiltroCategoriaId(filtroId)) query.termo_id = filtroId
+  return query
 }
 
 export const useProdutosStore = defineStore('produtos', {
@@ -184,7 +216,7 @@ export const useProdutosStore = defineStore('produtos', {
     /** Evita refetch quando já temos a mesma página em cache no bucket ativo. */
     ultimoSnapshotKey: null as string | null,
 
-    /** Termo ativo: `${workspaceId}:${termoId}`. */
+    /** Filtro ativo: `${workspaceId}:${filtroId}`. */
     activeKey: null as ProdutosTermoBucketKey | null,
     /** Cache de listagens por termo (máx. `MAX_CACHE_TERMOS`). */
     byKey: {} as Record<ProdutosTermoBucketKey, TermoProdutosBucket>,
@@ -234,10 +266,15 @@ export const useProdutosStore = defineStore('produtos', {
       return Math.ceil(state.total / state.pageSize)
     },
 
+    activeFiltroId(state): ProdutosListaFiltroId | null {
+      if (!state.activeKey) return null
+      return state.byKey[state.activeKey]?.filtroId ?? null
+    },
+
     activeTermoId(state): number | null {
       if (!state.activeKey) return null
-      const b = state.byKey[state.activeKey]
-      return b?.termoId ?? null
+      const id = state.byKey[state.activeKey]?.filtroId
+      return isFiltroCategoriaId(id) ? id : null
     },
 
     /** Primeiro selecionado — alvo típico de modais que editam uma linha. */
@@ -273,11 +310,14 @@ export const useProdutosStore = defineStore('produtos', {
       }
     },
 
-    setActiveKey(key: ProdutosTermoBucketKey | null, meta?: { workspaceId: number; termoId: number }) {
+    setActiveKey(
+      key: ProdutosTermoBucketKey | null,
+      meta?: { workspaceId: number; filtroId: ProdutosListaFiltroId },
+    ) {
       this.activeKey = key
       if (!key || !meta) return
       if (!this.byKey[key]) {
-        this.byKey[key] = emptyTermoBucket(meta.workspaceId, meta.termoId, this.pageSize)
+        this.byKey[key] = emptyTermoBucket(meta.workspaceId, meta.filtroId, this.pageSize)
       }
       this.touchKey(key)
       this.pruneCache()
@@ -295,11 +335,11 @@ export const useProdutosStore = defineStore('produtos', {
     },
 
     /** Persiste a vista ativa no cache do termo. */
-    persistActiveBucket(workspaceId: number, termoId: number, q: string) {
-      const key = produtosTermoBucketKey(workspaceId, termoId)
+    persistActiveBucket(workspaceId: number, filtroId: ProdutosListaFiltroId, q: string) {
+      const key = produtosTermoBucketKey(workspaceId, filtroId)
       this.byKey[key] = {
         workspaceId,
-        termoId,
+        filtroId,
         items: this.items,
         total: this.total,
         page: this.page,
@@ -331,8 +371,8 @@ export const useProdutosStore = defineStore('produtos', {
     },
 
     /** Invalida cache do termo (próximo fetchPagina refaz GET). */
-    invalidarCacheTermo(workspaceId: number, termoId: number) {
-      const key = produtosTermoBucketKey(workspaceId, termoId)
+    invalidarCacheTermo(workspaceId: number, filtroId: ProdutosListaFiltroId) {
+      const key = produtosTermoBucketKey(workspaceId, filtroId)
       const b = this.byKey[key]
       if (b) {
         b.loadedAt = null
@@ -359,26 +399,23 @@ export const useProdutosStore = defineStore('produtos', {
 
     makeSnapshotKey(
       workspaceId: number,
-      input: { page: number; q: string; termoId?: number | null },
+      input: { page: number; q: string; filtroId?: ProdutosListaFiltroId | null; termoId?: number | null },
     ): string {
       const q = (input.q ?? '').trim()
       const page =
         this.pageSize === PRODUTOS_PAGE_SIZE_TODOS ? 1 : input.page
-      const termo =
-        input.termoId != null && Number.isFinite(input.termoId) && input.termoId > 0
-          ? Math.trunc(input.termoId)
-          : ''
-      return [workspaceId, page, this.pageSize, q, termo].join('|')
+      const filtro = resolverFiltroId(input) ?? ''
+      return [workspaceId, page, this.pageSize, q, filtro].join('|')
     },
 
     temSnapshot(
       workspaceId: number,
-      input: { page: number; q: string; termoId?: number | null },
+      input: { page: number; q: string; filtroId?: ProdutosListaFiltroId | null; termoId?: number | null },
     ): boolean {
       if (this.items.length === 0 && this.total === 0) {
-        const tid = input.termoId
-        if (tid == null || tid < 1) return false
-        const b = this.byKey[produtosTermoBucketKey(workspaceId, tid)]
+        const filtroId = resolverFiltroId(input)
+        if (filtroId == null) return false
+        const b = this.byKey[produtosTermoBucketKey(workspaceId, filtroId)]
         if (!b || b.loadedAt == null) return false
       }
       const k = this.makeSnapshotKey(workspaceId, input)
@@ -386,30 +423,32 @@ export const useProdutosStore = defineStore('produtos', {
     },
 
     /**
-     * GET /api/produtos/buscar — lista paginada por termo.
-     * Se o termo já está em `byKey` com a mesma página/`q`, só ativa o cache (sem GET).
+     * GET /api/produtos/buscar — lista paginada por filtro (categoria, todos ou sem categoria).
+     * Se o filtro já está em `byKey` com a mesma página/`q`, só ativa o cache (sem GET).
      */
     async fetchPagina(
       workspaceId: number,
-      input: { page: number; q: string; termoId?: number | null; force?: boolean },
+      input: {
+        page: number
+        q: string
+        filtroId?: ProdutosListaFiltroId | null
+        termoId?: number | null
+        force?: boolean
+      },
     ) {
       if (!Number.isFinite(workspaceId) || workspaceId < 1) {
         this.reset()
         return
       }
 
-      const termoId =
-        input.termoId != null && Number.isFinite(input.termoId) && input.termoId > 0
-          ? Math.trunc(input.termoId)
-          : null
-
-      if (termoId == null) {
+      const filtroId = resolverFiltroId(input)
+      if (filtroId == null) {
         this.limparVistaLista()
         return
       }
 
-      const key = produtosTermoBucketKey(workspaceId, termoId)
-      this.setActiveKey(key, { workspaceId, termoId })
+      const key = produtosTermoBucketKey(workspaceId, filtroId)
+      this.setActiveKey(key, { workspaceId, filtroId })
       const bucket = this.byKey[key]!
 
       const qNorm = (input.q ?? '').trim()
@@ -420,7 +459,7 @@ export const useProdutosStore = defineStore('produtos', {
         !input.force &&
         bucket.loadedAt != null &&
         bucket.workspaceId === workspaceId &&
-        bucket.termoId === termoId &&
+        bucket.filtroId === filtroId &&
         bucket.q === qNorm &&
         bucket.pageSize === this.pageSize &&
         (this.pageSize === PRODUTOS_PAGE_SIZE_TODOS || bucket.page === pageReq)
@@ -434,16 +473,13 @@ export const useProdutosStore = defineStore('produtos', {
 
       const snapshotInput =
         this.pageSize === PRODUTOS_PAGE_SIZE_TODOS
-          ? { page: 1, q: input.q, termoId }
-          : { page: input.page, q: input.q, termoId }
+          ? { page: 1, q: input.q, filtroId }
+          : { page: input.page, q: input.q, filtroId }
 
       this.listPending = true
       this.listError = null
 
-      const queryBase: Record<string, string | number> = {
-        workspace_id: workspaceId,
-        termo_id: termoId,
-      }
+      const queryBase = queryBuscarPorFiltro(workspaceId, filtroId)
       if (input.q) queryBase.q = input.q
 
       try {
@@ -472,7 +508,7 @@ export const useProdutosStore = defineStore('produtos', {
           this.total = total
           this.page = 1
           this.ultimoSnapshotKey = this.makeSnapshotKey(workspaceId, snapshotInput)
-          this.persistActiveBucket(workspaceId, termoId, qNorm)
+          this.persistActiveBucket(workspaceId, filtroId, qNorm)
           return
         }
 
@@ -491,9 +527,9 @@ export const useProdutosStore = defineStore('produtos', {
         this.ultimoSnapshotKey = this.makeSnapshotKey(workspaceId, {
           page: res.page,
           q: input.q,
-          termoId,
+          filtroId,
         })
-        this.persistActiveBucket(workspaceId, termoId, qNorm)
+        this.persistActiveBucket(workspaceId, filtroId, qNorm)
       } catch (err) {
         this.items = []
         this.total = 0

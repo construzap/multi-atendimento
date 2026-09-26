@@ -3,6 +3,8 @@ import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import type {
   ProdutoTermoPesquisaItem,
+  ProdutosListaFiltroId,
+  ProdutosListaSelecao,
   ProdutosTermoPesquisaAtualizarResponse,
   ProdutosTermoPesquisaCriarResponse,
   ProdutosTermoPesquisaEliminarResponse,
@@ -19,17 +21,17 @@ import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
 const props = withDefaults(
   defineProps<{
     workspaceId?: number | null
-    /** Termo atualmente selecionado na listagem de produtos. */
-    selectedId?: number | null
+    /** Filtro ativo: categoria, todos ou sem categoria. */
+    selectedFiltro?: ProdutosListaFiltroId | null
   }>(),
   {
     workspaceId: null,
-    selectedId: null,
+    selectedFiltro: null,
   },
 )
 
 const emit = defineEmits<{
-  selecionar: [termo: ProdutoTermoPesquisaItem | null]
+  selecionar: [sel: ProdutosListaSelecao]
 }>()
 
 const config = CONFIG_SELECAO_MULTIPLA
@@ -175,10 +177,12 @@ async function carregar(opts?: { autoSelecionar?: boolean }) {
 }
 
 function tentarAutoSelecionar() {
+  if (props.selectedFiltro === 'todos' || props.selectedFiltro === 'sem_categoria') return
   const lista = termos.value
-  if (!lista.length) return
-  if (props.selectedId != null && lista.some((t) => t.id === props.selectedId)) return
-  emit('selecionar', { ...lista[0]! })
+  if (typeof props.selectedFiltro === 'number' && lista.some((t) => t.id === props.selectedFiltro)) {
+    return
+  }
+  emit('selecionar', { tipo: 'todos' })
 }
 
 watch(
@@ -192,7 +196,24 @@ watch(
 )
 
 function aoSelecionar(termo: ProdutoTermoPesquisaItem) {
-  emit('selecionar', termo)
+  emit('selecionar', { tipo: 'categoria', termo: { ...termo } })
+}
+
+function aoSelecionarTodos() {
+  emit('selecionar', { tipo: 'todos' })
+}
+
+function aoSelecionarSemCategoria() {
+  emit('selecionar', { tipo: 'sem_categoria' })
+}
+
+function itemEspecialClass(ativo: boolean) {
+  return [
+    'flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:focus-visible:ring-dark-primary/40',
+    ativo
+      ? 'bg-surface-container-high font-semibold text-on-surface dark:bg-dark-surface-container-high dark:text-dark-on-surface'
+      : 'text-on-surface hover:bg-surface-container-low dark:text-dark-on-surface dark:hover:bg-dark-surface-container-low',
+  ]
 }
 
 function abrirCriar() {
@@ -235,7 +256,7 @@ async function confirmarModalForm() {
       })
       termosStore.aposCriarOuExistirTermo(wid, res.data)
       cancelarModalForm()
-      emit('selecionar', { ...res.data })
+      emit('selecionar', { tipo: 'categoria', termo: { ...res.data } })
       if (res.ja_existia) toast.info(config.toastJaExistia)
       else toast.success(config.toastCriado)
     } catch (err) {
@@ -256,8 +277,8 @@ async function confirmarModalForm() {
     })
     termosStore.substituirTermo(wid, res.data)
     cancelarModalForm()
-    if (props.selectedId === itemId) {
-      emit('selecionar', { ...res.data })
+    if (props.selectedFiltro === itemId) {
+      emit('selecionar', { tipo: 'categoria', termo: { ...res.data } })
     }
     toast.success(config.toastAtualizado)
   } catch (err) {
@@ -291,10 +312,8 @@ async function confirmarEliminar() {
     termosStore.removerTermo(wid, item.id)
     alertaEliminarAberto.value = false
     termoAEliminar.value = null
-    if (props.selectedId === item.id) {
-      const restante = termosStore.getListaCompletaCopia(wid)
-      if (restante.length) emit('selecionar', { ...restante[0]! })
-      else emit('selecionar', null)
+    if (props.selectedFiltro === item.id) {
+      emit('selecionar', { tipo: 'todos' })
     }
     toast.success(config.toastEliminado)
   } catch (err) {
@@ -344,6 +363,38 @@ async function confirmarEliminar() {
     </div>
 
     <div class="min-h-0 flex-1 overflow-y-auto">
+      <ul
+        class="divide-y divide-outline/20 border-b border-outline/25 dark:divide-dark-outline/20 dark:border-dark-outline/25"
+        role="list"
+      >
+        <li class="px-1.5 py-1">
+          <button
+            type="button"
+            :class="itemEspecialClass(selectedFiltro === 'todos')"
+            :aria-current="selectedFiltro === 'todos' ? 'true' : undefined"
+            @click="aoSelecionarTodos"
+          >
+            <span class="material-symbols-outlined text-[18px] text-on-surface-variant dark:text-dark-on-surface-variant" aria-hidden="true">
+              apps
+            </span>
+            <span class="min-w-0 flex-1 truncate">Todos os produtos</span>
+          </button>
+        </li>
+        <li class="px-1.5 py-1">
+          <button
+            type="button"
+            :class="itemEspecialClass(selectedFiltro === 'sem_categoria')"
+            :aria-current="selectedFiltro === 'sem_categoria' ? 'true' : undefined"
+            @click="aoSelecionarSemCategoria"
+          >
+            <span class="material-symbols-outlined text-[18px] text-on-surface-variant dark:text-dark-on-surface-variant" aria-hidden="true">
+              label_off
+            </span>
+            <span class="min-w-0 flex-1 truncate">Sem categoria</span>
+          </button>
+        </li>
+      </ul>
+
       <p
         v-if="pending"
         class="px-3 py-6 text-center text-sm text-on-surface-variant dark:text-dark-on-surface-variant"
@@ -389,7 +440,7 @@ async function confirmarEliminar() {
           <div
             class="flex items-stretch gap-0.5 px-1.5 py-1"
             :class="
-              selectedId === termo.id
+              selectedFiltro === termo.id
                 ? 'bg-surface-container-high dark:bg-dark-surface-container-high'
                 : 'hover:bg-surface-container-low dark:hover:bg-dark-surface-container-low'
             "
@@ -412,7 +463,7 @@ async function confirmarEliminar() {
             <button
               type="button"
               class="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:focus-visible:ring-dark-primary/40"
-              :aria-current="selectedId === termo.id ? 'true' : undefined"
+              :aria-current="selectedFiltro === termo.id ? 'true' : undefined"
               @click="aoSelecionar(termo)"
             >
               <span class="min-w-0 flex-1 truncate text-sm font-medium text-on-surface dark:text-dark-on-surface">
