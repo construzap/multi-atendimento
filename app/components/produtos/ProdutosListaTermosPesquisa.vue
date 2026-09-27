@@ -362,7 +362,7 @@ async function confirmarEliminar() {
       </label>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto">
+    <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain [overflow-anchor:none]">
       <ul
         class="divide-y divide-outline/20 border-b border-outline/25 dark:divide-dark-outline/20 dark:border-dark-outline/25"
         role="list"

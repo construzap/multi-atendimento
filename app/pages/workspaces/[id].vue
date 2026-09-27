@@ -19,6 +19,13 @@ function parsePositiveInt(raw: unknown): number | null {
 
 const workspaceId = computed(() => parsePositiveInt(route.params.id))
 
+/** Produtos: o wrapper não cresce com a lista — só a tabela rola. */
+const travaViewportProdutos = computed(() => {
+  const p = route.path
+  if (p.includes('/produtos/enviar-para-ia')) return false
+  return /\/workspaces\/[^/]+\/produtos\/?$/.test(p)
+})
+
 // 1) Busca workspaces (SSR-friendly) se ainda não estiverem no Pinia.
 if (import.meta.server && workspaces.items.length === 0) {
   const ufetch = useRequestFetch()
@@ -65,6 +72,11 @@ watch(
 </script>
 
 <template>
-  <NuxtPage :key="route.fullPath" />
+  <div
+    class="flex min-h-0 flex-1 flex-col"
+    :class="travaViewportProdutos ? 'h-full min-h-0 overflow-hidden' : ''"
+  >
+    <NuxtPage :key="route.fullPath" />
+  </div>
 </template>
 

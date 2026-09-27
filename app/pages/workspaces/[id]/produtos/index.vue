@@ -346,7 +346,7 @@ function aposImportacao() {
 
 <template>
   <div
-    class="mx-auto flex h-full min-h-0 w-full max-w-[1920px] flex-col gap-3 overflow-hidden bg-transparent px-4 py-4 md:gap-4 md:px-6 md:py-5"
+    class="mx-auto flex h-full max-h-full min-h-0 w-full max-w-[1920px] flex-col gap-3 overflow-hidden bg-transparent px-4 py-4 md:gap-4 md:px-6 md:py-5"
   >
     <header class="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h1 class="font-headline text-2xl font-bold text-on-surface dark:text-dark-on-surface">
@@ -383,11 +383,11 @@ function aposImportacao() {
     />
 
     <div
-      class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-outline/30 bg-surface dark:border-dark-outline/30 dark:bg-dark-surface lg:flex-row"
+      class="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-outline/30 bg-surface [overflow-anchor:none] dark:border-dark-outline/30 dark:bg-dark-surface lg:flex-row"
     >
       <!-- Coluna esquerda: termos -->
       <aside
-        class="flex max-lg:h-[min(34vh,15rem)] w-full shrink-0 flex-col overflow-hidden border-b border-outline/30 dark:border-dark-outline/30 sm:max-lg:h-[min(36vh,16rem)] lg:w-72 lg:border-b-0 lg:border-r xl:w-80"
+        class="flex max-lg:h-[min(34vh,15rem)] w-full min-h-0 shrink-0 flex-col overflow-hidden border-b border-outline/30 dark:border-dark-outline/30 sm:max-lg:h-[min(36vh,16rem)] lg:h-auto lg:w-72 lg:border-b-0 lg:border-r xl:w-80"
       >
         <ProdutosListaTermosPesquisa
           class="h-full min-h-0"

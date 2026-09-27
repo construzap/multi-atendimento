@@ -1540,11 +1540,11 @@ onUnmounted(() => {
 
       <div
         v-if="mostrarSelecao && modo === 'api' && podeGravar()"
-        class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/80"
+        class="flex min-h-[3.25rem] shrink-0 items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900/80"
       >
         <div class="flex min-w-0 items-center gap-3">
           <label
-            class="group/check flex cursor-pointer items-center gap-2"
+            class="group/check relative flex cursor-pointer items-center gap-2"
             :class="
               pending || !itemsExibicao.length || excluindo || editandoMassa
                 ? 'cursor-not-allowed opacity-40'
@@ -1590,7 +1590,7 @@ onUnmounted(() => {
             </span>
             <input
               type="checkbox"
-              class="sr-only"
+              class="absolute inset-0 z-10 cursor-pointer opacity-0"
               :checked="todosDaPaginaSelecionados"
               :indeterminate="indeterminadoCabecalhoPagina"
               :disabled="pending || !itemsExibicao.length || excluindo || editandoMassa"
@@ -1639,7 +1639,7 @@ onUnmounted(() => {
       <!-- Lista em cards (listagem API e rascunho criar em massa) -->
       <div
         ref="tabelaScrollRef"
-        class="min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-auto overflow-y-auto"
+        class="min-h-0 w-full min-w-0 max-w-full flex-1 overflow-x-auto overflow-y-auto overscroll-contain [overflow-anchor:none]"
         :class="{ 'pointer-events-none opacity-50': excluindo || editandoMassa }"
       >
         <div

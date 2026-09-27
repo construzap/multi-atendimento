@@ -193,7 +193,7 @@ const checkboxVisualBaseClass =
 
       <label
         v-if="mostrarSelecao"
-        class="group/check flex shrink-0 cursor-pointer items-center justify-center self-center py-1"
+        class="group/check relative flex shrink-0 cursor-pointer items-center justify-center self-center py-1"
         :class="desabilitado ? 'cursor-not-allowed opacity-40' : ''"
         @click.stop
       >
@@ -223,7 +223,7 @@ const checkboxVisualBaseClass =
         </span>
         <input
           type="checkbox"
-          class="sr-only"
+          class="absolute inset-0 z-10 cursor-pointer opacity-0"
           :checked="selecionado"
           :disabled="desabilitado"
           :aria-label="'Selecionar produto ' + row.nome"

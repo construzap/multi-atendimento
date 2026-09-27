@@ -500,8 +500,8 @@ function closeMobileSidebar() {
       :style="{ backgroundColor: pageBg }"
     >
       <div
-        class="min-h-0 flex-1"
-        :class="travaViewportMain ? 'overflow-hidden' : 'overflow-y-auto'"
+        class="flex min-h-0 min-w-0 flex-1 flex-col"
+        :class="travaViewportMain ? 'h-full overflow-hidden' : 'overflow-y-auto'"
       >
         <slot />
       </div>
