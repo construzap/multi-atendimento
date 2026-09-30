@@ -18,6 +18,11 @@ import SeletorFunilKanban from '~/components/kanban/SeletorFunilKanban.vue'
 import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 import { useProfileStore } from '~/stores/profile'
+import {
+  ativarSomPedidoNovo,
+  desativarSomPedidoNovo,
+  somPedidoLiberado,
+} from '~/utils/SomNavegadorPedidoNovo'
 
 type DragState = {
   cardId: string
@@ -391,6 +396,20 @@ async function garantirCanaisNoModal() {
   }
 }
 
+async function alternarSomPedido() {
+  if (somPedidoLiberado.value) {
+    desativarSomPedidoNovo()
+    toast.message('Som de pedido desligado.')
+    return
+  }
+  const ok = await ativarSomPedidoNovo()
+  if (ok) {
+    toast.success('Som ativo. O sino toca mesmo se você estiver em outra aba.')
+    return
+  }
+  toast.error('O navegador bloqueou o som. Clique de novo em Ativar som.')
+}
+
 async function abrirModalNovoContato() {
   nomeContato.value = ''
   telefoneContato.value = ''
@@ -726,6 +745,23 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
           Ocultar grupos
         </label>
         <div class="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold shadow-sm transition-colors"
+          :class="somPedidoLiberado
+            ? 'border border-emerald-600/40 bg-emerald-600 text-white hover:bg-emerald-700'
+            : 'border border-amber-500 bg-amber-500 text-white hover:bg-amber-600'"
+          :aria-pressed="somPedidoLiberado"
+          :title="somPedidoLiberado
+            ? 'Som ligado. Pedidos tocam mesmo se você estiver em outra aba. Clique para desligar.'
+            : 'Clique para liberar o sino de pedido. Depois disso ele toca mesmo com outra aba na frente, como o YouTube.'"
+          @click="alternarSomPedido"
+        >
+          <span class="material-symbols-outlined text-[18px]" aria-hidden="true">
+            {{ somPedidoLiberado ? 'volume_up' : 'volume_off' }}
+          </span>
+          {{ somPedidoLiberado ? 'Som ativo' : 'Ativar som' }}
+        </button>
         <button
           type="button"
           class="inline-flex items-center gap-2 rounded-xl border border-outline/40 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-dark-outline/40 dark:bg-dark-surface-container-low dark:text-dark-on-surface dark:hover:bg-dark-surface-container"

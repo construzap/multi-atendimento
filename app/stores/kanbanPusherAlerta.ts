@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia'
 import {
+  alertarPedidoForaDaAba,
+  cancelarAlertaPedidoForaDaAba,
+} from '~/utils/notificarPedidoNovoSistema'
+import {
   pararSomNavegadorPedidoNovo,
+  somPedidoEstaLiberado,
   SomNavegadorPedidoNovo,
 } from '~/utils/SomNavegadorPedidoNovo'
 
@@ -32,6 +37,12 @@ export const useKanbanPusherAlertaStore = defineStore('kanbanPusherAlerta', {
     acao: 'none',
   }),
   actions: {
+    /** Abre o modal. O sino, se estiver liberado, já foi iniciado em `showPedidoNovo`. */
+    abrirModalPedido() {
+      cancelarAlertaPedidoForaDaAba()
+      this.open = true
+    },
+
     showPedidoNovo(contato: string, conversaKey: string) {
       this.title = 'Pedido novo!'
       this.texto = `${contato} acabou de enviar um pedido. Abra agora para aceitar ou rejeitar.`
@@ -41,11 +52,28 @@ export const useKanbanPusherAlertaStore = defineStore('kanbanPusherAlerta', {
       this.mostrarCancelar = true
       this.conversaKey = conversaKey
       this.acao = 'abrir_pedido'
-      this.open = true
-      SomNavegadorPedidoNovo()
+
+      // Com o som liberado no clique, o MP3 toca mesmo com outra aba na frente.
+      if (somPedidoEstaLiberado()) {
+        SomNavegadorPedidoNovo()
+      }
+
+      const abaOculta = import.meta.client && document.visibilityState === 'hidden'
+      if (abaOculta) {
+        this.open = false
+        alertarPedidoForaDaAba({
+          titulo: this.title,
+          texto: this.texto,
+          aoVoltar: () => this.abrirModalPedido(),
+        })
+        return
+      }
+
+      this.abrirModalPedido()
     },
 
     close() {
+      cancelarAlertaPedidoForaDaAba()
       pararSomNavegadorPedidoNovo()
       this.open = false
       this.conversaKey = null
