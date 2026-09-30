@@ -11,6 +11,7 @@ import type {
 } from '#shared/types/produtos'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
+import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import { CONFIG_SELECAO_MULTIPLA } from './produtosSelecaoMultiplaConfig'
@@ -50,6 +51,7 @@ const erroInicial = ref(false)
 const modalEdicaoAberto = ref(false)
 const termoEmEdicao = ref<ProdutoTermoPesquisaDetalhado | null>(null)
 const nomeEdicao = ref('')
+const descricaoEdicao = ref('')
 const guardandoEdicao = ref(false)
 
 const alertaEliminarAberto = ref(false)
@@ -215,6 +217,7 @@ function toggleExpandido(id: number) {
 function iniciarEdicao(termo: ProdutoTermoPesquisaDetalhado) {
   termoEmEdicao.value = { ...termo }
   nomeEdicao.value = termo.nome
+  descricaoEdicao.value = termo.descricao ?? ''
   modalEdicaoAberto.value = true
 }
 
@@ -223,6 +226,7 @@ function cancelarEdicao() {
   modalEdicaoAberto.value = false
   termoEmEdicao.value = null
   nomeEdicao.value = ''
+  descricaoEdicao.value = ''
 }
 
 async function confirmarEdicao() {
@@ -234,14 +238,15 @@ async function confirmarEdicao() {
     toast.error(config.erroNomeVazio)
     return
   }
+  const descricao = descricaoEdicao.value.trim() || null
   guardandoEdicao.value = true
   try {
     const res = await $fetch<ProdutosTermoPesquisaAtualizarResponse>(config.apiItem(itemId), {
       method: 'PATCH',
-      body: { workspace_id: wid, nome },
+      body: { workspace_id: wid, nome, descricao },
     })
     store.substituirTermo(wid, res.data)
-    store.atualizarNomeTodosTermos(itemId, res.data.nome)
+    store.atualizarNomeTodosTermos(itemId, res.data.nome, res.data.descricao ?? null)
     cancelarEdicao()
     toast.success(config.toastAtualizado)
   } catch (err) {
@@ -693,6 +698,23 @@ onUnmounted(() => {
           :placeholder="config.placeholderEdicao"
           :disabled="guardandoEdicao"
           @keydown.enter.prevent="confirmarEdicao"
+        />
+      </div>
+
+      <div>
+        <label
+          class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant"
+        >
+          {{ config.labelDescricaoCampo }}
+        </label>
+        <BaseTextarea
+          v-model="descricaoEdicao"
+          :placeholder="config.placeholderDescricao"
+          :disabled="guardandoEdicao"
+          :submit-on-enter="false"
+          :min-height-px="72"
+          :max-height-px="200"
+          :maxlength="2000"
         />
       </div>
 

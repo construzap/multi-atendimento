@@ -86,7 +86,7 @@ export default defineEventHandler(async (event): Promise<ProdutosTermosPesquisaR
       .update({ ordem: item.ordem })
       .eq('id', item.id)
       .eq('workspace_id', workspaceId)
-      .select('id, nome, ordem')
+      .select('id, nome, ordem, descricao')
       .maybeSingle()
 
     if (upErr) {

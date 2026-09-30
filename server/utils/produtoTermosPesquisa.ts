@@ -15,12 +15,25 @@ export function mapTermoPesquisaRow(r: Record<string, unknown>): ProdutoTermoPes
     typeof ordemRaw === 'number'
       ? Math.trunc(ordemRaw)
       : Number.parseInt(String(ordemRaw ?? '0'), 10)
+  const descricaoRaw =
+    r.descricao == null ? null : String(r.descricao).trim()
   return {
     id: Number.isFinite(id) ? id : 0,
     nome: nomeRaw.length ? nomeRaw.toLocaleUpperCase('pt-BR') : '',
     ordem: Number.isFinite(ordem) ? ordem : 0,
+    descricao: descricaoRaw && descricaoRaw.length ? descricaoRaw : null,
   }
 }
+
+/** Trim; vazio → `null`. */
+export function normalizarDescricaoTermoPesquisa(raw: unknown): string | null {
+  if (raw === undefined || raw === null) return null
+  const s = String(raw).trim()
+  if (!s.length) return null
+  return s
+}
+
+export const DESCRICAO_TERMO_MAX = 2000
 
 export function normalizarNomeTermoPesquisa(raw: string | null | undefined): string | null {
   return normalizarTextoCategoriaUnica(raw)
@@ -44,12 +57,13 @@ export async function obterOuCriarTermoPesquisa(
   admin: { from: (table: string) => any },
   workspaceId: number,
   nomeNormalizado: string,
+  descricao?: string | null,
 ): Promise<ObterOuCriarTermoResult> {
   const nome = nomeNormalizado.trim()
   const literal = escapeIlikeLiteral(nome)
   const { data: existente, error: selErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome, ordem')
+    .select('id, nome, ordem, descricao')
     .eq('workspace_id', workspaceId)
     .ilike('nome', literal)
     .limit(1)
@@ -61,12 +75,18 @@ export async function obterOuCriarTermoPesquisa(
     const rec = existente as Record<string, unknown>
     const id = typeof rec.id === 'number' ? rec.id : Number(rec.id)
     const nomeDb = String(rec.nome ?? '').trim()
-    if (nomeDb.toLocaleUpperCase('pt-BR') !== nome) {
-      const { error: upErr } = await admin.from('produto_termo_de_pesquisa').update({ nome }).eq('id', id)
+    const patch: Record<string, unknown> = {}
+    if (nomeDb.toLocaleUpperCase('pt-BR') !== nome) patch.nome = nome
+    if (descricao !== undefined) patch.descricao = descricao
+    if (Object.keys(patch).length) {
+      const { error: upErr } = await admin
+        .from('produto_termo_de_pesquisa')
+        .update(patch)
+        .eq('id', id)
       if (upErr) throw upErr
     }
     return {
-      data: mapTermoPesquisaRow({ ...rec, nome }),
+      data: mapTermoPesquisaRow({ ...rec, nome, ...(descricao !== undefined ? { descricao } : {}) }),
       ja_existia: true,
     }
   }
@@ -87,8 +107,13 @@ export async function obterOuCriarTermoPesquisa(
 
   const { data: inserted, error: insErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .insert({ workspace_id: workspaceId, nome, ordem })
-    .select('id, nome, ordem')
+    .insert({
+      workspace_id: workspaceId,
+      nome,
+      ordem,
+      descricao: descricao ?? null,
+    })
+    .select('id, nome, ordem, descricao')
     .single()
 
   if (insErr) throw insErr
@@ -130,7 +155,7 @@ async function mapaNomeMinusculoParaTermoItem(
 ): Promise<Map<string, ProdutoTermoPesquisaItem>> {
   const { data, error } = await admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome, ordem')
+    .select('id, nome, ordem, descricao')
     .eq('workspace_id', workspaceId)
 
   if (error) throw error

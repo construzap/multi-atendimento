@@ -2,6 +2,8 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { assertMethod, createError, readBody } from 'h3'
 import type { ProdutosTermoPesquisaCriarResponse } from '#shared/types/produtos'
 import {
+  DESCRICAO_TERMO_MAX,
+  normalizarDescricaoTermoPesquisa,
   normalizarNomeTermoPesquisa,
   obterOuCriarTermoPesquisa,
 } from '../../utils/produtoTermosPesquisa'
@@ -11,6 +13,7 @@ import { getAuthUserId } from '../../utils/getAuthUserId'
 type Body = {
   workspace_id?: unknown
   nome?: unknown
+  descricao?: unknown
 }
 
 function parseWorkspaceId(raw: unknown): number {
@@ -53,12 +56,26 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaCr
     throw createError({ statusCode: 400, statusMessage: 'Nome do termo demasiado longo (máx. 200 caracteres).' })
   }
 
+  const descricao =
+    body.descricao === undefined ? undefined : normalizarDescricaoTermoPesquisa(body.descricao)
+  if (descricao != null && descricao.length > DESCRICAO_TERMO_MAX) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Descrição demasiado longa (máx. ${DESCRICAO_TERMO_MAX} caracteres).`,
+    })
+  }
+
   await checkWorkspace(event, workspaceId, userId)
 
   const admin = serverSupabaseServiceRole<any>(event)
 
   try {
-    const { data, ja_existia } = await obterOuCriarTermoPesquisa(admin, workspaceId, nome)
+    const { data, ja_existia } = await obterOuCriarTermoPesquisa(
+      admin,
+      workspaceId,
+      nome,
+      descricao,
+    )
     return { data, ja_existia }
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Erro ao criar termo.'

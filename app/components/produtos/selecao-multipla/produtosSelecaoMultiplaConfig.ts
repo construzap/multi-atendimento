@@ -1,6 +1,7 @@
 export type ItemSelecaoMultipla = {
   id: number
   nome: string
+  descricao?: string | null
 }
 
 export const CONFIG_SELECAO_MULTIPLA = {
@@ -9,11 +10,13 @@ export const CONFIG_SELECAO_MULTIPLA = {
   tituloEditar: 'Editar categoria',
   tituloEliminar: 'Eliminar categoria',
   labelNomeCampo: 'Nome da categoria',
+  labelDescricaoCampo: 'Descrição',
   labelBotaoCriar: 'Criar categoria',
   labelBotaoGerenciar: 'Gerenciar categorias',
   placeholderCelula: 'Selecionar categorias…',
   placeholderFiltro: 'Buscar categoria…',
   placeholderEdicao: 'Nome da categoria',
+  placeholderDescricao: 'Descrição opcional da categoria…',
   apiBase: '/api/produtos/termos-de-pesquisa',
   apiItem: (id: number) => `/api/produtos/termos-de-pesquisa/${id}`,
   labelEliminarConfirm: (nome: string) =>

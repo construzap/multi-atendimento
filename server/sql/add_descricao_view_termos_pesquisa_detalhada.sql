@@ -1,5 +1,5 @@
--- View detalhada de termos de pesquisa (banco principal).
--- Sync vector store usa apenas linhas com em_uso = true.
+-- Expõe `descricao` em view_termos_pesquisa_detalhada.
+-- Rodar no SQL Editor do Supabase após a coluna existir em produto_termo_de_pesquisa.
 
 drop view if exists public.view_termos_pesquisa_detalhada;
 

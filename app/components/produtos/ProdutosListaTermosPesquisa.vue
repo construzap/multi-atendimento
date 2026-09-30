@@ -2,7 +2,9 @@
 import { computed, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import type {
+  ProdutoAtualizarResponse,
   ProdutoTermoPesquisaItem,
+  ProdutosBuscaResponse,
   ProdutosListaFiltroId,
   ProdutosListaSelecao,
   ProdutosTermoPesquisaAtualizarResponse,
@@ -12,10 +14,12 @@ import type {
 } from '#shared/types/produtos'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
+import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import { CONFIG_SELECAO_MULTIPLA } from '~/components/produtos/selecao-multipla/produtosSelecaoMultiplaConfig'
 import { mensagemErroFetch } from '~/stores/canais'
+import { produtosTermoBucketKey, useProdutosStore } from '~/stores/produtos'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
 
 const props = withDefaults(
@@ -36,6 +40,7 @@ const emit = defineEmits<{
 
 const config = CONFIG_SELECAO_MULTIPLA
 const termosStore = useProdutoTermosPesquisaStore()
+const produtosStore = useProdutosStore()
 
 const pending = ref(false)
 const erro = ref<string | null>(null)
@@ -44,12 +49,21 @@ const filtro = ref('')
 const modalFormAberto = ref(false)
 const modoModal = ref<'criar' | 'editar'>('criar')
 const nomeModal = ref('')
+const descricaoModal = ref('')
 const termoEmEdicao = ref<ProdutoTermoPesquisaItem | null>(null)
 const guardandoModal = ref(false)
 
 const alertaEliminarAberto = ref(false)
+const alertaPerguntarTransferirAberto = ref(false)
+const alertaTransferirAberto = ref(false)
+const alertaConfirmarTransferenciaAberto = ref(false)
 const termoAEliminar = ref<ProdutoTermoPesquisaItem | null>(null)
+const termoDestino = ref<ProdutoTermoPesquisaItem | null>(null)
+const filtroTransferencia = ref('')
+const produtosParaTransferir = ref<number[]>([])
 const eliminandoId = ref<number | null>(null)
+const carregandoProdutos = ref(false)
+const transferindo = ref(false)
 const reordenando = ref(false)
 const dragTermoId = ref<number | null>(null)
 const dragOverTermoId = ref<number | null>(null)
@@ -66,6 +80,37 @@ const tituloModal = computed(() =>
 const textoAlertaEliminar = computed(() =>
   termoAEliminar.value ? config.labelEliminarConfirm(termoAEliminar.value.nome) : '',
 )
+
+const textoAlertaPerguntarTransferir = computed(() => {
+  const item = termoAEliminar.value
+  if (!item) return ''
+  const n = produtosParaTransferir.value.length
+  return `A categoria «${item.nome}» está em ${n} produto${n === 1 ? '' : 's'}. Deseja transferir esses produtos para outra categoria antes de eliminar?`
+})
+
+const textoAlertaTransferir = computed(() => {
+  const item = termoAEliminar.value
+  if (!item) return ''
+  const n = produtosParaTransferir.value.length
+  return `Selecione a categoria de destino para transferir ${n} produto${n === 1 ? '' : 's'} vinculado${n === 1 ? '' : 's'} a «${item.nome}».`
+})
+
+const textoConfirmarTransferencia = computed(() => {
+  const origem = termoAEliminar.value
+  const destino = termoDestino.value
+  if (!origem || !destino) return ''
+  const n = produtosParaTransferir.value.length
+  return `Transferir ${n} produto${n === 1 ? '' : 's'} de «${origem.nome}» para «${destino.nome}» e eliminar a categoria de origem?`
+})
+
+const destinosTransferencia = computed(() => {
+  const origemId = termoAEliminar.value?.id
+  if (origemId == null) return []
+  const lista = termos.value.filter((t) => t.id !== origemId)
+  const q = filtroTransferencia.value.trim().toLowerCase()
+  if (!q) return lista.slice(0, 40)
+  return lista.filter((t) => t.nome.toLowerCase().includes(q)).slice(0, 40)
+})
 
 const termos = computed(() => {
   const wid = props.workspaceId
@@ -220,6 +265,7 @@ function abrirCriar() {
   modoModal.value = 'criar'
   termoEmEdicao.value = null
   nomeModal.value = filtro.value.trim()
+  descricaoModal.value = ''
   modalFormAberto.value = true
 }
 
@@ -227,6 +273,7 @@ function abrirEditarTermo(termo: ProdutoTermoPesquisaItem) {
   modoModal.value = 'editar'
   termoEmEdicao.value = { ...termo }
   nomeModal.value = termo.nome
+  descricaoModal.value = termo.descricao ?? ''
   modalFormAberto.value = true
 }
 
@@ -235,6 +282,7 @@ function cancelarModalForm() {
   modalFormAberto.value = false
   termoEmEdicao.value = null
   nomeModal.value = ''
+  descricaoModal.value = ''
   modoModal.value = 'criar'
 }
 
@@ -246,13 +294,14 @@ async function confirmarModalForm() {
     toast.error(config.erroNomeVazio)
     return
   }
+  const descricao = descricaoModal.value.trim() || null
 
   if (modoModal.value === 'criar') {
     guardandoModal.value = true
     try {
       const res = await $fetch<ProdutosTermoPesquisaCriarResponse>(config.apiBase, {
         method: 'POST',
-        body: { workspace_id: wid, nome },
+        body: { workspace_id: wid, nome, descricao },
       })
       termosStore.aposCriarOuExistirTermo(wid, res.data)
       cancelarModalForm()
@@ -273,7 +322,7 @@ async function confirmarModalForm() {
   try {
     const res = await $fetch<ProdutosTermoPesquisaAtualizarResponse>(config.apiItem(itemId), {
       method: 'PATCH',
-      body: { workspace_id: wid, nome },
+      body: { workspace_id: wid, nome, descricao },
     })
     termosStore.substituirTermo(wid, res.data)
     cancelarModalForm()
@@ -288,21 +337,79 @@ async function confirmarModalForm() {
   }
 }
 
+function limparFluxoTransferencia() {
+  alertaPerguntarTransferirAberto.value = false
+  alertaTransferirAberto.value = false
+  alertaConfirmarTransferenciaAberto.value = false
+  filtroTransferencia.value = ''
+  termoDestino.value = null
+  produtosParaTransferir.value = []
+  carregandoProdutos.value = false
+  transferindo.value = false
+}
+
 function abrirEliminarTermo(termo: ProdutoTermoPesquisaItem) {
   termoAEliminar.value = { ...termo }
+  limparFluxoTransferencia()
   alertaEliminarAberto.value = true
 }
 
 function cancelarEliminar() {
-  if (eliminandoId.value != null) return
+  if (eliminandoId.value != null || transferindo.value || carregandoProdutos.value) return
   alertaEliminarAberto.value = false
+  limparFluxoTransferencia()
   termoAEliminar.value = null
 }
 
-async function confirmarEliminar() {
+/**
+ * Produtos da categoria no Pinia (`byKey`).
+ * Se o bucket ainda não foi aberto, busca a página e preenche o cache.
+ * Se a página em cache não cobre o total, busca o restante.
+ */
+async function coletarIdsProdutosDoTermo(workspaceId: number, termoId: number): Promise<number[]> {
+  const key = produtosTermoBucketKey(workspaceId, termoId)
+  const aberto = produtosStore.byKey[key]
+  if (!aberto?.loadedAt) {
+    await produtosStore.fetchPagina(workspaceId, {
+      page: 1,
+      q: '',
+      filtroId: termoId,
+    })
+  }
+
+  const bucket = produtosStore.byKey[key]
+  if (!bucket?.loadedAt) return []
+
+  if (bucket.total <= bucket.items.length) {
+    return [...new Set(bucket.items.map((p) => p.id).filter((id) => id > 0))]
+  }
+
+  const ids: number[] = []
+  let page = 1
+  let totalPages = 1
+  do {
+    const res = await $fetch<ProdutosBuscaResponse>('/api/produtos/buscar', {
+      method: 'GET',
+      query: {
+        workspace_id: workspaceId,
+        termo_id: termoId,
+        page,
+        page_size: 1000,
+      },
+    })
+    for (const produto of res.data ?? []) {
+      if (produto.id > 0) ids.push(produto.id)
+    }
+    totalPages = res.total_pages
+    page += 1
+  } while (page <= totalPages)
+
+  return [...new Set(ids)]
+}
+
+async function executarDelete(item: ProdutoTermoPesquisaItem) {
   const wid = props.workspaceId
-  const item = termoAEliminar.value
-  if (wid == null || wid < 1 || !item) return
+  if (wid == null || wid < 1) return
   eliminandoId.value = item.id
   try {
     await $fetch<ProdutosTermoPesquisaEliminarResponse>(config.apiItem(item.id), {
@@ -310,15 +417,174 @@ async function confirmarEliminar() {
       query: { workspace_id: wid },
     })
     termosStore.removerTermo(wid, item.id)
+    produtosStore.invalidarCacheTermo(wid, item.id)
+    produtosStore.invalidarCacheTermo(wid, 'todos')
     alertaEliminarAberto.value = false
+    limparFluxoTransferencia()
     termoAEliminar.value = null
     if (props.selectedFiltro === item.id) {
       emit('selecionar', { tipo: 'todos' })
+    } else if (props.selectedFiltro != null) {
+      await produtosStore.fetchPagina(wid, {
+        page: 1,
+        q: '',
+        filtroId: props.selectedFiltro,
+        force: true,
+      })
     }
     toast.success(config.toastEliminado)
   } catch (err) {
     toast.error(mensagemErroFetch(err, config.erroEliminar))
   } finally {
+    eliminandoId.value = null
+  }
+}
+
+async function confirmarEliminar() {
+  const wid = props.workspaceId
+  const item = termoAEliminar.value
+  if (wid == null || wid < 1 || !item) return
+
+  carregandoProdutos.value = true
+  eliminandoId.value = item.id
+  try {
+    const ids = await coletarIdsProdutosDoTermo(wid, item.id)
+    produtosParaTransferir.value = ids
+    if (!ids.length) {
+      carregandoProdutos.value = false
+      eliminandoId.value = null
+      await executarDelete(item)
+      return
+    }
+    alertaEliminarAberto.value = false
+    alertaPerguntarTransferirAberto.value = true
+  } catch (err) {
+    eliminandoId.value = null
+    toast.error(mensagemErroFetch(err, 'Não foi possível verificar os produtos desta categoria.'))
+  } finally {
+    carregandoProdutos.value = false
+    if (alertaPerguntarTransferirAberto.value) eliminandoId.value = null
+  }
+}
+
+async function confirmarQuerTransferir() {
+  const wid = props.workspaceId
+  const item = termoAEliminar.value
+  if (wid == null || wid < 1 || !item) return
+  try {
+    await termosStore.carregarListaCompletaSeNecessario(wid)
+  } catch (err) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível carregar as categorias de destino.'))
+    return
+  }
+  const destinos = termos.value.filter((t) => t.id !== item.id)
+  if (!destinos.length) {
+    toast.error('Não há outra categoria para transferir. Crie uma categoria nova antes de eliminar esta.')
+    return
+  }
+  alertaPerguntarTransferirAberto.value = false
+  filtroTransferencia.value = ''
+  termoDestino.value = null
+  alertaTransferirAberto.value = true
+}
+
+async function confirmarEliminarSemTransferir() {
+  const item = termoAEliminar.value
+  if (!item) return
+  alertaPerguntarTransferirAberto.value = false
+  await executarDelete(item)
+}
+
+function cancelarPerguntarTransferir() {
+  if (eliminandoId.value != null || transferindo.value || carregandoProdutos.value) return
+  void confirmarEliminarSemTransferir()
+}
+
+function cancelarTransferencia() {
+  if (transferindo.value) return
+  alertaTransferirAberto.value = false
+  filtroTransferencia.value = ''
+  termoDestino.value = null
+  termoAEliminar.value = null
+  produtosParaTransferir.value = []
+}
+
+function escolherDestino(item: ProdutoTermoPesquisaItem) {
+  termoDestino.value = { ...item }
+}
+
+function continuarTransferencia() {
+  if (!termoDestino.value || !termoAEliminar.value) {
+    toast.error('Selecione uma categoria de destino.')
+    return
+  }
+  alertaTransferirAberto.value = false
+  alertaConfirmarTransferenciaAberto.value = true
+}
+
+function cancelarConfirmarTransferencia() {
+  if (transferindo.value) return
+  alertaConfirmarTransferenciaAberto.value = false
+  alertaTransferirAberto.value = true
+}
+
+async function confirmarTransferenciaEEliminar() {
+  const wid = props.workspaceId
+  const origem = termoAEliminar.value
+  const destino = termoDestino.value
+  if (wid == null || wid < 1 || !origem || !destino) return
+
+  const produtoIds = produtosParaTransferir.value
+  if (!produtoIds.length) {
+    alertaConfirmarTransferenciaAberto.value = false
+    await executarDelete(origem)
+    return
+  }
+
+  transferindo.value = true
+  eliminandoId.value = origem.id
+  try {
+    for (const produtoId of produtoIds) {
+      await $fetch<ProdutoAtualizarResponse>('/api/produtos/atualizar', {
+        method: 'PATCH',
+        body: {
+          workspace_id: wid,
+          id: produtoId,
+          patch: {
+            termos_pesquisa_ids: [destino.id],
+          },
+        },
+      })
+    }
+
+    await $fetch<ProdutosTermoPesquisaEliminarResponse>(config.apiItem(origem.id), {
+      method: 'DELETE',
+      query: { workspace_id: wid },
+    })
+
+    termosStore.removerTermo(wid, origem.id)
+    produtosStore.invalidarCacheTermo(wid, origem.id)
+    produtosStore.invalidarCacheTermo(wid, destino.id)
+    produtosStore.invalidarCacheTermo(wid, 'todos')
+
+    alertaConfirmarTransferenciaAberto.value = false
+    limparFluxoTransferencia()
+    termoAEliminar.value = null
+    if (props.selectedFiltro === origem.id) {
+      emit('selecionar', { tipo: 'todos' })
+    } else if (props.selectedFiltro != null) {
+      await produtosStore.fetchPagina(wid, {
+        page: 1,
+        q: '',
+        filtroId: props.selectedFiltro,
+        force: true,
+      })
+    }
+    toast.success(`Produtos transferidos para «${destino.nome}» e categoria eliminada.`)
+  } catch (err) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível transferir e eliminar a categoria.'))
+  } finally {
+    transferindo.value = false
     eliminandoId.value = null
   }
 }
@@ -520,6 +786,23 @@ async function confirmarEliminar() {
           />
         </div>
 
+        <div>
+          <label
+            class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant"
+          >
+            {{ config.labelDescricaoCampo }}
+          </label>
+          <BaseTextarea
+            v-model="descricaoModal"
+            :placeholder="config.placeholderDescricao"
+            :disabled="guardandoModal"
+            :submit-on-enter="false"
+            :min-height-px="72"
+            :max-height-px="200"
+            :maxlength="2000"
+          />
+        </div>
+
         <div class="flex justify-end gap-2 pt-1">
           <BaseButton
             :block="false"
@@ -558,10 +841,100 @@ async function confirmarEliminar() {
       variante="perigo"
       texto-confirmar="Eliminar"
       texto-cancelar="Cancelar"
-      :confirmar-desabilitado="eliminandoId != null"
-      :cancelar-desabilitado="eliminandoId != null"
+      :confirmar-desabilitado="eliminandoId != null || carregandoProdutos"
+      :cancelar-desabilitado="eliminandoId != null || carregandoProdutos"
       @confirmar="confirmarEliminar"
       @cancelar="cancelarEliminar"
+    />
+
+    <ModalAlerta
+      v-model:open="alertaPerguntarTransferirAberto"
+      title="Categoria em uso"
+      :texto="textoAlertaPerguntarTransferir"
+      variante="aviso"
+      texto-confirmar="Sim, transferir"
+      texto-cancelar="Não, só eliminar"
+      :mostrar-fechar="false"
+      :confirmar-desabilitado="eliminandoId != null || transferindo"
+      :cancelar-desabilitado="eliminandoId != null || transferindo"
+      @confirmar="confirmarQuerTransferir"
+      @cancelar="cancelarPerguntarTransferir"
+    />
+
+    <ModalAlerta
+      v-model:open="alertaTransferirAberto"
+      title="Transferir produtos"
+      :texto="textoAlertaTransferir"
+      variante="aviso"
+      texto-confirmar="Continuar"
+      texto-cancelar="Cancelar"
+      :confirmar-desabilitado="!termoDestino || transferindo"
+      :cancelar-desabilitado="transferindo"
+      @confirmar="continuarTransferencia"
+      @cancelar="cancelarTransferencia"
+    >
+      <div class="space-y-3">
+        <BaseInput
+          id="transferir-categoria-lista"
+          v-model="filtroTransferencia"
+          type="search"
+          autocomplete="off"
+          placeholder="Buscar categoria…"
+        />
+        <ul class="max-h-56 overflow-y-auto rounded-xl border border-outline/30 dark:border-dark-outline/30">
+          <li
+            v-if="!destinosTransferencia.length"
+            class="px-3 py-4 text-center text-sm text-on-surface-variant dark:text-dark-on-surface-variant"
+          >
+            Nenhuma categoria encontrada.
+          </li>
+          <li
+            v-for="item in destinosTransferencia"
+            :key="item.id"
+            class="border-b border-outline/20 last:border-b-0 dark:border-dark-outline/20"
+          >
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors"
+              :class="
+                termoDestino?.id === item.id
+                  ? 'bg-primary-50 font-semibold text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
+                  : 'text-on-surface hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high'
+              "
+              @click="escolherDestino(item)"
+            >
+              <span
+                class="flex h-4 w-4 shrink-0 items-center justify-center rounded-full border"
+                :class="
+                  termoDestino?.id === item.id
+                    ? 'border-primary-500 bg-primary-500 text-white'
+                    : 'border-outline/50 dark:border-dark-outline/50'
+                "
+              >
+                <span
+                  v-if="termoDestino?.id === item.id"
+                  class="material-symbols-outlined text-[12px] leading-none"
+                  aria-hidden="true"
+                >check</span>
+              </span>
+              <span class="min-w-0 truncate">{{ item.nome }}</span>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </ModalAlerta>
+
+    <ModalAlerta
+      v-model:open="alertaConfirmarTransferenciaAberto"
+      title="Confirmar transferência"
+      :texto="textoConfirmarTransferencia"
+      variante="perigo"
+      texto-confirmar="Transferir e eliminar"
+      texto-cancelar="Voltar"
+      :confirmar-desabilitado="transferindo"
+      :cancelar-desabilitado="transferindo"
+      @confirmar="confirmarTransferenciaEEliminar"
+      @cancelar="cancelarConfirmarTransferencia"
     />
   </div>
 </template>

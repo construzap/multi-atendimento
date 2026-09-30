@@ -245,6 +245,8 @@ export type ProdutoTermoPesquisaItem = {
   nome: string
   /** Posição na lista do workspace (menor = primeiro). */
   ordem?: number
+  /** Texto livre opcional (coluna `descricao`). */
+  descricao?: string | null
 }
 
 /** Filtro da coluna esquerda na listagem de produtos. */
@@ -285,6 +287,7 @@ export type ProdutoTermoPesquisaDetalhado = {
   nome: string
   workspace_id: number
   ordem?: number
+  descricao?: string | null
   total_usos: number
   produtos: ProdutoTermoPesquisaDetalhadoProduto[]
   em_uso: boolean

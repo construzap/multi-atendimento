@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
+import ModalAdminCriarImagens from '~/components/produtos/ModalAdminCriarImagens.vue'
+import { useProfileStore } from '~/stores/profile'
 import { useWorkspacesStore } from '~/stores/workspaces'
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     /** Esconde o botão Novo (ex.: painel com «Adicionar item» próprio). */
     ocultarNovo?: boolean
@@ -23,6 +25,10 @@ const emit = defineEmits<{
 
 const workspacesStore = useWorkspacesStore()
 const { currentWorkspaceId } = storeToRefs(workspacesStore)
+const profileStore = useProfileStore()
+const { isAdminConfirmado } = storeToRefs(profileStore)
+
+const modalCriarImagensAberto = ref(false)
 
 const workspaceId = computed((): number | null => {
   const raw = currentWorkspaceId.value
@@ -43,6 +49,10 @@ async function enviarParaIa() {
     return
   }
   await navigateTo(path)
+}
+
+function abrirCriarImagens() {
+  modalCriarImagensAberto.value = true
 }
 </script>
 
@@ -76,6 +86,20 @@ async function enviarParaIa() {
     </BaseButton>
 
     <BaseButton
+      v-if="isAdminConfirmado"
+      variant="secondary"
+      :block="false"
+      size="md"
+      type="button"
+      @click="abrirCriarImagens"
+    >
+      <span class="inline-flex items-center gap-2">
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">image</span>
+        Criar imagens
+      </span>
+    </BaseButton>
+
+    <BaseButton
       v-if="!ocultarNovo"
       variant="primary"
       :block="false"
@@ -90,5 +114,7 @@ async function enviarParaIa() {
         Novo
       </span>
     </BaseButton>
+
+    <ModalAdminCriarImagens v-if="isAdminConfirmado" v-model:open="modalCriarImagensAberto" />
   </div>
 </template>

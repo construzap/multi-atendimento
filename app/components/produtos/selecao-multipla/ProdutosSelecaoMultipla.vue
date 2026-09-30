@@ -10,6 +10,7 @@ import type {
 } from '#shared/types/produtos'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
+import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import ModalGerenciarTermos from './ModalGerenciarTermos.vue'
@@ -56,6 +57,7 @@ const ultimaBuscaComFiltroNome = ref(false)
 const criando = ref(false)
 const itemEmEdicao = ref<ItemSelecaoMultipla | null>(null)
 const nomeModal = ref('')
+const descricaoModal = ref('')
 const modalFormAberto = ref(false)
 const modalGerenciarAberto = ref(false)
 const modoModal = ref<'criar' | 'editar'>('criar')
@@ -287,6 +289,7 @@ function cancelarModalForm() {
   modalFormAberto.value = false
   itemEmEdicao.value = null
   nomeModal.value = ''
+  descricaoModal.value = ''
   modoModal.value = 'criar'
 }
 
@@ -296,6 +299,7 @@ function abrirCriar() {
   modoModal.value = 'criar'
   itemEmEdicao.value = null
   nomeModal.value = filtro.value.trim()
+  descricaoModal.value = ''
   modalFormAberto.value = true
 }
 
@@ -311,6 +315,7 @@ function iniciarEdicao(item: ItemSelecaoMultipla) {
   modoModal.value = 'editar'
   itemEmEdicao.value = { ...item }
   nomeModal.value = item.nome
+  descricaoModal.value = item.descricao ?? ''
   modalFormAberto.value = true
 }
 
@@ -322,6 +327,7 @@ async function confirmarModalForm() {
     toast.error(config.erroNomeVazio)
     return
   }
+  const descricao = descricaoModal.value.trim() || null
 
   if (modoModal.value === 'criar') {
     criando.value = true
@@ -329,7 +335,7 @@ async function confirmarModalForm() {
     try {
       const res = await $fetch<ProdutosTermoPesquisaCriarResponse>(config.apiBase, {
         method: 'POST',
-        body: { workspace_id: wid, nome },
+        body: { workspace_id: wid, nome, descricao },
       })
       useProdutoTermosPesquisaStore().aposCriarOuExistirTermo(wid, res.data)
       if (!estaSelecionado(res.data.id)) {
@@ -358,7 +364,7 @@ async function confirmarModalForm() {
   try {
     const res = await $fetch<ProdutosTermoPesquisaAtualizarResponse>(config.apiItem(itemId), {
       method: 'PATCH',
-      body: { workspace_id: wid, nome },
+      body: { workspace_id: wid, nome, descricao },
     })
     useProdutoTermosPesquisaStore().substituirTermo(wid, res.data)
     selecionados.value = selecionados.value.map((t) => (t.id === itemId ? { ...res.data } : t))
@@ -551,6 +557,23 @@ const itemSugestaoClass = (idx: number, selecionado: boolean) =>
           :placeholder="config.placeholderEdicao"
           :disabled="guardandoModal"
           @keydown.enter.prevent="confirmarModalForm"
+        />
+      </div>
+
+      <div>
+        <label
+          class="mb-1.5 block text-xs font-medium uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant"
+        >
+          {{ config.labelDescricaoCampo }}
+        </label>
+        <BaseTextarea
+          v-model="descricaoModal"
+          :placeholder="config.placeholderDescricao"
+          :disabled="guardandoModal"
+          :submit-on-enter="false"
+          :min-height-px="72"
+          :max-height-px="200"
+          :maxlength="2000"
         />
       </div>
 

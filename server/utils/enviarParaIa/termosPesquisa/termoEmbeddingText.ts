@@ -5,6 +5,11 @@ function buildContentHashInput(content: string, workspaceId: number): string {
   return [content, `workspace_id:${String(workspaceId)}`].join('\n')
 }
 
+function buildTermoContent(nome: string, descricao: string | null): string {
+  if (!descricao) return nome
+  return `${nome}\n\n${descricao}`
+}
+
 export function buildTermoEmbeddingPayload(
   row: Record<string, unknown>,
   workspaceId: number,
@@ -15,11 +20,16 @@ export function buildTermoEmbeddingPayload(
   const nome = row.nome != null ? String(row.nome).trim() : ''
   if (!nome) return null
 
+  const descricaoRaw =
+    row.descricao == null ? '' : String(row.descricao).trim()
+  const descricao = descricaoRaw.length ? descricaoRaw : null
+
   const rowWorkspaceId = Number(row.workspace_id)
   const wsId =
     Number.isFinite(rowWorkspaceId) && rowWorkspaceId > 0 ? rowWorkspaceId : workspaceId
 
-  const content = nome
+  const content = buildTermoContent(nome, descricao)
+  const lineCount = content.split('\n').length
 
   const contentHash = createHash('sha256')
     .update(buildContentHashInput(content, wsId))
@@ -29,7 +39,7 @@ export function buildTermoEmbeddingPayload(
     loc: {
       lines: {
         from: 1,
-        to: 1,
+        to: lineCount,
       },
     },
     source: 'blob',
@@ -38,6 +48,7 @@ export function buildTermoEmbeddingPayload(
     content_hash: contentHash,
     termo_id: String(id),
     nome,
+    descricao,
   }
 
   return {

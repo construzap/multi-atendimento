@@ -45,6 +45,11 @@ export default defineNuxtConfig({
     // API key vem do canal (api_key_encrypted), não de env global.
     openaiEmbeddingModel: 'text-embedding-3-small',
 
+    // --- Brave Image Search (imagens de produtos, admin) ---
+    // Override: NUXT_BRAVE_SEARCH_API_KEY
+    braveSearchApiKey:
+      process.env.NUXT_BRAVE_SEARCH_API_KEY || process.env.BRAVE_SEARCH_API_KEY || '',
+
     // --- Supabase Vector — 2º banco pgvector (override: NUXT_VECTOR_*) ---
     vectorSupabaseUrl: '',
     vectorSupabaseSecretKey: '',

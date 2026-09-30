@@ -61,6 +61,11 @@ function mapRow(r: Record<string, unknown>): ProdutoTermoPesquisaDetalhado {
     nome: String(r.nome ?? '').trim(),
     workspace_id: Number.isFinite(workspaceId) ? workspaceId : 0,
     ordem: Number.isFinite(ordem) ? ordem : 0,
+    descricao: (() => {
+      if (r.descricao == null) return null
+      const s = String(r.descricao).trim()
+      return s.length ? s : null
+    })(),
     total_usos: Number.isFinite(totalUsos) ? totalUsos : 0,
     produtos: parseProdutos(r.produtos),
     em_uso: Boolean(r.em_uso),
@@ -98,7 +103,7 @@ export default defineEventHandler(async (event): Promise<ProdutosTermosPesquisaD
   const admin = serverSupabaseServiceRole<any>(event)
   let query = admin
     .from('view_termos_pesquisa_detalhada')
-    .select('id, nome, workspace_id, ordem, total_usos, produtos, em_uso')
+    .select('id, nome, workspace_id, ordem, descricao, total_usos, produtos, em_uso')
     .eq('workspace_id', workspaceId)
 
   // Filtro opcional por nome

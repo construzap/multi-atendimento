@@ -27,3 +27,28 @@ export interface AdminEmpresaRow {
   /** Quantidade de instâncias WhatsApp vinculadas (badge opcional). */
   instance_count: number
 }
+
+/** Candidato de imagem da Brave Image Search API. */
+export type AdminImagemBraveItem = {
+  title: string
+  /** URL da imagem original (`properties.url`). */
+  link: string
+  thumbnailLink: string | null
+  /** Página onde a imagem foi encontrada. */
+  contextLink: string | null
+  displayLink: string | null
+  width: number | null
+  height: number | null
+}
+
+export type AdminBuscarImagensBraveBody = {
+  /** Termo de busca (ex.: nome do produto). */
+  q: string
+  /** Quantidade (1–200). Default 8. */
+  num?: number
+}
+
+export type AdminBuscarImagensBraveResponse = {
+  q: string
+  items: AdminImagemBraveItem[]
+}

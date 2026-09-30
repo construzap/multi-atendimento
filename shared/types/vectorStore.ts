@@ -39,6 +39,8 @@ export type TermoDocumentMetadata = {
   content_hash: string
   termo_id: string
   nome: string
+  /** Descrição opcional do termo (quando houver). */
+  descricao?: string | null
 }
 
 export type TermoEmbeddingPayload = {

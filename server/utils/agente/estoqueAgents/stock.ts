@@ -46,7 +46,7 @@ export async function executeStockTool(
     const search = await executeTermoVectorSearch(event, {
       query,
       workspaceId,
-      limit: 10,
+      limit: 50,
       metadataFilters: null,
     })
     const payload = {

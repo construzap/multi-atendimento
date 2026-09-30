@@ -9,6 +9,7 @@ import { mensagemErroFetch } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 import { useWorkspacesStore } from '~/stores/workspaces'
 import ItemPedidoPronto from './ItemPedidoPronto.vue'
+import ModalCriarPedido from './ModalCriarPedido.vue'
 import PedidoProntoExpandido from './PedidoProntoExpandido.vue'
 import { imprimirCupomPedido } from './imprimirCupomPedido'
 import {
@@ -30,6 +31,7 @@ const { columns } = storeToRefs(kanban)
 
 const expandidoId = ref<number | null>(null)
 const modalExcluirAberto = ref(false)
+const modalCriarPedidoAberto = ref(false)
 const notificacaoParaExcluir = ref<KanbanNotificacaoIa | null>(null)
 /** Padrão: pedido pronto com `entrega_status !== 'entregue'`. */
 const mostrarTodos = ref(false)
@@ -56,6 +58,7 @@ watch(open, (aberto) => {
   if (!aberto) {
     expandidoId.value = null
     modalExcluirAberto.value = false
+    modalCriarPedidoAberto.value = false
     notificacaoParaExcluir.value = null
     mostrarTodos.value = false
   }
@@ -86,6 +89,10 @@ const notificacoes = computed<KanbanNotificacaoIa[]>(() => {
       return tb - ta
     })
 })
+
+function abrirCriarPedido() {
+  modalCriarPedidoAberto.value = true
+}
 
 async function onToggleMostrarTodos() {
   const wsId = workspaceId.value
@@ -330,13 +337,21 @@ function confirmarExcluirNotificacao() {
         <span class="text-sm font-medium text-on-surface dark:text-dark-on-surface">
           Mostrar todos
         </span>
+        <span
+          v-if="filtroPending"
+          class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+        >
+          Atualizando…
+        </span>
       </label>
-      <span
-        v-if="filtroPending"
-        class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+      <button
+        type="button"
+        class="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-800/50 dark:bg-violet-950/40 dark:text-violet-200 dark:hover:bg-violet-950/70"
+        @click="abrirCriarPedido"
       >
-        Atualizando…
-      </span>
+        <span class="material-symbols-outlined text-[16px] leading-none" aria-hidden="true">add</span>
+        Novo pedido
+      </button>
     </div>
 
     <p
@@ -386,6 +401,15 @@ function confirmarExcluirNotificacao() {
       </li>
     </ul>
   </BaseModal>
+
+  <ModalCriarPedido
+    v-model:open="modalCriarPedidoAberto"
+    :conversa-key="conversaKey"
+    :canal-id="cardNoPinia?.id_canal ?? null"
+    :cliente-nome="cardNoPinia?.name ?? cardNoPinia?.name_group"
+    :cliente-telefone="cardNoPinia?.phone"
+    :canal-nome="cardNoPinia?.canal_nome"
+  />
 
   <ModalAlerta
     v-model:open="modalExcluirAberto"

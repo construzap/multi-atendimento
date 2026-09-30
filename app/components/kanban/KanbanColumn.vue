@@ -2,10 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
-import type {
-  KanbanCard as KanbanCardModel,
-  KanbanColumn,
-} from '#shared/types/kanban'
+import type { KanbanColumn } from '#shared/types/kanban'
 import type {
   AtualizarMensagemProntaResponse,
   CriarMensagemProntaResponse,
@@ -43,7 +40,6 @@ const emit = defineEmits<{
   columnDelete: [column: KanbanColumn]
   columnReorder: [payload: { columnId: number; direcao: 'esquerda' | 'direita' }]
   loadMore: [columnId: number]
-  cardOpen: [card: KanbanCardModel]
   cardToggleSelected: [payload: { conversa_key: string; nextSelected: boolean }]
   columnToggleSelectAll: [payload: { keys: string[]; nextSelected: boolean }]
 }>()
@@ -682,7 +678,6 @@ function onDrop(e: DragEvent) {
         :force-show-checkbox="props.forceShowCheckboxes === true"
         @card-drag-start="emit('cardDragStart', $event)"
         @card-drag-end="emit('cardDragEnd')"
-        @card-open="emit('cardOpen', $event)"
         @card-toggle-selected="emit('cardToggleSelected', $event)"
       />
 

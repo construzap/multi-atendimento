@@ -5,7 +5,7 @@ import { buildTermoEmbeddingPayload } from './termoEmbeddingText'
 
 /** View detalhada; sync indexa só linhas com `em_uso = true`. */
 const VIEW = 'view_termos_pesquisa_detalhada'
-const SELECT = 'id, nome, workspace_id'
+const SELECT = 'id, nome, workspace_id, descricao'
 
 function scopeTermosEmUso(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- query builder Supabase

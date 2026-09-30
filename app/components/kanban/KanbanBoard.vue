@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
-import type { KanbanCard as KanbanCardModel, KanbanColumn as KanbanColumnData, KanbanCriarContatoBody, KanbanCriarContatoResponse } from '#shared/types/kanban'
+import type { KanbanColumn as KanbanColumnData, KanbanCriarContatoBody, KanbanCriarContatoResponse } from '#shared/types/kanban'
 import { normalizarTelefoneContatoParaGravacao } from '#shared/utils/normalizeWhatsappBr'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
@@ -627,45 +627,6 @@ async function confirmarExcluirCard() {
   }
 }
 
-function findCardNoPinia(conversaKey: string): KanbanCardModel | null {
-  const key = conversaKey.trim()
-  if (!key) return null
-  for (const col of columns.value) {
-    const card = col.cards.find((c) => c.conversa_key === key)
-    if (card) return card
-  }
-  return null
-}
-
-async function onCardOpen(card: KanbanCardModel) {
-  const fromStore = findCardNoPinia(card.conversa_key) ?? card
-  const conversaKey = fromStore.conversa_key?.trim()
-  const canalId = fromStore.id_canal
-
-  if (!conversaKey) return
-  if (!props.workspaceId) {
-    toast.error('Workspace não informado.')
-    return
-  }
-  if (canalId == null || !Number.isFinite(canalId) || canalId < 1) {
-    toast.error('Esta conversa não tem canal vinculado.')
-    return
-  }
-
-  const kanbanStore = useKanbanStore()
-  kanbanStore.closeInfoContatoConversa()
-
-  const conversasStore = useConversasStore()
-  await abrirConversaNoChat(props.workspaceId, Math.trunc(canalId), conversaKey)
-  await conversasStore.aplicarContextoAoAbrirDoKanban({
-    conversaKey,
-    colunaId: fromStore.coluna_id,
-    funilId: props.funilId,
-    isGroup: fromStore.is_group,
-    conversaAberta: fromStore.conversa_aberta,
-  })
-}
-
 function onCardToggleSelected(payload: { conversa_key: string; nextSelected: boolean }) {
   toggleSelected(payload.conversa_key, payload.nextSelected)
 }
@@ -1092,7 +1053,6 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
         @column-delete="onColumnDelete"
         @column-reorder="onColumnReorder"
         @load-more="onLoadMore"
-        @card-open="onCardOpen"
         @card-toggle-selected="onCardToggleSelected"
         @column-toggle-select-all="onColumnToggleSelectAll"
       />

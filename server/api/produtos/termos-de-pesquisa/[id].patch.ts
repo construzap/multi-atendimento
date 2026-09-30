@@ -2,8 +2,10 @@ import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/serve
 import { assertMethod, createError, getRouterParam, readBody } from 'h3'
 import type { ProdutosTermoPesquisaAtualizarResponse } from '#shared/types/produtos'
 import {
+  DESCRICAO_TERMO_MAX,
   escapeIlikeLiteral,
   mapTermoPesquisaRow,
+  normalizarDescricaoTermoPesquisa,
   normalizarNomeTermoPesquisa,
 } from '../../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
@@ -12,6 +14,7 @@ import { getAuthUserId } from '../../../utils/getAuthUserId'
 type Body = {
   workspace_id?: unknown
   nome?: unknown
+  descricao?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -64,13 +67,21 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaAt
     throw createError({ statusCode: 400, statusMessage: 'Nome do termo demasiado longo (máx. 200 caracteres).' })
   }
 
+  const descricao = normalizarDescricaoTermoPesquisa(body.descricao)
+  if (descricao != null && descricao.length > DESCRICAO_TERMO_MAX) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: `Descrição demasiado longa (máx. ${DESCRICAO_TERMO_MAX} caracteres).`,
+    })
+  }
+
   await checkWorkspace(event, workspaceId, userId)
 
   const admin = serverSupabaseServiceRole<any>(event)
 
   const { data: atual, error: selErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome, ordem')
+    .select('id, nome, ordem, descricao')
     .eq('id', termoId)
     .eq('workspace_id', workspaceId)
     .maybeSingle()
@@ -82,37 +93,45 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaAt
     throw createError({ statusCode: 404, statusMessage: 'Termo não encontrado neste workspace.' })
   }
 
-  const nomeAtual = String((atual as Record<string, unknown>).nome ?? '').trim().toLocaleUpperCase('pt-BR')
-  if (nomeAtual === nome) {
+  const nomeAtual = String((atual as Record<string, unknown>).nome ?? '')
+    .trim()
+    .toLocaleUpperCase('pt-BR')
+  const descricaoAtual = normalizarDescricaoTermoPesquisa(
+    (atual as Record<string, unknown>).descricao,
+  )
+
+  if (nomeAtual === nome && descricaoAtual === descricao) {
     return { data: mapTermoPesquisaRow(atual as Record<string, unknown>) }
   }
 
-  const literal = escapeIlikeLiteral(nome)
-  const { data: outro, error: dupErr } = await admin
-    .from('produto_termo_de_pesquisa')
-    .select('id')
-    .eq('workspace_id', workspaceId)
-    .ilike('nome', literal)
-    .neq('id', termoId)
-    .limit(1)
-    .maybeSingle()
+  if (nomeAtual !== nome) {
+    const literal = escapeIlikeLiteral(nome)
+    const { data: outro, error: dupErr } = await admin
+      .from('produto_termo_de_pesquisa')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+      .ilike('nome', literal)
+      .neq('id', termoId)
+      .limit(1)
+      .maybeSingle()
 
-  if (dupErr) {
-    throw createError({ statusCode: 500, statusMessage: dupErr.message })
-  }
-  if (outro) {
-    throw createError({
-      statusCode: 409,
-      statusMessage: 'Já existe outro termo com esse nome neste workspace.',
-    })
+    if (dupErr) {
+      throw createError({ statusCode: 500, statusMessage: dupErr.message })
+    }
+    if (outro) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Já existe outro termo com esse nome neste workspace.',
+      })
+    }
   }
 
   const { data: updated, error: upErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .update({ nome })
+    .update({ nome, descricao })
     .eq('id', termoId)
     .eq('workspace_id', workspaceId)
-    .select('id, nome, ordem')
+    .select('id, nome, ordem, descricao')
     .single()
 
   if (upErr) {

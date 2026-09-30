@@ -135,9 +135,15 @@ export const useProdutoTermosPesquisaStore = defineStore('produtoTermosPesquisa'
       this.todosTermosQ = ''
     },
 
-    atualizarNomeTodosTermos(termoId: number, nome: string) {
+    atualizarNomeTodosTermos(termoId: number, nome: string, descricao?: string | null) {
       this.todos_termos = this.todos_termos.map((t) =>
-        t.id === termoId ? { ...t, nome } : t,
+        t.id === termoId
+          ? {
+              ...t,
+              nome,
+              ...(descricao !== undefined ? { descricao } : {}),
+            }
+          : t,
       )
     },
 

@@ -59,7 +59,7 @@ export default defineEventHandler(async (event): Promise<ProdutosTermosPesquisaL
 
   let query = admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome, ordem')
+    .select('id, nome, ordem, descricao')
     .eq('workspace_id', workspaceId)
     .order('ordem', { ascending: true })
     .order('id', { ascending: true })

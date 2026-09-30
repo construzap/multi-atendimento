@@ -7,6 +7,7 @@ import ModalPedidoPronto from '~/components/kanban/notificacoes_ia/ModalPedidoPr
 import {
   createdAtEsperaMaisAntiga,
   isPedidoComTempoEspera,
+  isPedidoPronto,
   isPedidoProntoNaoEntregue,
 } from '~/components/kanban/notificacoes_ia/parseProdutosNotificacao'
 import BadgeTempoEsperaPedido from '~/components/kanban/notificacoes_ia/BadgeTempoEsperaPedido.vue'
@@ -23,7 +24,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   cardDragStart: [payload: { cardId: string; fromColumnId: string }]
   cardDragEnd: []
-  cardOpen: [card: KanbanCardModel]
   cardToggleSelected: [payload: { conversa_key: string; nextSelected: boolean }]
 }>()
 
@@ -134,7 +134,14 @@ function onDragEnd() {
 
 function onCardClick() {
   if (Date.now() - lastDragEndAt < 250) return
-  emit('cardOpen', props.card)
+  const list = props.card.notificacoes_ia
+  const temPedido =
+    Array.isArray(list) && list.some((n) => isPedidoPronto(n.tipo_solicitacao))
+  if (temPedido) {
+    modalNotificacoesIaAberto.value = true
+    return
+  }
+  modalCriarPedidoAberto.value = true
 }
 
 function onToggleSelected(e: Event) {
@@ -221,7 +228,7 @@ const timeLabel = computed(() => {
     draggable="true"
     role="button"
     tabindex="0"
-    :aria-label="`Ver informações de ${titleDisplay}`"
+    :aria-label="`Pedidos de ${titleDisplay}`"
     @click="onCardClick"
     @keydown.enter.prevent="onCardClick"
     @keydown.space.prevent="onCardClick"
