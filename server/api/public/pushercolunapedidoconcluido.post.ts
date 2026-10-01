@@ -84,6 +84,12 @@ function buildNotificacaoPatch(body: Body): Partial<KanbanNotificacaoIa> {
       case 'longitude':
         patch[key] = numOrNull(raw)
         break
+      case 'created_at':
+      case 'updated_at': {
+        const s = strOrNull(raw)
+        if (s != null) patch[key] = s
+        break
+      }
       case 'id_cobranca':
       case 'token_entrega':
       case 'endereco':
@@ -91,8 +97,6 @@ function buildNotificacaoPatch(body: Body): Partial<KanbanNotificacaoIa> {
       case 'forma_pagamento':
       case 'observacoes':
       case 'tipo_solicitacao':
-      case 'created_at':
-      case 'updated_at':
         patch[key] = strOrNull(raw)
         break
       default: {

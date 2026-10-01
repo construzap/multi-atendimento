@@ -1,8 +1,10 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, getRouterParam, readBody } from 'h3'
 import type { EntregaPublicaResumoResponse } from '#shared/types/entrega'
+import type { PusherKanbanAtualizacaoPayload } from '#shared/types/kanban'
 import type { EntregaAoColetarResult } from '../../../../utils/entregaAoColetar'
 import { executarAutomacaoEtapaKanban } from '../../../../utils/entregaAoColetar'
+import { triggerKanbanAtualizacao } from '../../../../utils/pusherServer'
 import {
   buildEntregaResumo,
   codigoConfirmacaoConfere,
@@ -27,7 +29,8 @@ export type EntregaEntregarResponse = EntregaPublicaResumoResponse & {
  * POST /api/public/entrega/:token/entregar
  * Body: `{ codigo_confirmacao }` — gerado pelo N8N (letras, números e especiais).
  * Entregador premium pode confirmar sem o código.
- * Após confirmar, move a conversa para a coluna ordem 7 do funil ordem 1.
+ * Após confirmar, move a conversa para a coluna ordem 7 do funil ordem 1
+ * e avisa o Pusher (`pinia_sync`) para o pedido sair da lista do kanban.
  */
 export default defineEventHandler(async (event): Promise<EntregaEntregarResponse> => {
   assertMethod(event, 'POST')
@@ -116,6 +119,28 @@ export default defineEventHandler(async (event): Promise<EntregaEntregarResponse
           : 'Falha na automação de kanban (funil/coluna).'
     if (!coleta_erro) coleta_erro = 'Falha na automação de kanban (funil/coluna).'
     console.warn('[entrega/entregar] automação:', coleta_erro)
+  }
+
+  const canalId = updated.canal_id
+  if (canalId != null && canalId >= 1 && updated.conversa_key) {
+    const payload: PusherKanbanAtualizacaoPayload = {
+      workspace_id: updated.workspace_id,
+      conversa_key: updated.conversa_key,
+      id_canal: canalId,
+      coluna_id: null,
+      funil_id: null,
+      nome_contato: null,
+      notificacao: null,
+      notificacao_id: updated.id,
+      notificacao_patch: {
+        entrega_status: 'entregue',
+        updated_at: nowIso,
+      },
+      motivo: 'pinia_sync',
+    }
+    await triggerKanbanAtualizacao(event, canalId, payload)
+  } else {
+    console.warn('[entrega/entregar] pusher pinia_sync ignorado: canal ou conversa ausente.')
   }
 
   return { ok: true, data, coleta, coleta_erro }
