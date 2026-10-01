@@ -5,6 +5,8 @@
  * Ao voltar para a aba (ou clicar no toast), o caller abre o modal e liga o sino.
  */
 
+import { somPedidoAtivo } from '~/utils/SomNavegadorPedidoNovo'
+
 let notificacaoAtiva: Notification | null = null
 let tituloOriginal: string | null = null
 let piscaTimer: ReturnType<typeof setInterval> | null = null
@@ -12,20 +14,6 @@ let onVisivel: (() => void) | null = null
 
 function notificacaoDisponivel(): boolean {
   return import.meta.client && typeof Notification !== 'undefined'
-}
-
-/** Pede permissão no primeiro clique, se ainda não foi decidida. */
-export function agendarPermissaoNotificacaoPedido(): void {
-  if (!notificacaoDisponivel()) return
-  if (Notification.permission !== 'default') return
-
-  const pedir = () => {
-    document.removeEventListener('pointerdown', pedir, true)
-    void Notification.requestPermission().catch(() => {
-      /* usuário recusou ou o navegador bloqueou */
-    })
-  }
-  document.addEventListener('pointerdown', pedir, true)
 }
 
 function piscarTituloAba(mensagem: string) {
@@ -104,7 +92,7 @@ export function alertarPedidoForaDaAba(input: {
 
   piscarTituloAba(`Pedido novo!`)
 
-  if (!notificacaoDisponivel() || Notification.permission !== 'granted') return
+  if (!somPedidoAtivo.value || !notificacaoDisponivel() || Notification.permission !== 'granted') return
 
   try {
     const n = new Notification(input.titulo, {

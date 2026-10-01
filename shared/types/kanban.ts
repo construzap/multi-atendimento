@@ -3,6 +3,7 @@
  */
 
 import type { TipoCampoPersonalizado } from './camposPersonalizados'
+import type { Mensagem } from './mensagem'
 
 /** Campo personalizado (tabelas `campos_personalizados` + `valores_campos_personalizados`). */
 export type KanbanCampoPersonalizadoResumo = {
@@ -131,6 +132,11 @@ export type KanbanCard = {
   campos_personalizados: KanbanCampoPersonalizadoResumo[]
   /** Notificações da I.A. agregadas na view (`notificacoes_ia`). */
   notificacoes_ia: KanbanNotificacaoIa[]
+  /**
+   * Mensagens da conversa carregadas ao revisar o pedido.
+   * Não vêm do GET do board; o client preenche com `GET /api/mensagens`.
+   */
+  mensagens?: Mensagem[]
 }
 
 export type KanbanColumn = {

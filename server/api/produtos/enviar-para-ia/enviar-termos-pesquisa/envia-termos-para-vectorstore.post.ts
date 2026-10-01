@@ -4,7 +4,6 @@ import { checkWorkspace } from '../../../../utils/checkWorkspace'
 import { requireAuthUserId } from '../../../../utils/requireAuthUserId'
 import { createEmbeddings } from '../../../../utils/enviarParaIa/openaiEmbeddings'
 import { parseWorkspaceId } from '../../../../utils/enviarParaIa/parseWorkspaceId'
-import { loadWorkspaceOpenAiCredenciais } from '../../../../utils/agente/loadCanalCredenciais'
 import {
   deleteByTermoId,
   findTermoHashesByWorkspace,
@@ -46,7 +45,6 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
 
   await checkWorkspace(event, workspaceId, userId)
 
-  const credenciais = await loadWorkspaceOpenAiCredenciais(event, workspaceId)
   const total = await countTermosIndexaveis(event, workspaceId)
   const rows = await fetchTermosIndexaveisChunk(event, workspaceId, offset, limit)
 
@@ -76,7 +74,6 @@ export default defineEventHandler(async (event): Promise<SyncChunkResult> => {
   if (toEmbed.length) {
     try {
       const embeddings = await createEmbeddings(
-        credenciais.api_key,
         toEmbed.map((p) => p!.content),
         event,
         workspaceId,

@@ -26,6 +26,7 @@ const geo = ref<LojaGeocodeReverso | null>(null)
 const pending = ref(false)
 const confirmando = ref(false)
 const buscando = ref(false)
+const digitando = ref(false)
 const erro = ref('')
 
 function fechar() {
@@ -39,6 +40,7 @@ function resetar() {
   pending.value = false
   confirmando.value = false
   buscando.value = false
+  digitando.value = false
   erro.value = ''
 }
 
@@ -56,6 +58,7 @@ watch(
   () => props.open,
   (aberto) => {
     if (!aberto) resetar()
+    else if (editando.value) digitando.value = true
   },
 )
 
@@ -175,13 +178,24 @@ async function confirmarMapa(payload: { lat: number; lon: number; enderecoPreenc
               {{ pending ? 'Obtendo localização…' : 'Usar minha localização' }}
             </button>
 
+            <button
+              type="button"
+              class="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-full border border-outline/35 text-sm font-semibold text-on-surface disabled:opacity-60 dark:border-dark-outline/35 dark:text-dark-on-surface"
+              :disabled="pending"
+              @click="digitando = true"
+            >
+              <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M4 20h4l10.5-10.5a2.1 2.1 0 00-3-3L5 17v3z" stroke-linejoin="round" />
+                <path d="M13.5 6.5l3 3" stroke-linecap="round" />
+              </svg>
+              Digitar endereço
+            </button>
+
             <p v-if="erro" class="mt-3 text-center text-sm text-red-500">{{ erro }}</p>
 
-            <p class="mt-5 mb-3 text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
-              Ou digite seu endereço:
-            </p>
-
             <LojaEnderecoFormularioManual
+              v-if="digitando"
+              class="mt-5"
               :key="props.endereco?.id ?? 'novo'"
               :inicial="props.endereco"
               @salvo="fechar"

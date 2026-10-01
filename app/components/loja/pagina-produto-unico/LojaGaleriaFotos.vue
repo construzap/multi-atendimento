@@ -18,17 +18,17 @@ const nome = computed(() => paginaProdutoUnico.value?.nome ?? 'Produto')
   <section class="overflow-hidden bg-surface-container dark:bg-dark-surface-container">
     <div
       v-if="fotos.length"
-      class="aspect-square w-full"
+      class="mx-auto aspect-square w-full max-h-[70vh] md:aspect-auto md:h-[28rem] md:max-h-[min(28rem,55vh)] md:max-w-3xl"
     >
       <img
         :src="fotos[0]"
         :alt="nome"
-        class="h-full w-full object-cover"
+        class="h-full w-full object-cover md:object-contain"
       />
     </div>
     <div
       v-else
-      class="flex aspect-square w-full items-center justify-center text-sm text-on-surface-variant dark:text-dark-on-surface-variant"
+      class="mx-auto flex aspect-square w-full max-h-[70vh] items-center justify-center text-sm text-on-surface-variant dark:text-dark-on-surface-variant md:aspect-auto md:h-[28rem] md:max-h-[min(28rem,55vh)] md:max-w-3xl"
     >
       Sem foto
     </div>

@@ -9,6 +9,7 @@ import { useKanbanStore } from '~/stores/kanban'
 import { useWorkspacesStore } from '~/stores/workspaces'
 import { parseCoordenadasValidas, parseLatLngTexto } from '#shared/utils/navegacaoMapas'
 import {
+  formaPagamentoEhAPrazo,
   formatMoedaBr,
   normalizeTotalOrcamento,
   parseProdutosNotificacao,
@@ -24,7 +25,7 @@ type LinhaPedidoEditar = {
   precoPrazo: number
 }
 
-const STORAGE_KEY = 'kanban.notificacoes_ia.imprimir_ao_aceitar'
+const STORAGE_IMPRIMIR = 'kanban.notificacoes_ia.imprimir_ao_aceitar'
 
 const FORMAS_SUGESTAO = [
   'Pagamento a vista',
@@ -38,9 +39,12 @@ const props = defineProps<{
   item: KanbanNotificacaoIa
   conversaKey: string
   busy?: boolean
+  /** Conversa de revisão aberta ao lado deste pedido. */
+  emRevisao?: boolean
 }>()
 
 const emit = defineEmits<{
+  revisar: []
   aceitar: [payload: { imprimir: boolean }]
   rejeitar: []
   imprimir: []
@@ -56,6 +60,8 @@ const emSeparacao = computed(
 
 const produtos = computed(() => parseProdutosNotificacao(props.item.produtos))
 const totais = computed(() => normalizeTotalOrcamento(props.item.total_orcamento))
+const exibicaoAPrazo = computed(() => formaPagamentoEhAPrazo(props.item.forma_pagamento))
+const edicaoAPrazo = computed(() => formaPagamentoEhAPrazo(formaPagamento.value))
 
 const enderecoExibicao = computed(() => props.item.endereco?.trim() || null)
 
@@ -120,6 +126,9 @@ const totalPrazoEdit = computed(() =>
     0,
   ),
 )
+const totalEditExibido = computed(() =>
+  edicaoAPrazo.value ? totalPrazoEdit.value : totalVistaEdit.value,
+)
 
 const podeSalvar = computed(() => {
   if (salvando.value || props.busy) return false
@@ -135,7 +144,7 @@ const acoesBloqueadas = computed(() => props.busy === true || editando.value || 
 function lerPreferenciaImprimir(): boolean {
   if (!import.meta.client) return false
   try {
-    return localStorage.getItem(STORAGE_KEY) === '1'
+    return localStorage.getItem(STORAGE_IMPRIMIR) === '1'
   } catch {
     return false
   }
@@ -148,10 +157,15 @@ function onChangeImprimir(e: Event) {
   imprimirAoAceitar.value = checked
   if (!import.meta.client) return
   try {
-    localStorage.setItem(STORAGE_KEY, checked ? '1' : '0')
+    localStorage.setItem(STORAGE_IMPRIMIR, checked ? '1' : '0')
   } catch {
     /* ignore */
   }
+}
+
+function onRevisar() {
+  iniciarEdicao()
+  emit('revisar')
 }
 
 function onAceitar() {
@@ -386,19 +400,19 @@ async function salvarEdicao() {
             </p>
           </div>
           <div
-            v-if="p.preco_vista != null || p.preco_prazo != null"
+            v-if="exibicaoAPrazo ? p.preco_prazo != null : p.preco_vista != null"
             class="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant"
           >
-            <span v-if="p.preco_vista != null">
-              À vista: {{ formatMoedaBr(p.preco_vista) }}
-              <template v-if="p.subtotal_vista != null">
-                ({{ formatMoedaBr(p.subtotal_vista) }})
-              </template>
-            </span>
-            <span v-if="p.preco_prazo != null">
+            <span v-if="exibicaoAPrazo && p.preco_prazo != null">
               Prazo: {{ formatMoedaBr(p.preco_prazo) }}
               <template v-if="p.subtotal_prazo != null">
                 ({{ formatMoedaBr(p.subtotal_prazo) }})
+              </template>
+            </span>
+            <span v-else-if="!exibicaoAPrazo && p.preco_vista != null">
+              À vista: {{ formatMoedaBr(p.preco_vista) }}
+              <template v-if="p.subtotal_vista != null">
+                ({{ formatMoedaBr(p.subtotal_vista) }})
               </template>
             </span>
           </div>
@@ -414,18 +428,10 @@ async function salvarEdicao() {
       <div class="space-y-2 border-t border-outline/30 pt-4 dark:border-dark-outline/30">
         <div class="flex items-baseline justify-between gap-4">
           <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
-            Total à vista
+            {{ exibicaoAPrazo ? 'Total a prazo' : 'Total à vista' }}
           </span>
           <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-            {{ formatMoedaBr(totais.total_a_vista) }}
-          </span>
-        </div>
-        <div class="flex items-baseline justify-between gap-4">
-          <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
-            Total a prazo
-          </span>
-          <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-            {{ formatMoedaBr(totais.total_a_prazo) }}
+            {{ formatMoedaBr(exibicaoAPrazo ? totais.total_a_prazo : totais.total_a_vista) }}
           </span>
         </div>
         <div class="flex items-baseline justify-between gap-4">
@@ -505,7 +511,7 @@ async function salvarEdicao() {
               {{ p.nome }}
             </span>
             <span class="shrink-0 tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-              {{ formatMoedaBr(precoVistaProduto(p)) }}
+              {{ formatMoedaBr(edicaoAPrazo ? precoPrazoProduto(p, precoVistaProduto(p)) : precoVistaProduto(p)) }}
             </span>
           </button>
         </div>
@@ -522,10 +528,8 @@ async function salvarEdicao() {
               {{ linha.nome }}
             </p>
             <p class="text-xs tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-              À vista {{ formatMoedaBr(linha.preco) }}
-              <template v-if="linha.precoPrazo !== linha.preco">
-                · Prazo {{ formatMoedaBr(linha.precoPrazo) }}
-              </template>
+              <template v-if="edicaoAPrazo">Prazo {{ formatMoedaBr(linha.precoPrazo) }}</template>
+              <template v-else>À vista {{ formatMoedaBr(linha.preco) }}</template>
             </p>
           </div>
           <input
@@ -552,18 +556,10 @@ async function salvarEdicao() {
         <div class="space-y-1 pt-1">
           <div class="flex items-baseline justify-between gap-3">
             <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
-              Total à vista
+              {{ edicaoAPrazo ? 'Total a prazo' : 'Total à vista' }}
             </span>
             <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-              {{ formatMoedaBr(totalVistaEdit) }}
-            </span>
-          </div>
-          <div class="flex items-baseline justify-between gap-3">
-            <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
-              Total a prazo
-            </span>
-            <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-              {{ formatMoedaBr(totalPrazoEdit) }}
+              {{ formatMoedaBr(totalEditExibido) }}
             </span>
           </div>
         </div>
@@ -633,6 +629,23 @@ async function salvarEdicao() {
         </div>
       </div>
 
+      <label
+        v-if="emRevisao"
+        class="inline-flex cursor-pointer items-center gap-2.5 select-none"
+        :class="salvando || busy ? 'pointer-events-none opacity-60' : ''"
+      >
+        <input
+          type="checkbox"
+          class="h-4 w-4 rounded border-outline/50 text-primary-600 focus:ring-primary-500/30 dark:border-dark-outline/50"
+          :checked="imprimirAoAceitar"
+          :disabled="salvando || busy"
+          @change="onChangeImprimir"
+        />
+        <span class="text-sm text-on-surface dark:text-dark-on-surface">
+          Imprimir pedido ao aceitar
+        </span>
+      </label>
+
       <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
         <button
           type="button"
@@ -644,33 +657,25 @@ async function salvarEdicao() {
         </button>
         <button
           type="button"
-          class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-60 dark:bg-primary-500 dark:hover:bg-primary-600"
+          class="rounded-xl border border-outline/40 px-5 py-2.5 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-60 dark:border-dark-outline/40 dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
           :disabled="!podeSalvar"
           @click="salvarEdicao"
         >
           {{ salvando ? 'Salvando…' : 'Salvar' }}
         </button>
+        <button
+          v-if="emRevisao"
+          type="button"
+          class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-60 dark:bg-primary-500 dark:hover:bg-primary-600"
+          :disabled="salvando || busy"
+          @click="onAceitar"
+        >
+          Aceitar
+        </button>
       </div>
     </template>
 
     <template v-if="!editando">
-      <label
-        v-if="emSeparacao"
-        class="inline-flex cursor-pointer items-center gap-2.5 select-none"
-        :class="acoesBloqueadas ? 'pointer-events-none opacity-60' : ''"
-      >
-        <input
-          type="checkbox"
-          class="h-4 w-4 rounded border-outline/50 text-primary-600 focus:ring-primary-500/30 dark:border-dark-outline/50"
-          :checked="imprimirAoAceitar"
-          :disabled="acoesBloqueadas"
-          @change="onChangeImprimir"
-        />
-        <span class="text-sm text-on-surface dark:text-dark-on-surface">
-          Imprimir pedido ao aceitar
-        </span>
-      </label>
-
       <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
         <template v-if="emSeparacao">
           <button
@@ -685,9 +690,9 @@ async function salvarEdicao() {
             type="button"
             class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-60 dark:bg-primary-500 dark:hover:bg-primary-600"
             :disabled="acoesBloqueadas"
-            @click="onAceitar"
+            @click="onRevisar"
           >
-            Aceitar
+            Revisar
           </button>
         </template>
         <template v-else>

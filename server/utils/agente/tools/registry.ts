@@ -1,7 +1,7 @@
 import type { H3Event } from 'h3'
 import type { AgenteContext, AgenteToolTraceItem } from '#shared/types/agente'
 import type { OpenAiChatMessage } from '../memory'
-import type { OpenAiToolDefinition } from '../openaiChat'
+import type { OpenAiToolDefinition } from '../provedores de i.a/openaiChat'
 import { executeCalculator } from './calculator'
 import { enviaLocalizacaoTool } from './envia_localizacao'
 import { estoqueTool } from './estoque'

@@ -12,9 +12,13 @@ import MessageText from '~/components/chat/area-chat/BalaoMensagens/MessageText.
 import MessageUnsupported from '~/components/chat/area-chat/BalaoMensagens/MessageUnsupported.vue'
 import MessageVideo from '~/components/chat/area-chat/BalaoMensagens/MessageVideo.vue'
 
-const props = withDefaults(defineProps<{ mensagem: Mensagem; ehGrupo?: boolean }>(), {
-  ehGrupo: false,
-})
+const props = withDefaults(
+  defineProps<{ mensagem: Mensagem; ehGrupo?: boolean; somenteLeitura?: boolean }>(),
+  {
+    ehGrupo: false,
+    somenteLeitura: false,
+  },
+)
 
 const AUDIO_EXTS = new Set(['webm', 'ogg', 'mp3', 'm4a', 'aac', 'wav', 'opus'])
 
@@ -91,6 +95,7 @@ function onResponder() {
       :class="mensagem.from_me ? 'items-end' : 'items-start'"
     >
       <button
+        v-if="!somenteLeitura"
         type="button"
         class="absolute top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/80 bg-white text-slate-500 opacity-0 shadow-sm transition hover:bg-slate-50 hover:text-primary group-hover:opacity-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-primary-300"
         :class="mensagem.from_me ? '-left-9' : '-right-9'"

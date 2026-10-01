@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { LojaCepLookup, LojaEndereco } from '#shared/types/loja'
 import { cepCompleto, formatarCep, normalizarCep } from '#shared/utils/lojaCep'
 import { useLojaWorkspaceStore } from '~/stores/loja/workspace'
@@ -106,6 +106,14 @@ function campo(v: string) {
   return v.trim()
 }
 
+const obrigatoriosOk = computed(
+  () =>
+    cepCompleto(cep.value) &&
+    Boolean(campo(rua.value)) &&
+    Boolean(campo(numero.value)) &&
+    Boolean(campo(bairro.value)),
+)
+
 async function salvar() {
   if (salvando.value || buscandoCep.value) return
 
@@ -169,7 +177,7 @@ async function salvar() {
 <template>
   <div>
     <label class="block text-sm text-on-surface dark:text-dark-on-surface">
-      CEP
+      CEP <span class="text-red-500">*</span>
       <input
         :value="cep"
         type="text"
@@ -177,6 +185,7 @@ async function salvar() {
         maxlength="9"
         autocomplete="postal-code"
         placeholder="00000-000"
+        required
         :class="inputClass"
         :disabled="buscandoCep || salvando"
         @input="aoDigitarCep"
@@ -188,16 +197,17 @@ async function salvar() {
     </p>
 
     <label class="mt-4 block text-sm text-on-surface dark:text-dark-on-surface">
-      Rua
-      <input v-model="rua" type="text" placeholder="Rua, avenida…" :class="inputClass" :disabled="salvando">
+      Rua <span class="text-red-500">*</span>
+      <input v-model="rua" type="text" required placeholder="Rua, avenida…" :class="inputClass" :disabled="salvando">
     </label>
 
     <label class="mt-4 block text-sm text-on-surface dark:text-dark-on-surface">
-      Número
+      Número <span class="text-red-500">*</span>
       <input
         v-model="numero"
         type="text"
         inputmode="numeric"
+        required
         placeholder="Ex: 123"
         :class="inputClass"
         :disabled="salvando"
@@ -210,8 +220,8 @@ async function salvar() {
     </label>
 
     <label class="mt-4 block text-sm text-on-surface dark:text-dark-on-surface">
-      Bairro
-      <input v-model="bairro" type="text" :class="inputClass" :disabled="salvando">
+      Bairro <span class="text-red-500">*</span>
+      <input v-model="bairro" type="text" required :class="inputClass" :disabled="salvando">
     </label>
 
     <label class="mt-4 block text-sm text-on-surface dark:text-dark-on-surface">
@@ -257,7 +267,7 @@ async function salvar() {
     <button
       type="button"
       class="mt-5 flex h-12 w-full items-center justify-center rounded-full bg-[#00C853] text-sm font-semibold text-white disabled:opacity-60"
-      :disabled="salvando || buscandoCep"
+      :disabled="salvando || buscandoCep || !obrigatoriosOk"
       @click="salvar"
     >
       {{ salvando ? 'Salvando…' : 'Salvar endereço' }}

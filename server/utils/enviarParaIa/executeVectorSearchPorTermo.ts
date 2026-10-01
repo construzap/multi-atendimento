@@ -1,7 +1,6 @@
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
 import type { VectorSearchResult } from '#shared/types/vectorStore'
-import { loadWorkspaceOpenAiCredenciais } from '../agente/loadCanalCredenciais'
 import { searchSimilarPorTermo } from './documentsVectorStorePorTermo'
 import { createEmbedding } from './openaiEmbeddings'
 import type { BuscarParams } from './parseBuscarParams'
@@ -18,13 +17,7 @@ export async function executeVectorSearchPorTermo(
     })
   }
 
-  const credenciais = await loadWorkspaceOpenAiCredenciais(event, params.workspaceId)
-  const queryEmbedding = await createEmbedding(
-    credenciais.api_key,
-    params.query,
-    event,
-    params.workspaceId,
-  )
+  const queryEmbedding = await createEmbedding(params.query, event, params.workspaceId)
 
   const hits = await searchSimilarPorTermo(
     event,

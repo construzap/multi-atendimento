@@ -1,5 +1,6 @@
 import type { KanbanNotificacaoIa } from '#shared/types/kanban'
 import {
+  formaPagamentoEhAPrazo,
   formatMoedaBr,
   normalizeTotalOrcamento,
   parseProdutosNotificacao,
@@ -68,20 +69,17 @@ function somaProdutos(item: KanbanNotificacaoIa): number {
   return resolveTotalOrcamento(item.total_orcamento, item.forma_pagamento) ?? 0
 }
 
-function detalhePrecosItem(p: ProdutoNotificacaoLinha): string {
-  const partes: string[] = []
-  if (p.preco_vista != null) {
-    const sub =
-      p.subtotal_vista != null ? ` (${formatMoedaBr(p.subtotal_vista)})` : ''
-    partes.push(`À vista: ${formatMoedaBr(p.preco_vista)}${sub}`)
-  }
-  if (p.preco_prazo != null) {
+function detalhePrecosItem(p: ProdutoNotificacaoLinha, formaPagamento?: string | null): string {
+  if (formaPagamentoEhAPrazo(formaPagamento)) {
+    if (p.preco_prazo == null) return ''
     const sub =
       p.subtotal_prazo != null ? ` (${formatMoedaBr(p.subtotal_prazo)})` : ''
-    partes.push(`Prazo: ${formatMoedaBr(p.preco_prazo)}${sub}`)
+    return `<div class="item-detalhe">${esc(`Prazo: ${formatMoedaBr(p.preco_prazo)}${sub}`)}</div>`
   }
-  if (partes.length === 0) return ''
-  return `<div class="item-detalhe">${esc(partes.join(' · '))}</div>`
+  if (p.preco_vista == null) return ''
+  const sub =
+    p.subtotal_vista != null ? ` (${formatMoedaBr(p.subtotal_vista)})` : ''
+  return `<div class="item-detalhe">${esc(`À vista: ${formatMoedaBr(p.preco_vista)}${sub}`)}</div>`
 }
 
 function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
@@ -90,8 +88,11 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
   const produtos = parseProdutosNotificacao(item.produtos)
   const totais = normalizeTotalOrcamento(item.total_orcamento)
   const soma = somaProdutos(item)
+  const pagamentoAPrazo = formaPagamentoEhAPrazo(item.forma_pagamento)
   const totalVista = totais.total_a_vista != null ? totais.total_a_vista : soma
   const totalPrazo = totais.total_a_prazo != null ? totais.total_a_prazo : soma
+  const totalExibido = pagamentoAPrazo ? totalPrazo : totalVista
+  const rotuloTotal = pagamentoAPrazo ? 'Total a prazo:' : 'Total à vista:'
   const entrega = item.entrega_ou_retirada?.trim() || ''
   const endereco = item.endereco?.trim() || ''
   const observacoes = item.observacoes?.trim() || ''
@@ -116,7 +117,7 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
             <td class="qtd">${esc(qtd)}</td>
             <td class="nome">
               <div class="item-nome">${esc(p.nome)}</div>
-              ${detalhePrecosItem(p)}
+              ${detalhePrecosItem(p, item.forma_pagamento)}
             </td>
             <td class="preco">${esc(precoCell)}</td>
           </tr>`
@@ -124,7 +125,7 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
         .join('')
     : `<tr><td colspan="3" class="muted">Nenhum produto listado</td></tr>`
 
-  const splitBase = totalVista > 0 ? totalVista : 0
+  const splitBase = totalExibido > 0 ? totalExibido : 0
   const split = [2, 3, 4, 5]
     .map((n) => {
       const parte = splitBase / n
@@ -278,8 +279,7 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
     <hr class="sep" />
 
     <div class="totais">
-      <div class="linha total-final"><span>Total à vista:</span><span>${esc(formatMoedaBr(totalVista))}</span></div>
-      <div class="linha total-final"><span>Total a prazo:</span><span>${esc(formatMoedaBr(totalPrazo))}</span></div>
+      <div class="linha total-final"><span>${esc(rotuloTotal)}</span><span>${esc(formatMoedaBr(totalExibido))}</span></div>
     </div>
 
     <hr class="sep" />

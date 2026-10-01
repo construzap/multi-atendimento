@@ -109,6 +109,7 @@ export function parseLojaCanalRow(raw: unknown): LojaCanalPublico | null {
     agenda_pedido: rec.agenda_pedido === true,
     valor_pedido_minimo: Math.max(asMoney(rec.valor_pedido_minimo) ?? 0, 0),
     formas_pagamento: parseFormasPagamento(rec.formas_pagamento),
+    connect_phone: asText(rec.connect_phone),
   }
 }
 

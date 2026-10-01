@@ -2,7 +2,7 @@ import { assertMethod, createError, readBody } from 'h3'
 import { requireN8nAgenteApiKey } from '../../../utils/requireN8nAgenteApiKey'
 import { assertAdminWorkspaceAtivo } from '../../../utils/adminPrompt'
 import { buildSystemPrompt, loadPromptPrincipalTexto } from '../../../utils/agente/buildSystemPrompt'
-import { loadCanalAgenteCredenciais } from '../../../utils/agente/loadCanalCredenciais'
+import { loadCanalAgenteCredenciais } from '../../../utils/agente/carrega credenciais do canal'
 import {
   buildAgenteSessionId,
   loadAgenteHistory,

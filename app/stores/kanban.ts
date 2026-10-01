@@ -7,7 +7,7 @@ import {
   normalizeTotalOrcamento,
 } from '#shared/utils/notificacaoIaProdutos'
 import type { Conversa } from '#shared/types/conversa'
-import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
+import type { Mensagem, MensagensListResponse, PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useCamposPersonalizadosStore } from '~/stores/camposPersonalizados'
 import { useConversasStore } from '~/stores/conversas'
@@ -57,6 +57,7 @@ function normalizeKanbanCard(card: KanbanCard): KanbanCard {
     campos_personalizados: Array.isArray(card.campos_personalizados)
       ? card.campos_personalizados.map((c) => ({ ...c }))
       : [],
+    mensagens: Array.isArray(card.mensagens) ? card.mensagens : [],
     notificacoes_ia: Array.isArray(card.notificacoes_ia)
       ? card.notificacoes_ia.map((n) => ({
           ...n,
@@ -262,9 +263,23 @@ export const useKanbanStore = defineStore('kanban', {
           method: 'GET',
           query: this.kanbanQuery(workspaceId, { funil_id: funilId }),
         })
+        const mensagensPorKey = new Map<string, Mensagem[]>()
+        for (const col of this.columns) {
+          for (const card of col.cards) {
+            if (card.mensagens?.length) mensagensPorKey.set(card.conversa_key, card.mensagens)
+          }
+        }
         this.funilId = res.funil_id || null
         this.funilNome = res.funil_nome ?? ''
         this.columns = (res.columns ?? []).map(normalizeKanbanColumn)
+        if (mensagensPorKey.size > 0) {
+          for (const col of this.columns) {
+            for (const card of col.cards) {
+              const prev = mensagensPorKey.get(card.conversa_key)
+              if (prev?.length) card.mensagens = prev
+            }
+          }
+        }
         this.loadedAt = Date.now()
         this.workspaceIdLoaded = workspaceId
         this.funilIdLoaded = funilId
@@ -977,6 +992,33 @@ export const useKanbanStore = defineStore('kanban', {
 
       this.adicionarNotificacaoIaNoCard(conversaKey, res.notificacao)
       return res
+    },
+
+    /**
+     * GET /api/mensagens?todas=1 — todas as linhas da conversa no card do Kanban.
+     */
+    async carregarMensagensCard(conversaKey: string, idCanal: number): Promise<Mensagem[]> {
+      const key = conversaKey?.trim()
+      if (!key) throw new Error('Conversa sem chave.')
+      if (!Number.isFinite(idCanal) || idCanal < 1) throw new Error('Canal da conversa ausente.')
+
+      const res = await $fetch<MensagensListResponse>('/api/mensagens', {
+        method: 'GET',
+        query: {
+          id_canal: idCanal,
+          key,
+          todas: '1',
+        },
+      })
+
+      const mensagens = Array.isArray(res.data) ? res.data : []
+      for (const col of this.columns) {
+        const card = col.cards.find((c) => c.conversa_key === key)
+        if (!card) continue
+        card.mensagens = mensagens
+        break
+      }
+      return mensagens
     },
 
     /** PATCH /api/kanban/notificacoes_ia — atualiza `entrega_status`. */

@@ -7,7 +7,7 @@ import BaseModal from '~/components/BaseModal.vue'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 import { useWorkspacesStore } from '~/stores/workspaces'
-import { formatMoedaBr } from './parseProdutosNotificacao'
+import { formaPagamentoEhAPrazo, formatMoedaBr } from './parseProdutosNotificacao'
 import { imprimirCupomPedido } from './imprimirCupomPedido'
 import { parseLatLngTexto } from '#shared/utils/navegacaoMapas'
 
@@ -110,6 +110,10 @@ const totalPrazo = computed(() =>
     (acc, l) => acc + Math.max(0, l.qtd) * Math.max(0, l.precoPrazo),
     0,
   ),
+)
+const edicaoAPrazo = computed(() => formaPagamentoEhAPrazo(formaPagamento.value))
+const totalExibido = computed(() =>
+  edicaoAPrazo.value ? totalPrazo.value : totalVista.value,
 )
 
 const podeCriar = computed(() => {
@@ -363,7 +367,7 @@ async function criarPedido() {
               {{ p.nome }}
             </span>
             <span class="shrink-0 tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-              {{ formatMoedaBr(precoVistaProduto(p)) }}
+              {{ formatMoedaBr(edicaoAPrazo ? precoPrazoProduto(p, precoVistaProduto(p)) : precoVistaProduto(p)) }}
             </span>
           </button>
         </div>
@@ -381,10 +385,8 @@ async function criarPedido() {
               {{ linha.nome }}
             </p>
             <p class="text-xs tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant">
-              À vista {{ formatMoedaBr(linha.preco) }}
-              <template v-if="linha.precoPrazo !== linha.preco">
-                · Prazo {{ formatMoedaBr(linha.precoPrazo) }}
-              </template>
+              <template v-if="edicaoAPrazo">Prazo {{ formatMoedaBr(linha.precoPrazo) }}</template>
+              <template v-else>À vista {{ formatMoedaBr(linha.preco) }}</template>
             </p>
           </div>
           <input
@@ -411,18 +413,10 @@ async function criarPedido() {
         <div class="space-y-1 pt-1">
           <div class="flex items-baseline justify-between gap-3">
             <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
-              Total à vista
+              {{ edicaoAPrazo ? 'Total a prazo' : 'Total à vista' }}
             </span>
             <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-              {{ formatMoedaBr(totalVista) }}
-            </span>
-          </div>
-          <div class="flex items-baseline justify-between gap-3">
-            <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
-              Total a prazo
-            </span>
-            <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-              {{ formatMoedaBr(totalPrazo) }}
+              {{ formatMoedaBr(totalExibido) }}
             </span>
           </div>
         </div>

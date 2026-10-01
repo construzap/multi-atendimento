@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { toast } from 'vue-sonner'
 import type { Workspace } from '#shared/types/workspace'
+import { useSomPedidoStore } from '~/stores/somPedido'
 
 definePageMeta({
   layout: 'workspace'
@@ -7,6 +9,7 @@ definePageMeta({
 
 const route = useRoute()
 const workspaces = useWorkspacesStore()
+const somPedido = useSomPedidoStore()
 
 function parsePositiveInt(raw: unknown): number | null {
   const s = String(raw ?? '').trim()
@@ -69,6 +72,24 @@ watch(
   },
   { immediate: true }
 )
+
+onMounted(() => {
+  somPedido.hidratar()
+})
+
+async function aceitarSomENotificacoes() {
+  const ok = await somPedido.permitir()
+  if (ok) {
+    toast.success('Som ativo. O sino toca mesmo se você estiver em outra aba.')
+    return
+  }
+  toast.message('Som e notificações desativados. O navegador não permitiu.')
+}
+
+function recusarSomENotificacoes() {
+  somPedido.desativar()
+  toast.message('Som e notificações desativados.')
+}
 </script>
 
 <template>
@@ -77,6 +98,36 @@ watch(
     :class="travaViewportProdutos ? 'h-full min-h-0 overflow-hidden' : ''"
   >
     <NuxtPage :key="route.fullPath" />
+
+    <BaseModal
+      :open="somPedido.modalAberto"
+      title="Som e notificações de pedido"
+      :show-close="false"
+      :close-on-backdrop="false"
+      :close-on-escape="false"
+      panel-class="w-full max-w-md"
+      @update:open="somPedido.modalAberto = $event"
+    >
+      <p class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+        Para o sino tocar quando chegar um pedido — mesmo se você estiver em outra aba — o navegador precisa permitir o som e as notificações.
+      </p>
+      <div class="mt-5 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-xl border border-outline/40 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-dark-outline/40 dark:text-dark-on-surface dark:hover:bg-dark-surface-container"
+          @click="recusarSomENotificacoes"
+        >
+          Não permitir
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          @click="aceitarSomENotificacoes"
+        >
+          Permitir
+        </button>
+      </div>
+    </BaseModal>
   </div>
 </template>
 

@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
 import type { AgenteContext, AgenteToolTraceItem } from '#shared/types/agente'
-import { openaiChatCompletions } from './openaiChat'
+import { openaiChatCompletions } from './provedores de i.a/openaiChat'
 import { sanitizeAgenteHistory, type OpenAiChatMessage } from './memory'
 import { getOpenAiToolDefinitions, executeAgenteTool } from './tools/registry'
 

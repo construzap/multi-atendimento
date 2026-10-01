@@ -26,6 +26,8 @@ export type LojaCanalPublico = {
   agenda_pedido: boolean
   valor_pedido_minimo: number
   formas_pagamento: LojaFormasPagamentoPublico
+  /** WhatsApp da loja (`canais.connect_phone`). */
+  connect_phone: string | null
 }
 
 /** Termo de pesquisa usado como categoria/aba da vitrine. */

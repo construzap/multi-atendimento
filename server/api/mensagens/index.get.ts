@@ -72,20 +72,24 @@ async function carregarCitadas(
   const citadasPorId = new Map<string, Mensagem>()
   if (!replyIds.length) return citadasPorId
 
-  const { data: citadas, error: citadasErr } = await admin
-    .from('mensagens')
-    .select(SELECT_MENSAGENS)
-    .in('message_id', replyIds)
+  const lote = 150
+  for (let i = 0; i < replyIds.length; i += lote) {
+    const ids = replyIds.slice(i, i + lote)
+    const { data: citadas, error: citadasErr } = await admin
+      .from('mensagens')
+      .select(SELECT_MENSAGENS)
+      .in('message_id', ids)
 
-  if (citadasErr) {
-    throw createError({ statusCode: 500, statusMessage: citadasErr.message })
-  }
+    if (citadasErr) {
+      throw createError({ statusCode: 500, statusMessage: citadasErr.message })
+    }
 
-  for (const citada of (citadas ?? []) as MensagemRow[]) {
-    citadasPorId.set(
-      citada.message_id,
-      enrichMensagemRow(citada, conversaIsGroup, contactName, contactPhoto),
-    )
+    for (const citada of (citadas ?? []) as MensagemRow[]) {
+      citadasPorId.set(
+        citada.message_id,
+        enrichMensagemRow(citada, conversaIsGroup, contactName, contactPhoto),
+      )
+    }
   }
 
   return citadasPorId
@@ -100,6 +104,7 @@ async function fetchMensagensPorKey(
   canalId: number,
   conversaKey: string,
   page: number,
+  todas = false,
 ): Promise<MensagensListResponse> {
   const { data: convRaw, error: convErr } = await admin
     .from('conversas')
@@ -124,22 +129,48 @@ async function fetchMensagensPorKey(
   const contactPhoto = conv.photo ?? null
   const conversaIsGroup = conv.is_group === true
 
-  const from = (page - 1) * PER_PAGE
-  const to = from + PER_PAGE - 1
+  const rows: MensagemRow[] = []
+  let total = 0
 
-  const { data, error, count } = await admin
-    .from('mensagens')
-    .select(SELECT_MENSAGENS, { count: 'exact' })
-    .eq('id_canal', canalId)
-    .eq('key_conversa', conversaKey)
-    .order('created_at', { ascending: false })
-    .range(from, to)
+  if (todas) {
+    const lote = 1000
+    let from = 0
+    for (;;) {
+      const { data, error, count } = await admin
+        .from('mensagens')
+        .select(SELECT_MENSAGENS, { count: 'exact' })
+        .eq('id_canal', canalId)
+        .eq('key_conversa', conversaKey)
+        .order('created_at', { ascending: false })
+        .range(from, from + lote - 1)
 
-  if (error) {
-    throw createError({ statusCode: 500, statusMessage: error.message })
+      if (error) {
+        throw createError({ statusCode: 500, statusMessage: error.message })
+      }
+      if (count != null) total = count
+      const pagina = (data ?? []) as MensagemRow[]
+      rows.push(...pagina)
+      if (pagina.length < lote) break
+      from += lote
+    }
+  } else {
+    const from = (page - 1) * PER_PAGE
+    const to = from + PER_PAGE - 1
+
+    const { data, error, count } = await admin
+      .from('mensagens')
+      .select(SELECT_MENSAGENS, { count: 'exact' })
+      .eq('id_canal', canalId)
+      .eq('key_conversa', conversaKey)
+      .order('created_at', { ascending: false })
+      .range(from, to)
+
+    if (error) {
+      throw createError({ statusCode: 500, statusMessage: error.message })
+    }
+    total = count ?? 0
+    rows.push(...((data ?? []) as MensagemRow[]))
   }
-
-  const rows = (data ?? []) as MensagemRow[]
   const replyIds = [
     ...new Set(
       rows
@@ -164,9 +195,9 @@ async function fetchMensagensPorKey(
 
   return {
     data: enrichRowsComCitadas(rows, conversaIsGroup, contactName, contactPhoto, citadasPorId),
-    page,
-    perPage: PER_PAGE,
-    total: count ?? 0,
+    page: todas ? 1 : page,
+    perPage: todas ? Math.max(rows.length, 1) : PER_PAGE,
+    total,
     id_canal: conv.id_canal ?? canalId,
     funil_id: conv.funil_id ?? null,
     coluna_id: conv.coluna_id ?? null,
@@ -246,6 +277,7 @@ async function fetchMensagensLegado(
 
 /**
  * GET /api/mensagens?id_canal=&key=&page=
+ * `todas=1` devolve todas as linhas da conversa (sem o corte de 30).
  *
  * **Principal:** `key` / `key_conversa` — tabela `public.mensagens` filtrada por `key_conversa`.
  * Metadados da conversa em `public.conversas`.
@@ -295,6 +327,8 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
     })
   }
 
+  const todas = pickQueryStr(q.todas) === '1' || q.todas === true
+
   const rawPage = q.page
   const page =
     rawPage === undefined || rawPage === null || rawPage === ''
@@ -307,7 +341,7 @@ export default defineEventHandler(async (event): Promise<MensagensListResponse> 
   const admin = serverSupabaseServiceRole<any>(event)
 
   if (conversaKey) {
-    return fetchMensagensPorKey(admin, canalId, conversaKey, page)
+    return fetchMensagensPorKey(admin, canalId, conversaKey, page, todas)
   }
 
   return fetchMensagensLegado(admin, canalId, lidLegacy, page)

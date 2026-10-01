@@ -10,6 +10,7 @@ import { useKanbanStore } from '~/stores/kanban'
 import { useWorkspacesStore } from '~/stores/workspaces'
 import ItemPedidoPronto from './ItemPedidoPronto.vue'
 import ModalCriarPedido from './ModalCriarPedido.vue'
+import ModalConversaRevisar from './revisar-pedido/ModalConversaRevisar.vue'
 import PedidoProntoExpandido from './PedidoProntoExpandido.vue'
 import { imprimirCupomPedido } from './imprimirCupomPedido'
 import {
@@ -30,6 +31,9 @@ const workspaces = useWorkspacesStore()
 const { columns } = storeToRefs(kanban)
 
 const expandidoId = ref<number | null>(null)
+const modalConversaAberto = ref(false)
+const revisaoSeq = ref(0)
+const pedidoRevisaoId = ref<number | null>(null)
 const modalExcluirAberto = ref(false)
 const modalCriarPedidoAberto = ref(false)
 const notificacaoParaExcluir = ref<KanbanNotificacaoIa | null>(null)
@@ -59,6 +63,8 @@ watch(open, (aberto) => {
     expandidoId.value = null
     modalExcluirAberto.value = false
     modalCriarPedidoAberto.value = false
+    modalConversaAberto.value = false
+    pedidoRevisaoId.value = null
     notificacaoParaExcluir.value = null
     mostrarTodos.value = false
   }
@@ -172,6 +178,23 @@ function mensagemErro(id: number): string {
   return errosPorId[id] ?? ''
 }
 
+function abrirRevisaoConversa(item: KanbanNotificacaoIa) {
+  const key = props.conversaKey?.trim()
+  const canalId = cardNoPinia.value?.id_canal
+  if (!key || canalId == null || canalId < 1) {
+    toast.error('Esta conversa não tem canal para carregar as mensagens.')
+    return
+  }
+  pedidoRevisaoId.value = item.id
+  revisaoSeq.value += 1
+  modalConversaAberto.value = true
+}
+
+function fecharRevisaoConversa() {
+  modalConversaAberto.value = false
+  pedidoRevisaoId.value = null
+}
+
 async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boolean }) {
   const key = props.conversaKey?.trim()
   const wsId = workspaceId.value
@@ -212,6 +235,7 @@ async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boo
       }
     }
 
+    fecharRevisaoConversa()
     if (ok) {
       toast.success('Pedido em preparação', {
         description: 'O pedido foi aceito e está em preparação.',
@@ -309,9 +333,19 @@ function confirmarExcluirNotificacao() {
   <BaseModal
     v-model:open="open"
     :title="title ?? 'Pedidos'"
-    panel-class="w-full max-w-lg"
-    body-class="max-h-[min(75vh,36rem)] overflow-y-auto !p-4 sm:!p-5"
+    :panel-class="modalConversaAberto ? 'w-full max-w-6xl' : 'w-full max-w-lg'"
+    :body-class="modalConversaAberto
+      ? 'flex min-h-0 flex-col overflow-hidden !p-0 max-h-[min(78vh,42rem)]'
+      : 'max-h-[min(75vh,36rem)] overflow-y-auto !p-4 sm:!p-5'"
   >
+    <div
+      class="flex min-h-0 flex-1 flex-col lg:flex-row"
+      :class="modalConversaAberto ? 'h-[min(78vh,42rem)]' : ''"
+    >
+    <div
+      class="min-h-0 min-w-0 flex-1 overflow-y-auto"
+      :class="modalConversaAberto ? 'p-4 sm:p-5' : ''"
+    >
     <div class="mb-4 flex items-center justify-between gap-3">
       <label class="inline-flex cursor-pointer items-center gap-2 select-none">
         <span class="relative inline-flex items-center">
@@ -374,6 +408,8 @@ function confirmarExcluirNotificacao() {
             :item="item"
             :conversa-key="conversaKey"
             :busy="estaEmVoo(item.id)"
+            :em-revisao="modalConversaAberto && pedidoRevisaoId === item.id"
+            @revisar="abrirRevisaoConversa(item)"
             @aceitar="aceitarPedido(item, $event)"
             @rejeitar="rejeitarPedido(item)"
             @imprimir="imprimirPedido(item)"
@@ -400,6 +436,15 @@ function confirmarExcluirNotificacao() {
         </ItemPedidoPronto>
       </li>
     </ul>
+    </div>
+    <ModalConversaRevisar
+      v-if="modalConversaAberto"
+      :key="revisaoSeq"
+      class="min-h-[22rem] w-full border-t border-outline/30 lg:w-[26rem] lg:shrink-0 lg:border-l lg:border-t-0 dark:border-dark-outline/30"
+      :conversa-key="conversaKey"
+      @fechar="fecharRevisaoConversa"
+    />
+    </div>
   </BaseModal>
 
   <ModalCriarPedido

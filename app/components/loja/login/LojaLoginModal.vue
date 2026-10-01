@@ -55,10 +55,29 @@ function resetar() {
   candidato.value = null
 }
 
+function aplicarLoginSalvo() {
+  const salvo = loja.login
+  const celular = salvo?.celular?.trim() ?? ''
+  const key = salvo?.key?.trim() ?? ''
+  if (!celular && !key) return
+
+  celularBusca.value = celular
+  if (!key) return
+
+  candidato.value = {
+    nome: salvo?.nome?.trim() ?? '',
+    celular,
+    cpf: salvo?.cpf?.trim() ?? '',
+    key,
+  }
+  passo.value = precisaCompletar.value ? 'completar' : 'confirmar'
+}
+
 watch(
   () => props.open,
   (aberto) => {
     if (!aberto) resetar()
+    else aplicarLoginSalvo()
   },
 )
 
@@ -213,6 +232,11 @@ function recusarNumero() {
         />
         <LojaLoginFormulario
           v-else-if="passo === 'completar'"
+          :inicial="{
+            nome: candidato?.nome || loja.login?.nome || '',
+            celular: celularBusca || loja.login?.celular || '',
+            cpf: candidato?.cpf || loja.login?.cpf || '',
+          }"
           :pedir-nome="!candidato || faltaNome"
           :pedir-cpf="!candidato || faltaCpf"
           :pending="pending"
@@ -224,7 +248,7 @@ function recusarNumero() {
         <LojaLoginFormulario
           v-else
           pedir-celular
-          :inicial="{ celular: celularBusca }"
+          :inicial="{ celular: celularBusca || loja.login?.celular || '' }"
           :pending="pending"
           :erro="erro"
           texto-botao="Continuar"

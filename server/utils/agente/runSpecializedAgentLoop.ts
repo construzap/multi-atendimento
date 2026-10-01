@@ -5,7 +5,7 @@ import type { OpenAiChatMessage } from './memory'
 import {
   openaiChatCompletions,
   type OpenAiToolDefinition,
-} from './openaiChat'
+} from './provedores de i.a/openaiChat'
 
 export type RunSpecializedAgentLoopResult = {
   reply_text: string

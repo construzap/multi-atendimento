@@ -10,23 +10,24 @@ type OpenAIEmbeddingResponse = {
   data: Array<{ embedding: number[]; index: number }>
 }
 
-function getEmbeddingModel(event?: H3Event): string {
+function getEmbeddingConfig(event?: H3Event): { apiKey: string; model: string } {
   const config = event ? useRuntimeConfig(event) : useRuntimeConfig()
-  const model = String(config.openaiEmbeddingModel ?? '').trim()
-  return model || 'text-embedding-3-small'
+  const apiKey = String(config.openaiEmbeddingApiKey ?? '').trim()
+  const model = String(config.openaiEmbeddingModel ?? '').trim() || 'text-embedding-3-small'
+  return { apiKey, model }
 }
 
 export async function createEmbeddings(
-  apiKey: string,
   texts: string[],
   event: H3Event,
   workspaceId: number,
 ): Promise<number[][]> {
-  const key = apiKey.trim()
-  if (!key) {
+  const { apiKey, model } = getEmbeddingConfig(event)
+  if (!apiKey) {
     throw createError({
       statusCode: 500,
-      statusMessage: 'API key da OpenAI não cadastrada. Configure a API key na página de Canais.',
+      statusMessage:
+        'NUXT_OPENAI_EMBEDDING_API_KEY não configurada no servidor. Coloque a API key de embeddings no .env.',
     })
   }
 
@@ -35,12 +36,11 @@ export async function createEmbeddings(
   const ownerUserId = await getWorkspaceOwnerUserId(event, workspaceId)
   await assertPodeUsarTokens(event, ownerUserId)
 
-  const model = getEmbeddingModel(event)
   const results: number[][] = new Array(texts.length)
 
   for (let i = 0; i < texts.length; i += MAX_BATCH) {
     const batch = texts.slice(i, i + MAX_BATCH)
-    const embeddings = await fetchEmbeddingsBatch(key, model, batch)
+    const embeddings = await fetchEmbeddingsBatch(apiKey, model, batch)
     for (let j = 0; j < embeddings.length; j++) {
       results[i + j] = embeddings[j]!
     }
@@ -50,12 +50,11 @@ export async function createEmbeddings(
 }
 
 export async function createEmbedding(
-  apiKey: string,
   text: string,
   event: H3Event,
   workspaceId: number,
 ): Promise<number[]> {
-  const [embedding] = await createEmbeddings(apiKey, [text], event, workspaceId)
+  const [embedding] = await createEmbeddings([text], event, workspaceId)
   if (!embedding) {
     throw createError({ statusCode: 500, statusMessage: 'Falha ao gerar embedding.' })
   }

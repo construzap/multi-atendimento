@@ -1,6 +1,6 @@
 import type { H3Event } from 'h3'
 import type { AgenteToolTraceItem } from '#shared/types/agente'
-import type { OpenAiToolDefinition } from '../openaiChat'
+import type { OpenAiToolDefinition } from '../provedores de i.a/openaiChat'
 import { executeTermoVectorSearch } from '../../enviarParaIa/executeTermoVectorSearch'
 import { argStr } from '../tools/helpers'
 import { parseToolArgs, previewToolResult } from './parseBody'

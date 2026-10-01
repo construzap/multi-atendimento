@@ -11,7 +11,7 @@ import {
 } from '../../../../utils/lojaCardapio'
 
 const CANAL_LOJA_SELECT =
-  'id, workspace_id, longitude, latitude, horarios, tempo_aviso_minutos, endereco, loja_aberta, agenda_pedido, valor_pedido_minimo, formas_pagamento'
+  'id, workspace_id, longitude, latitude, horarios, tempo_aviso_minutos, endereco, loja_aberta, agenda_pedido, valor_pedido_minimo, formas_pagamento, connect_phone'
 
 /**
  * GET /api/public/loja/workspace/:slug?offset=

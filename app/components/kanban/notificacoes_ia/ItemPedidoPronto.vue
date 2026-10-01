@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { KanbanNotificacaoIa } from '#shared/types/kanban'
 import BadgeTempoEsperaPedido from './BadgeTempoEsperaPedido.vue'
 import {
+  formaPagamentoEhAPrazo,
   formatMoedaBr,
   isPedidoComTempoEspera,
   isPedidoPronto,
@@ -26,6 +27,10 @@ const emit = defineEmits<{
 const qtdItens = computed(() => parseProdutosNotificacao(props.item.produtos).length)
 
 const totais = computed(() => normalizeTotalOrcamento(props.item.total_orcamento))
+const pagamentoAPrazo = computed(() => formaPagamentoEhAPrazo(props.item.forma_pagamento))
+const totalExibido = computed(() =>
+  pagamentoAPrazo.value ? totais.value.total_a_prazo : totais.value.total_a_vista,
+)
 
 const agoraMs = ref(Date.now())
 let tickTimer: ReturnType<typeof setInterval> | null = null
@@ -122,12 +127,10 @@ function textoOuTraco(v: string | null | undefined): string {
         <template v-if="isPedidoPronto(item.tipo_solicitacao)">
           <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
             <span class="tabular-nums text-on-surface dark:text-dark-on-surface">
-              <span class="text-on-surface-variant dark:text-dark-on-surface-variant">À vista:</span>
-              <span class="ml-1 font-semibold">{{ formatMoedaBr(totais.total_a_vista) }}</span>
-            </span>
-            <span class="tabular-nums text-on-surface dark:text-dark-on-surface">
-              <span class="text-on-surface-variant dark:text-dark-on-surface-variant">Prazo:</span>
-              <span class="ml-1 font-semibold">{{ formatMoedaBr(totais.total_a_prazo) }}</span>
+              <span class="text-on-surface-variant dark:text-dark-on-surface-variant">
+                {{ pagamentoAPrazo ? 'A prazo:' : 'À vista:' }}
+              </span>
+              <span class="ml-1 font-semibold">{{ formatMoedaBr(totalExibido) }}</span>
             </span>
             <span class="text-on-surface-variant dark:text-dark-on-surface-variant">
               {{ textoOuTraco(item.forma_pagamento) }}

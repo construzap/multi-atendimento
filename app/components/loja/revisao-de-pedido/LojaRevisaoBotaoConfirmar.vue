@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
+import type { LojaFormaPagamento } from '#shared/types/loja'
 import { mensagemErroLoja, useLojaWorkspaceStore } from '~/stores/loja/workspace'
+
+const FORMAS_ENTREGA: LojaFormaPagamento[] = [
+  'dinheiro',
+  'credito_entrega',
+  'debito',
+  'vale_refeicao',
+]
 
 const emit = defineEmits<{
   'precisa-login': []
@@ -19,8 +27,14 @@ const formaOnline = computed(() => {
   return f === 'pix' || f === 'credito_online'
 })
 
+const formaEntrega = computed(() => {
+  const f = formaPagamento.value
+  return f != null && FORMAS_ENTREGA.includes(f)
+})
+
 const podeConfirmar = computed(() => {
-  if (!carrinhoAtual.value.length || !formaOnline.value || pedidoLoading.value) return false
+  if (!carrinhoAtual.value.length || pedidoLoading.value) return false
+  if (!formaOnline.value && !formaEntrega.value) return false
   if (modoRecebimento.value === 'entrega') return enderecoSelecionadoId.value != null
   return true
 })
@@ -31,17 +45,18 @@ async function confirmar() {
     emit('precisa-login')
     return
   }
-  if (!podeConfirmar.value) {
-    if (!formaOnline.value) {
-      erro.value = 'Pagamento na entrega ainda não está disponível. Use PIX ou cartão online.'
-    }
+  if (!podeConfirmar.value) return
+
+  const destino = slug.value?.trim()
+  if (!destino) return
+
+  if (formaEntrega.value) {
+    await router.push(`/loja/${encodeURIComponent(destino)}/enviado`)
     return
   }
 
   try {
     const pedido = await loja.criarPedido()
-    const destino = slug.value?.trim()
-    if (!destino) return
     await router.push(`/loja/${encodeURIComponent(destino)}/pedido?id=${pedido.id}`)
   } catch (err) {
     erro.value = loja.pedidoErro || mensagemErroLoja(err, 'Não foi possível confirmar o pedido.')
@@ -70,7 +85,7 @@ async function confirmar() {
       :disabled="!podeConfirmar && loginPronto"
       @click="confirmar"
     >
-      {{ pedidoLoading ? 'Gerando pagamento…' : 'Confirmar pedido' }}
+      {{ pedidoLoading ? 'Gerando pagamento…' : formaEntrega ? 'Enviar pedido' : 'Confirmar pedido' }}
     </button>
   </div>
 </template>

@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
-import type { OpenAiChatMessage } from './memory'
-import { resolveOpenAiChatCompletionsUrl } from './loadCanalCredenciais'
+import type { OpenAiChatMessage } from '../memory'
+import { resolveOpenAiChatCompletionsUrl } from '../carrega credenciais do canal'
 
 export type OpenAiToolDefinition = {
   type: 'function'
@@ -69,6 +69,10 @@ export async function openaiChatCompletions(
   if (params.tools?.length) {
     body.tools = params.tools
     body.tool_choice = params.tool_choice ?? 'auto'
+    // gpt-6-luna não aceita ferramentas + raciocínio em /v1/chat/completions.
+    if (modelLower.includes('gpt-6-luna')) {
+      body.reasoning_effort = 'none'
+    }
   }
 
   let res: OpenAiChatCompletionResponse

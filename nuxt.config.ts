@@ -41,9 +41,14 @@ export default defineNuxtConfig({
     // --- Pusher — só servidor (override: NUXT_PUSHER_SECRET) ---
     pusherSecret: '',
 
-    // --- OpenAI — embeddings (override: NUXT_OPENAI_EMBEDDING_MODEL) ---
-    // API key vem do canal (api_key_encrypted), não de env global.
-    openaiEmbeddingModel: 'text-embedding-3-small',
+    // --- OpenAI — embeddings (sempre env, não a API key do canal) ---
+    // Override: NUXT_OPENAI_EMBEDDING_API_KEY ou OPENAI_EMBEDDING_API_KEY
+    openaiEmbeddingApiKey:
+      process.env.NUXT_OPENAI_EMBEDDING_API_KEY ||
+      process.env.OPENAI_EMBEDDING_API_KEY ||
+      '',
+    /** Override: NUXT_OPENAI_EMBEDDING_MODEL */
+    openaiEmbeddingModel: process.env.NUXT_OPENAI_EMBEDDING_MODEL || 'text-embedding-3-small',
 
     // --- Brave Image Search (imagens de produtos, admin) ---
     // Override: NUXT_BRAVE_SEARCH_API_KEY

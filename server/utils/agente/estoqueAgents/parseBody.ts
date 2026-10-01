@@ -1,7 +1,7 @@
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
 import { assertAdminWorkspaceAtivo } from '../../adminPrompt'
-import { loadCanalAgenteCredenciais } from '../loadCanalCredenciais'
+import { loadCanalAgenteCredenciais } from '../carrega credenciais do canal'
 
 export function parsePositiveInt(raw: unknown, label: string): number {
   const n =

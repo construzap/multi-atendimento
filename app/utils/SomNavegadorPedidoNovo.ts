@@ -30,17 +30,23 @@ function lerSomPedidoAtivo(): boolean {
 /** `true` só depois que o usuário permitiu som e notificação. */
 export const somPedidoAtivo = ref(lerSomPedidoAtivo())
 
-/**
- * Abre o aviso ao entrar no Kanban, até o clique de Permitir nesta visita.
- * Quem já recusou (`'0'`) não vê o aviso de novo — usa o botão Ativar som.
- */
-export function deveAbrirPedidoPermissaoSom(): boolean {
-  if (!import.meta.client || somPedidoDesbloqueado.value) return false
+/** `null` = ainda não escolheu. `true`/`false` = escolha já gravada. */
+export function lerDecisaoSomPedido(): boolean | null {
+  if (!import.meta.client) return null
   try {
-    return localStorage.getItem(STORAGE_KEY) !== '0'
+    const valor = localStorage.getItem(STORAGE_KEY)
+    if (valor === '1') return true
+    if (valor === '0') return false
+    return null
   } catch {
-    return true
+    return null
   }
+}
+
+/** Espelha a escolha já salva sem pedir permissão de novo e sem tocar no primeiro clique. */
+export function espelharSomPedidoSalvo(ativo: boolean): void {
+  somPedidoAtivo.value = ativo
+  somPedidoDesbloqueado.value = ativo
 }
 
 function garantirAudio(): HTMLAudioElement | null {
