@@ -1082,6 +1082,8 @@ export const useKanbanStore = defineStore('kanban', {
       coordenadas?: string | null
       latitude?: number | null
       longitude?: number | null
+      entregadorId?: number | null
+      tokenEntrega?: string | null
     }) {
       const workspaceId = input.workspaceId
       const conversaKey = input.conversaKey?.trim()
@@ -1120,6 +1122,16 @@ export const useKanbanStore = defineStore('kanban', {
           coordenadas: input.coordenadas ?? null,
           latitude: input.latitude ?? null,
           longitude: input.longitude ?? null,
+          ...(input.entregadorId != null && input.entregadorId >= 1
+            ? {
+                entregador_id: input.entregadorId,
+                entrega_status: 'coletado',
+                coletado_at: new Date().toISOString(),
+              }
+            : {}),
+          ...(input.tokenEntrega?.trim()
+            ? { token_entrega: input.tokenEntrega.trim().toLowerCase() }
+            : {}),
         },
       })
 

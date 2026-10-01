@@ -18,6 +18,8 @@ const props = defineProps<{
   item: KanbanNotificacaoIa
   expandido: boolean
   erro?: string | null
+  /** Revisão: só o formulário de edição, sem o resumo do card. */
+  somenteEdicao?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -79,10 +81,15 @@ function textoOuTraco(v: string | null | undefined): string {
 
 <template>
   <div
-    class="overflow-hidden rounded-2xl border bg-surface-container-lowest shadow-sm dark:bg-dark-surface-container-low"
-    :class="erro
-      ? 'border-red-500 ring-1 ring-red-500/30 dark:border-red-400 dark:ring-red-400/30'
-      : 'border-outline/35 dark:border-dark-outline/35'"
+    class="overflow-hidden"
+    :class="somenteEdicao
+      ? ''
+      : [
+          'rounded-2xl border bg-surface-container-lowest shadow-sm dark:bg-dark-surface-container-low',
+          erro
+            ? 'border-red-500 ring-1 ring-red-500/30 dark:border-red-400 dark:ring-red-400/30'
+            : 'border-outline/35 dark:border-dark-outline/35',
+        ]"
   >
     <p
       v-if="erro"
@@ -92,6 +99,7 @@ function textoOuTraco(v: string | null | undefined): string {
     </p>
 
     <div
+      v-if="!somenteEdicao"
       class="flex cursor-pointer items-start gap-3 px-4 py-3.5 transition-colors hover:bg-surface-container-high/50 dark:hover:bg-dark-surface-container-high/35"
       role="button"
       tabindex="0"
@@ -181,7 +189,7 @@ function textoOuTraco(v: string | null | undefined): string {
 
     <div
       v-if="expandido"
-      class="border-t border-outline/25 px-4 py-4 dark:border-dark-outline/25"
+      :class="somenteEdicao ? '' : 'border-t border-outline/25 px-4 py-4 dark:border-dark-outline/25'"
     >
       <slot />
     </div>

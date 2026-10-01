@@ -7,10 +7,8 @@ import { argStr, ctxStr, resolveCtxUrl, type ToolDef } from './helpers'
 export const transferirAtendimentoTool: ToolDef = {
   name: 'transferir_atendimento',
   description:
-    'Chame IMEDIATAMENTE a ferramenta <transferir_atendimento> quando:\n' +
+    'Chame a ferramenta <transferir_atendimento> quando:\n' +
     '1) O cliente pedir para falar com um atendente humano, pessoa da loja, suporte humano, ou disser que quer transferir o atendimento.\n' +
-    '2) O assunto fugir do escopo das suas instruções / system prompt (algo que você não deve ou não consegue resolver sozinho).\n\n' +
-    'REGRA OBRIGATÓRIA: nesses casos você DEVE chamar <transferir_atendimento> — não apenas responder por texto.\n' +
     'Ao chamar, envie em resumo_da_conversa um resumo claro (motivo, o que já foi combinado, por que precisa de humano).\n' +
     'Depois de chamar, avise o cliente educadamente que um atendente humano vai continuar.',
   parameters: {

@@ -8,6 +8,7 @@ import ModalAlerta from '~/components/ModalAlerta.vue'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 import { useWorkspacesStore } from '~/stores/workspaces'
+import type { EntregadorListaItem } from '#shared/types/entregadores'
 import ItemPedidoPronto from './ItemPedidoPronto.vue'
 import ModalCriarPedido from './ModalCriarPedido.vue'
 import ModalConversaRevisar from './revisar-pedido/ModalConversaRevisar.vue'
@@ -34,6 +35,7 @@ const expandidoId = ref<number | null>(null)
 const modalConversaAberto = ref(false)
 const revisaoSeq = ref(0)
 const pedidoRevisaoId = ref<number | null>(null)
+const entregadorRevisao = ref<EntregadorListaItem | null>(null)
 const modalExcluirAberto = ref(false)
 const modalCriarPedidoAberto = ref(false)
 const notificacaoParaExcluir = ref<KanbanNotificacaoIa | null>(null)
@@ -193,37 +195,51 @@ function abrirRevisaoConversa(item: KanbanNotificacaoIa) {
 function fecharRevisaoConversa() {
   modalConversaAberto.value = false
   pedidoRevisaoId.value = null
+  entregadorRevisao.value = null
 }
 
-async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boolean }) {
+async function aceitarPedido(
+  item: KanbanNotificacaoIa,
+  payload: { imprimir: boolean; entregadorId: number | null; tokenEntrega: string },
+) {
   const key = props.conversaKey?.trim()
   const wsId = workspaceId.value
   if (!key || !wsId || estaEmVoo(item.id)) return
 
+  const comEntregador = payload.entregadorId != null && payload.entregadorId >= 1
   const snapshot = clonarNotificacao(item)
   const card = cardNoPinia.value
   limparErro(item.id)
   marcarEmVoo(item.id)
 
-  kanban.setNotificacaoIaEntregaStatus(key, item.id, 'aguardando_entregador')
+  if (!comEntregador) {
+    kanban.setNotificacaoIaEntregaStatus(key, item.id, 'aguardando_entregador')
+  }
 
   try {
     const ok = await kanban.moverConversaParaColunaOrdem({
       workspaceId: wsId,
       conversaKey: key,
-      ordem: 4,
+      ordem: comEntregador ? 5 : 4,
     })
 
-    await kanban.patchNotificacaoIaEntregaStatus({
-      workspaceId: wsId,
-      conversaKey: key,
-      notificacaoId: item.id,
-      entregaStatus: 'aguardando_entregador',
-    })
+    if (!comEntregador) {
+      await kanban.patchNotificacaoIaEntregaStatus({
+        workspaceId: wsId,
+        conversaKey: key,
+        notificacaoId: item.id,
+        entregaStatus: 'aguardando_entregador',
+      })
+    }
+
+    const tokenEntrega = payload.tokenEntrega.trim().toLowerCase()
+    if (tokenEntrega) {
+      kanban.setNotificacaoIaTokenEntrega(key, item.id, tokenEntrega)
+    }
 
     if (payload.imprimir) {
       const { token_entrega: tokenGerado } = await imprimirCupomPedido({
-        item: snapshot,
+        item: { ...snapshot, token_entrega: tokenEntrega || snapshot.token_entrega || null },
         workspaceId: wsId,
         lojaNome: lojaNome.value,
         clienteNome: card?.name ?? card?.name_group ?? null,
@@ -237,8 +253,10 @@ async function aceitarPedido(item: KanbanNotificacaoIa, payload: { imprimir: boo
 
     fecharRevisaoConversa()
     if (ok) {
-      toast.success('Pedido em preparação', {
-        description: 'O pedido foi aceito e está em preparação.',
+      toast.success(comEntregador ? 'Pedido coletado' : 'Pedido em preparação', {
+        description: comEntregador
+          ? 'O entregador já foi definido e o pedido foi marcado como coletado.'
+          : 'O pedido foi aceito e está em preparação.',
       })
     }
   } catch (err) {
@@ -346,7 +364,7 @@ function confirmarExcluirNotificacao() {
       class="min-h-0 min-w-0 flex-1 overflow-y-auto"
       :class="modalConversaAberto ? 'p-4 sm:p-5' : ''"
     >
-    <div class="mb-4 flex items-center justify-between gap-3">
+    <div v-if="!modalConversaAberto" class="mb-4 flex items-center justify-between gap-3">
       <label class="inline-flex cursor-pointer items-center gap-2 select-none">
         <span class="relative inline-flex items-center">
           <input
@@ -396,11 +414,16 @@ function confirmarExcluirNotificacao() {
     </p>
 
     <ul v-else class="space-y-3" role="list">
-      <li v-for="item in notificacoes" :key="item.id">
+      <li
+        v-for="item in notificacoes"
+        v-show="!modalConversaAberto || pedidoRevisaoId === item.id"
+        :key="item.id"
+      >
         <ItemPedidoPronto
           :item="item"
           :expandido="expandidoId === item.id"
           :erro="mensagemErro(item.id) || null"
+          :somente-edicao="modalConversaAberto && pedidoRevisaoId === item.id"
           @toggle="toggleExpandido(item.id)"
         >
           <PedidoProntoExpandido
@@ -409,6 +432,7 @@ function confirmarExcluirNotificacao() {
             :conversa-key="conversaKey"
             :busy="estaEmVoo(item.id)"
             :em-revisao="modalConversaAberto && pedidoRevisaoId === item.id"
+            :entregador-id="modalConversaAberto && pedidoRevisaoId === item.id ? entregadorRevisao?.id ?? null : null"
             @revisar="abrirRevisaoConversa(item)"
             @aceitar="aceitarPedido(item, $event)"
             @rejeitar="rejeitarPedido(item)"
@@ -443,6 +467,7 @@ function confirmarExcluirNotificacao() {
       class="min-h-[22rem] w-full border-t border-outline/30 lg:w-[26rem] lg:shrink-0 lg:border-l lg:border-t-0 dark:border-dark-outline/30"
       :conversa-key="conversaKey"
       @fechar="fecharRevisaoConversa"
+      @selecionar-entregador="entregadorRevisao = $event"
     />
     </div>
   </BaseModal>

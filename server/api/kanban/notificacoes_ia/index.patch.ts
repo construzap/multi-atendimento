@@ -21,6 +21,11 @@ type Body = {
   latitude?: unknown
   longitude?: unknown
   coordenadas?: unknown
+  /** Quando informado, marca a coleta e vincula o entregador (mesmo efeito de identificar + ao coletar). */
+  entregador_id?: unknown
+  coletado_at?: unknown
+  /** UUID da entrega. Não substitui um token já gravado. */
+  token_entrega?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -37,6 +42,9 @@ function parsePositiveInt(raw: unknown, label: string): number {
 function hasOwn(body: Body, key: keyof Body): boolean {
   return Object.prototype.hasOwnProperty.call(body, key)
 }
+
+const TOKEN_ENTREGA_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
 
 function strOrNull(v: unknown): string | null {
   if (v === undefined || v === null) return null
@@ -75,7 +83,31 @@ export default defineEventHandler(async (event) => {
 
   const patch: Record<string, unknown> = {}
 
-  if (hasOwn(body, 'entrega_status')) {
+  if (hasOwn(body, 'entregador_id')) {
+    const entregadorId = parsePositiveInt(body.entregador_id, 'entregador_id')
+    const adminCheck = serverSupabaseServiceRole<any>(event)
+    const { data: entregador, error: entErr } = await adminCheck
+      .from('entregadores')
+      .select('id, ativo')
+      .eq('id', entregadorId)
+      .eq('workspace_id', workspaceId)
+      .maybeSingle()
+    if (entErr) {
+      throw createError({ statusCode: 500, statusMessage: entErr.message })
+    }
+    if (!entregador || entregador.ativo === false) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'Entregador inválido neste workspace.',
+      })
+    }
+    const coletadoEm = strOrNull(body.coletado_at) ?? new Date().toISOString()
+    patch.entregador_id = entregadorId
+    patch.entrega_status = 'coletado'
+    patch.coletado_at = coletadoEm
+  }
+
+  if (hasOwn(body, 'entrega_status') && !hasOwn(body, 'entregador_id')) {
     const entregaStatus = String(body.entrega_status ?? '').trim()
     if (!entregaStatus) {
       throw createError({ statusCode: 400, statusMessage: 'entrega_status inválido.' })
@@ -144,20 +176,11 @@ export default defineEventHandler(async (event) => {
     patch.total_orcamento = normalizeTotalOrcamento(body.total_orcamento)
   }
 
-  if (Object.keys(patch).length === 0) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Nenhum campo para atualizar.',
-    })
-  }
-
   const admin = serverSupabaseServiceRole<any>(event)
-  const nowIso = new Date().toISOString()
-  patch.updated_at = nowIso
 
   const { data: row, error: findErr } = await admin
     .from('notificacoes_ia')
-    .select('id, workspace_id')
+    .select('id, workspace_id, token_entrega')
     .eq('id', id)
     .maybeSingle()
 
@@ -178,6 +201,33 @@ export default defineEventHandler(async (event) => {
       statusMessage: 'Esta notificação não pertence ao workspace informado.',
     })
   }
+
+  if (hasOwn(body, 'token_entrega')) {
+    const token = strOrNull(body.token_entrega)?.toLowerCase() ?? ''
+    if (!TOKEN_ENTREGA_RE.test(token)) {
+      throw createError({ statusCode: 400, statusMessage: 'token_entrega inválido.' })
+    }
+    const atual =
+      row.token_entrega != null && String(row.token_entrega).trim()
+        ? String(row.token_entrega).trim().toLowerCase()
+        : null
+    if (atual && atual !== token) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: 'Este pedido já tem token de entrega.',
+      })
+    }
+    patch.token_entrega = token
+  }
+
+  if (Object.keys(patch).length === 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Nenhum campo para atualizar.',
+    })
+  }
+
+  patch.updated_at = new Date().toISOString()
 
   const { data: updated, error: updErr } = await admin
     .from('notificacoes_ia')

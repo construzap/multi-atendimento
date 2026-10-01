@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import type { EntregadorListaItem } from '#shared/types/entregadores'
 import { storeToRefs } from 'pinia'
 import { mensagemErroFetch } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
@@ -11,6 +12,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   fechar: []
+  selecionarEntregador: [entregador: EntregadorListaItem | null]
 }>()
 
 const kanban = useKanbanStore()
@@ -81,26 +83,12 @@ onMounted(() => {
       </button>
     </header>
 
-    <div
-      v-if="carregando"
-      class="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-[#e5ddd5] dark:bg-[#0b141a]"
-      role="status"
-    >
-      <span class="material-symbols-outlined animate-spin text-3xl text-primary-600 dark:text-primary-400" aria-hidden="true">
-        progress_activity
-      </span>
-      <p class="text-sm text-zinc-800 dark:text-slate-200">Carregando mensagens…</p>
-    </div>
-    <div
-      v-else-if="erro"
-      class="flex min-h-0 flex-1 items-center justify-center bg-[#e5ddd5] px-4 dark:bg-[#0b141a]"
-    >
-      <p class="text-center text-sm text-red-700 dark:text-red-300">{{ erro }}</p>
-    </div>
     <RevisarPedidoListaMensagens
-      v-else
       :mensagens="mensagens"
       :eh-grupo="card?.is_group === true"
+      :carregando="carregando"
+      :erro="erro"
+      @selecionar-entregador="emit('selecionarEntregador', $event)"
     />
   </aside>
 </template>

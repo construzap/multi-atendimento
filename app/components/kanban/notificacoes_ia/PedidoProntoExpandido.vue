@@ -41,11 +41,13 @@ const props = defineProps<{
   busy?: boolean
   /** Conversa de revisão aberta ao lado deste pedido. */
   emRevisao?: boolean
+  /** Entregador escolhido na revisão. No aceite, o pedido já sai coletado. */
+  entregadorId?: number | null
 }>()
 
 const emit = defineEmits<{
   revisar: []
-  aceitar: [payload: { imprimir: boolean }]
+  aceitar: [payload: { imprimir: boolean; entregadorId: number | null; tokenEntrega: string }]
   rejeitar: []
   imprimir: []
   atualizado: [notificacao: KanbanNotificacaoIa]
@@ -168,8 +170,54 @@ function onRevisar() {
   emit('revisar')
 }
 
-function onAceitar() {
-  emit('aceitar', { imprimir: imprimirAoAceitar.value === true })
+const aceitando = ref(false)
+
+async function garantirTokenEntrega(): Promise<string | null> {
+  const existente = props.item.token_entrega?.trim().toLowerCase()
+  if (existente) return existente
+
+  const wsId = workspaceId.value
+  const key = props.conversaKey?.trim()
+  if (!wsId || !key) {
+    toast.error('Workspace atual não encontrado.')
+    return null
+  }
+
+  const res = await $fetch<{ ok: true; token_entrega: string }>(
+    '/api/kanban/notificacoes_ia/token-entrega',
+    {
+      method: 'POST',
+      body: { workspace_id: wsId, id: props.item.id },
+    },
+  )
+  const token = String(res.token_entrega ?? '').trim().toLowerCase()
+  if (!token) {
+    toast.error('Não foi possível gerar o token de entrega.')
+    return null
+  }
+  kanban.setNotificacaoIaTokenEntrega(key, props.item.id, token)
+  return token
+}
+
+async function onAceitar() {
+  if (salvando.value || props.busy || aceitando.value) return
+  aceitando.value = true
+  try {
+    const tokenEntrega = await garantirTokenEntrega()
+    if (!tokenEntrega) return
+    const salvou = await salvarEdicao(tokenEntrega)
+    if (!salvou) return
+    emit('aceitar', {
+      imprimir: imprimirAoAceitar.value === true,
+      entregadorId:
+        props.entregadorId != null && props.entregadorId >= 1 ? props.entregadorId : null,
+      tokenEntrega,
+    })
+  } catch (err) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível gerar o token de entrega.'))
+  } finally {
+    aceitando.value = false
+  }
 }
 
 function linhaSubtotal(p: (typeof produtos.value)[number]): string {
@@ -319,15 +367,15 @@ function onFocusBusca() {
   void buscarProdutos(buscaTexto.value.trim())
 }
 
-async function salvarEdicao() {
+async function salvarEdicao(tokenEntrega?: string | null): Promise<boolean> {
   const wsId = workspaceId.value
   const key = props.conversaKey?.trim()
-  if (!wsId || !key || !podeSalvar.value) return
+  if (!wsId || !key || !podeSalvar.value) return false
 
   const coordsParsed = parseLatLngTexto(coordenadas.value)
   if (coordsParsed === undefined) {
     toast.error('Coordenadas inválidas. Use o formato: latitude, longitude')
-    return
+    return false
   }
 
   salvando.value = true
@@ -350,13 +398,20 @@ async function salvarEdicao() {
       coordenadas: coordenadas.value.trim() || null,
       latitude: coordsParsed?.lat ?? null,
       longitude: coordsParsed?.lng ?? null,
+      entregadorId:
+        props.emRevisao && props.entregadorId != null && props.entregadorId >= 1
+          ? props.entregadorId
+          : null,
+      tokenEntrega: tokenEntrega?.trim() || null,
     })
 
     toast.success('Pedido atualizado')
     emit('atualizado', res.notificacao)
     editando.value = false
+    return true
   } catch (err) {
     toast.error(mensagemErroFetch(err, 'Não foi possível atualizar o pedido.'))
+    return false
   } finally {
     salvando.value = false
   }
@@ -656,6 +711,7 @@ async function salvarEdicao() {
           Cancelar
         </button>
         <button
+          v-if="!emRevisao"
           type="button"
           class="rounded-xl border border-outline/40 px-5 py-2.5 text-sm font-semibold text-on-surface transition-colors hover:bg-surface-container-high disabled:opacity-60 dark:border-dark-outline/40 dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high"
           :disabled="!podeSalvar"
@@ -667,10 +723,10 @@ async function salvarEdicao() {
           v-if="emRevisao"
           type="button"
           class="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-60 dark:bg-primary-500 dark:hover:bg-primary-600"
-          :disabled="salvando || busy"
+          :disabled="salvando || busy || aceitando || !podeSalvar"
           @click="onAceitar"
         >
-          Aceitar
+          {{ aceitando ? 'Aceitando…' : 'Aceitar' }}
         </button>
       </div>
     </template>
