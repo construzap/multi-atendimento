@@ -19,9 +19,10 @@ import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
 import { useKanbanStore } from '~/stores/kanban'
 import { useProfileStore } from '~/stores/profile'
 import {
-  ativarSomPedidoNovo,
   desativarSomPedidoNovo,
-  somPedidoLiberado,
+  deveAbrirPedidoPermissaoSom,
+  permitirSomENotificacoes,
+  somPedidoAtivo,
 } from '~/utils/SomNavegadorPedidoNovo'
 
 type DragState = {
@@ -161,7 +162,10 @@ const filtroCanalSelect = computed({
   },
 })
 
+const modalPermissaoSomAberto = ref(false)
+
 onMounted(() => {
+  if (deveAbrirPedidoPermissaoSom()) modalPermissaoSomAberto.value = true
   if (props.workspaceId) {
     // force: garante `loja_aberta` após deploy (cache antigo do Pinia)
     void canaisStore.ensureCanaisLoaded(props.workspaceId, { force: true }).catch(() => {})
@@ -396,18 +400,29 @@ async function garantirCanaisNoModal() {
   }
 }
 
-async function alternarSomPedido() {
-  if (somPedidoLiberado.value) {
-    desativarSomPedidoNovo()
-    toast.message('Som de pedido desligado.')
-    return
-  }
-  const ok = await ativarSomPedidoNovo()
+async function aceitarSomENotificacoes() {
+  const ok = await permitirSomENotificacoes()
+  modalPermissaoSomAberto.value = false
   if (ok) {
     toast.success('Som ativo. O sino toca mesmo se você estiver em outra aba.')
     return
   }
-  toast.error('O navegador bloqueou o som. Clique de novo em Ativar som.')
+  toast.message('Som e notificações desativados. O navegador não permitiu.')
+}
+
+function recusarSomENotificacoes() {
+  desativarSomPedidoNovo()
+  modalPermissaoSomAberto.value = false
+  toast.message('Som e notificações desativados.')
+}
+
+async function alternarSomPedido() {
+  if (somPedidoAtivo.value) {
+    desativarSomPedidoNovo()
+    toast.message('Som de pedido desligado.')
+    return
+  }
+  await aceitarSomENotificacoes()
 }
 
 async function abrirModalNovoContato() {
@@ -748,19 +763,20 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
         <button
           type="button"
           class="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold shadow-sm transition-colors"
-          :class="somPedidoLiberado
+          data-som-pedido
+          :class="somPedidoAtivo
             ? 'border border-emerald-600/40 bg-emerald-600 text-white hover:bg-emerald-700'
             : 'border border-amber-500 bg-amber-500 text-white hover:bg-amber-600'"
-          :aria-pressed="somPedidoLiberado"
-          :title="somPedidoLiberado
-            ? 'Som ligado. Pedidos tocam mesmo se você estiver em outra aba. Clique para desligar.'
-            : 'Clique para liberar o sino de pedido. Depois disso ele toca mesmo com outra aba na frente, como o YouTube.'"
+          :aria-pressed="somPedidoAtivo"
+          :title="somPedidoAtivo
+            ? 'Som e notificações ligados. Pedidos tocam mesmo em outra aba. Clique para desligar.'
+            : 'Clique para ligar o sino e as notificações do navegador.'"
           @click="alternarSomPedido"
         >
           <span class="material-symbols-outlined text-[18px]" aria-hidden="true">
-            {{ somPedidoLiberado ? 'volume_up' : 'volume_off' }}
+            {{ somPedidoAtivo ? 'volume_up' : 'volume_off' }}
           </span>
-          {{ somPedidoLiberado ? 'Som ativo' : 'Ativar som' }}
+          {{ somPedidoAtivo ? 'Som ativo' : 'Ativar som' }}
         </button>
         <button
           type="button"
@@ -1150,6 +1166,36 @@ function onColumnToggleSelectAll(payload: { keys: string[]; nextSelected: boolea
         </div>
       </div>
     </Transition>
+
+    <BaseModal
+      :open="modalPermissaoSomAberto"
+      title="Som e notificações de pedido"
+      :show-close="false"
+      :close-on-backdrop="false"
+      :close-on-escape="false"
+      panel-class="w-full max-w-md"
+      @update:open="modalPermissaoSomAberto = $event"
+    >
+      <p class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+        Para o sino tocar quando chegar um pedido — mesmo se você estiver em outra aba — o navegador precisa permitir o som e as notificações.
+      </p>
+      <div class="mt-5 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          class="rounded-xl border border-outline/40 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-dark-outline/40 dark:text-dark-on-surface dark:hover:bg-dark-surface-container"
+          @click="recusarSomENotificacoes"
+        >
+          Não permitir
+        </button>
+        <button
+          type="button"
+          class="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+          @click="aceitarSomENotificacoes"
+        >
+          Permitir
+        </button>
+      </div>
+    </BaseModal>
 
     <ModalEnvioProdutos
       v-model:open="modalReordenandoColunasOpen"

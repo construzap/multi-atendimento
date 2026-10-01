@@ -11,8 +11,6 @@ import { useKanbanPusherAlertaStore } from '~/stores/kanbanPusherAlerta'
 import { useMensagensStore } from '~/stores/mensagens'
 import { useWorkspacesStore } from '~/stores/workspaces'
 import { deveTocarSomPedidoNovo } from '~/components/kanban/notificacoes_ia/parseProdutosNotificacao'
-import { agendarPermissaoNotificacaoPedido } from '~/utils/notificarPedidoNovoSistema'
-
 function workspaceIdDaRota(path: string): number | null {
   const m = String(path ?? '').match(/^\/workspaces\/(\d+)(?:\/|$)/)
   if (!m) return null
@@ -140,8 +138,6 @@ export default defineNuxtPlugin(() => {
         desligarPusher()
         return
       }
-
-      agendarPermissaoNotificacaoPedido()
 
       const p = getClient()
       const want = new Set(canalIdsParaInscrever())
