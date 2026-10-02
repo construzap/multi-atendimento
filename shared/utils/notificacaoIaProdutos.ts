@@ -276,7 +276,26 @@ export const ENTREGA_STATUS_SEPARACAO = 'separacao' as const
 
 /** Colunas retornadas ao mapear / selecionar `notificacoes_ia`. */
 export const NOTIFICACAO_IA_SELECT =
-  'id, produtos, total_orcamento, observacoes, forma_pagamento, latitude, longitude, tipo_solicitacao, created_at, updated_at, entrega_ou_retirada, endereco, id_cobranca, pagamento_realizado, token_entrega, entrega_status, nome, fone'
+  'id, produtos, total_orcamento, observacoes, forma_pagamento, latitude, longitude, tipo_solicitacao, created_at, updated_at, entrega_ou_retirada, endereco, id_cobranca, pagamento_realizado, token_entrega, entrega_status, nome, fone, valor_frete'
+
+/** `null` quando o frete não veio, não é número ou é zero. */
+export function normalizeValorFrete(raw: unknown): number | null {
+  if (raw == null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number.parseFloat(String(raw).replace(',', '.'))
+  if (!Number.isFinite(n) || n === 0) return null
+  return n
+}
+
+/** Soma o frete ao total só quando `valor_frete` é diferente de nulo e de zero. */
+export function somarFreteAoTotal(
+  total: number | null,
+  valorFrete: number | null | undefined,
+): number | null {
+  const frete = normalizeValorFrete(valorFrete)
+  if (frete == null) return total
+  if (total == null) return frete
+  return total + frete
+}
 
 export function normalizeEntregaStatus(raw: unknown): string {
   const s = raw != null ? String(raw).trim() : ''
@@ -324,5 +343,6 @@ export function mapNotificacaoIaRow(row: Record<string, unknown>): KanbanNotific
     id_cobranca: idCobrancaRaw || null,
     pagamento_realizado: row.pagamento_realizado === true,
     token_entrega: tokenRaw || null,
+    valor_frete: normalizeValorFrete(row.valor_frete),
   }
 }

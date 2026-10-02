@@ -70,6 +70,8 @@ export type KanbanNotificacaoIa = {
   pagamento_realizado?: boolean
   /** Token público da URL `/entrega/{token}` (gerado na impressão). */
   token_entrega?: string | null
+  /** Frete do pedido (`notificacoes_ia.valor_frete`). `null` ou `0` não entra no total. */
+  valor_frete?: number | null
 }
 
 /**

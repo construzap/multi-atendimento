@@ -5,6 +5,7 @@ import {
   normalizeTotalOrcamento,
   parseProdutosNotificacao,
   resolveTotalOrcamento,
+  somarFreteAoTotal,
   subtotalLinhaExibicao,
   type ProdutoNotificacaoLinha,
 } from './parseProdutosNotificacao'
@@ -91,7 +92,10 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
   const pagamentoAPrazo = formaPagamentoEhAPrazo(item.forma_pagamento)
   const totalVista = totais.total_a_vista != null ? totais.total_a_vista : soma
   const totalPrazo = totais.total_a_prazo != null ? totais.total_a_prazo : soma
-  const totalExibido = pagamentoAPrazo ? totalPrazo : totalVista
+  const frete = item.valor_frete != null && Number.isFinite(item.valor_frete) && item.valor_frete !== 0
+    ? item.valor_frete
+    : null
+  const totalExibido = somarFreteAoTotal(pagamentoAPrazo ? totalPrazo : totalVista, frete) ?? 0
   const rotuloTotal = pagamentoAPrazo ? 'Total a prazo:' : 'Total à vista:'
   const entrega = item.entrega_ou_retirada?.trim() || ''
   const endereco = item.endereco?.trim() || ''
@@ -279,6 +283,7 @@ function buildCupomHtml(input: CupomPedidoImpressaoInput): string {
     <hr class="sep" />
 
     <div class="totais">
+      ${frete != null ? `<div class="linha"><span>Frete:</span><span>${esc(formatMoedaBr(frete))}</span></div>` : ''}
       <div class="linha total-final"><span>${esc(rotuloTotal)}</span><span>${esc(formatMoedaBr(totalExibido))}</span></div>
     </div>
 

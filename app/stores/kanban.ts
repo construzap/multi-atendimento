@@ -5,6 +5,7 @@ import {
   normalizeEntregaStatus,
   normalizeProdutosRaw,
   normalizeTotalOrcamento,
+  normalizeValorFrete,
 } from '#shared/utils/notificacaoIaProdutos'
 import type { Conversa } from '#shared/types/conversa'
 import type { Mensagem, MensagensListResponse, PusherNovaMensagemPayload } from '#shared/types/mensagem'
@@ -77,6 +78,7 @@ function normalizeKanbanCard(card: KanbanCard): KanbanCard {
             typeof n.token_entrega === 'string' && n.token_entrega.trim()
               ? n.token_entrega.trim().toLowerCase()
               : null,
+          valor_frete: normalizeValorFrete(n.valor_frete),
         }))
       : [],
   }
@@ -1355,6 +1357,7 @@ export const useKanbanStore = defineStore('kanban', {
               payload.notificacao.token_entrega.trim()
                 ? payload.notificacao.token_entrega.trim().toLowerCase()
                 : payload.notificacao.token_entrega ?? null,
+            valor_frete: normalizeValorFrete(payload.notificacao.valor_frete),
           }
           const list = [...(card.notificacoes_ia ?? [])]
           const nIdx = list.findIndex((n) => n.id === notifNorm.id)
@@ -1429,6 +1432,9 @@ export const useKanbanStore = defineStore('kanban', {
             }
             if (p.total_orcamento !== undefined) {
               nextNotif.total_orcamento = normalizeTotalOrcamento(p.total_orcamento)
+            }
+            if (p.valor_frete !== undefined) {
+              nextNotif.valor_frete = normalizeValorFrete(p.valor_frete)
             }
             list[nIdx] = nextNotif
             card = { ...card, notificacoes_ia: list }

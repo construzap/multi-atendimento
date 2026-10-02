@@ -9,6 +9,7 @@ import {
   normalizeEntregaStatus,
   normalizeProdutosRaw,
   normalizeTotalOrcamento,
+  normalizeValorFrete,
 } from '#shared/utils/notificacaoIaProdutos'
 import { requireN8nKanbanApiKey } from '../../utils/requireN8nKanbanApiKey'
 import { triggerKanbanAtualizacao } from '../../utils/pusherServer'
@@ -30,6 +31,7 @@ const PATCH_KEYS = [
   'token_entrega',
   'total_orcamento',
   'updated_at',
+  'valor_frete',
 ] as const
 
 type PatchKey = (typeof PATCH_KEYS)[number]
@@ -75,6 +77,9 @@ function buildNotificacaoPatch(body: Body): Partial<KanbanNotificacaoIa> {
         break
       case 'total_orcamento':
         patch.total_orcamento = normalizeTotalOrcamento(raw) as KanbanNotificacaoTotalOrcamento
+        break
+      case 'valor_frete':
+        patch.valor_frete = normalizeValorFrete(raw)
         break
       case 'pagamento_realizado':
         patch.pagamento_realizado =

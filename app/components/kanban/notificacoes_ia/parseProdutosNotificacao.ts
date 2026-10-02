@@ -10,8 +10,10 @@ export {
   formatMoedaBr,
   normalizeProdutosRaw,
   normalizeTotalOrcamento,
+  normalizeValorFrete,
   parseProdutosNotificacao,
   resolveTotalOrcamento,
+  somarFreteAoTotal,
   subtotalLinhaExibicao,
 } from '#shared/utils/notificacaoIaProdutos'
 

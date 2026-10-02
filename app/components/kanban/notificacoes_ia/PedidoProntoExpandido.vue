@@ -13,6 +13,7 @@ import {
   formatMoedaBr,
   normalizeTotalOrcamento,
   parseProdutosNotificacao,
+  somarFreteAoTotal,
   subtotalLinhaExibicao,
 } from './parseProdutosNotificacao'
 
@@ -128,8 +129,23 @@ const totalPrazoEdit = computed(() =>
     0,
   ),
 )
+const freteExibido = computed(() => {
+  const n = props.item.valor_frete
+  return n != null && Number.isFinite(n) && n !== 0 ? n : null
+})
+
+const totalExibido = computed(() =>
+  somarFreteAoTotal(
+    exibicaoAPrazo.value ? totais.value.total_a_prazo : totais.value.total_a_vista,
+    freteExibido.value,
+  ),
+)
+
 const totalEditExibido = computed(() =>
-  edicaoAPrazo.value ? totalPrazoEdit.value : totalVistaEdit.value,
+  somarFreteAoTotal(
+    edicaoAPrazo.value ? totalPrazoEdit.value : totalVistaEdit.value,
+    freteExibido.value,
+  ),
 )
 
 const podeSalvar = computed(() => {
@@ -481,12 +497,20 @@ async function salvarEdicao(tokenEntrega?: string | null): Promise<boolean> {
       </p>
 
       <div class="space-y-2 border-t border-outline/30 pt-4 dark:border-dark-outline/30">
+        <div v-if="freteExibido != null" class="flex items-baseline justify-between gap-4">
+          <span class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+            Frete
+          </span>
+          <span class="text-sm font-medium tabular-nums text-on-surface dark:text-dark-on-surface">
+            {{ formatMoedaBr(freteExibido) }}
+          </span>
+        </div>
         <div class="flex items-baseline justify-between gap-4">
           <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
             {{ exibicaoAPrazo ? 'Total a prazo' : 'Total à vista' }}
           </span>
           <span class="text-base font-bold tabular-nums text-on-surface dark:text-dark-on-surface">
-            {{ formatMoedaBr(exibicaoAPrazo ? totais.total_a_prazo : totais.total_a_vista) }}
+            {{ formatMoedaBr(totalExibido) }}
           </span>
         </div>
         <div class="flex items-baseline justify-between gap-4">
@@ -609,6 +633,14 @@ async function salvarEdicao(tokenEntrega?: string | null): Promise<boolean> {
         </div>
 
         <div class="space-y-1 pt-1">
+          <div v-if="freteExibido != null" class="flex items-baseline justify-between gap-3">
+            <span class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
+              Frete
+            </span>
+            <span class="text-sm font-medium tabular-nums text-on-surface dark:text-dark-on-surface">
+              {{ formatMoedaBr(freteExibido) }}
+            </span>
+          </div>
           <div class="flex items-baseline justify-between gap-3">
             <span class="text-sm font-bold uppercase tracking-wide text-on-surface dark:text-dark-on-surface">
               {{ edicaoAPrazo ? 'Total a prazo' : 'Total à vista' }}

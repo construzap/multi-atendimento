@@ -12,6 +12,7 @@ import {
   entregaStatusIndicadorClass,
   normalizeTotalOrcamento,
   parseProdutosNotificacao,
+  somarFreteAoTotal,
 } from './parseProdutosNotificacao'
 
 const props = defineProps<{
@@ -31,7 +32,10 @@ const qtdItens = computed(() => parseProdutosNotificacao(props.item.produtos).le
 const totais = computed(() => normalizeTotalOrcamento(props.item.total_orcamento))
 const pagamentoAPrazo = computed(() => formaPagamentoEhAPrazo(props.item.forma_pagamento))
 const totalExibido = computed(() =>
-  pagamentoAPrazo.value ? totais.value.total_a_prazo : totais.value.total_a_vista,
+  somarFreteAoTotal(
+    pagamentoAPrazo.value ? totais.value.total_a_prazo : totais.value.total_a_vista,
+    props.item.valor_frete,
+  ),
 )
 
 const agoraMs = ref(Date.now())
@@ -133,7 +137,17 @@ function textoOuTraco(v: string | null | undefined): string {
         </p>
 
         <template v-if="isPedidoPronto(item.tipo_solicitacao)">
-          <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+          <div class="flex flex-col gap-1 text-sm">
+            <span
+              v-if="item.valor_frete"
+              class="tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant"
+            >
+              Frete
+              <span class="ml-1 font-medium text-on-surface dark:text-dark-on-surface">
+                {{ formatMoedaBr(item.valor_frete) }}
+              </span>
+            </span>
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span class="tabular-nums text-on-surface dark:text-dark-on-surface">
               <span class="text-on-surface-variant dark:text-dark-on-surface-variant">
                 {{ pagamentoAPrazo ? 'A prazo:' : 'À vista:' }}
@@ -156,6 +170,7 @@ function textoOuTraco(v: string | null | undefined): string {
             >
               {{ labelEntregaStatus(item.entrega_status) }}
             </span>
+            </div>
           </div>
           <p
             v-if="item.endereco?.trim()"
