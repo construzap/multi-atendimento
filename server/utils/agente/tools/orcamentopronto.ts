@@ -1,5 +1,28 @@
 import { argAny, argStr, ctxStr, type ToolDef } from './helpers'
 
+/** Null quando não há pedido de troco. Valor só se o cliente pediu troco para um montante. */
+function trocoParaOrNull(args: Record<string, unknown>): string | null {
+  const raw = argStr(args, 'troco_para').trim()
+  if (!raw) return null
+
+  const norm = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+  if (
+    norm === 'null' ||
+    norm === 'sem troco' ||
+    norm === 'nao preciso de troco' ||
+    norm === 'nao precisa de troco' ||
+    norm === 'sem necessidade de troco'
+  ) {
+    return null
+  }
+
+  return raw
+}
+
 export const orcamentoprontoTool: ToolDef = {
   name: 'orcamentopronto',
   description:
@@ -27,7 +50,9 @@ export const orcamentoprontoTool: ToolDef = {
     '- frete: valor do frete (ex.: "15.00") ou "gratis"/"frete gratis" se for entrega gratuita; use "0" ou "retirada" se for retirada na loja.\n' +
     '- Se for ENTREGA: o campo endereco é OBRIGATÓRIO (não coloque o endereço em observacao).\n' +
     '- Se o cliente informou CPF ou CNPJ: preencha documento com o valor informado.\n' +
-    '- Se a forma de pagamento for DINHEIRO: o campo troco_para é OBRIGATÓRIO (valor com que o cliente vai pagar).\n\n' +
+    '- Se a forma de pagamento for DINHEIRO e o cliente pedir troco para um valor (ex.: "troco para 100", "vou pagar com 80"), preencha troco_para com esse valor.\n' +
+    '- Se for DINHEIRO e ele disser que NÃO precisa de troco, ou não falar em troco: envie troco_para como null. NÃO repita o total do pedido nesse campo.\n' +
+    '- Se a forma de pagamento NÃO for dinheiro: envie troco_para como null.\n\n' +
     'Proibido: inventar id ou chamar <orcamentopronto> sem ids válidos (do histórico ou de <estoque>).\n' +
     'Proibido: inventar id, enviar array vazio ou incluir preço unitário no array de produtos.\n' +
     'Proibido: usar quantidade fracionária (0.5) — use grupo + partes com quantidade 1 em cada sabor.\n' +
@@ -96,16 +121,18 @@ export const orcamentoprontoTool: ToolDef = {
       forma_pagamento: {
         type: 'string',
         description:
-          'Forma de pagamento escolhida pelo cliente (ex.: Pix, cartão, dinheiro). Se for dinheiro, preencha também o campo troco_para.',
+          'Forma de pagamento escolhida pelo cliente (ex.: Pix, cartão, dinheiro). ' +
+          'Se for dinheiro e ele pedir troco para um valor, preencha troco_para. ' +
+          'Se disser que não precisa de troco, deixe troco_para null.',
       },
       troco_para: {
         type: 'string',
         description:
-          'OBRIGATÓRIO quando forma_pagamento for dinheiro.\n' +
-          'Informe o valor COM QUE o cliente vai pagar (não calcule o troco).\n' +
-          'Ex.: pedido de R$ 40 e cliente disse "vou pagar com 80" → envie "80".\n' +
-          'Se ele disse que vai pagar exatamente o valor do pedido ou não precisa de troco, envie o valor total informado por ele.\n' +
-          'Se a forma de pagamento NÃO for dinheiro, envie string vazia "".\n' +
+          'Valor COM QUE o cliente vai pagar, só quando ele pedir troco.\n' +
+          'Ex.: pedido de R$ 40 e cliente disse "vou pagar com 80" ou "troco para 80" → envie "80".\n' +
+          'Se a forma NÃO for dinheiro, envie null.\n' +
+          'Se for dinheiro e ele disser que não precisa de troco, ou não mencionar troco, envie null.\n' +
+          'Proibido repetir o total do pedido aqui quando não houver pedido de troco.\n' +
           'Nunca coloque este valor em observacao.',
       },
       entrega_ou_retirada: {
@@ -153,7 +180,6 @@ export const orcamentoprontoTool: ToolDef = {
       'observacao',
       'endereco',
       'documento',
-      'troco_para',
       'frete',
     ],
   },
@@ -176,7 +202,7 @@ export const orcamentoprontoTool: ToolDef = {
     tempo_resposta: ctxStr(ctx.tempo_resposta),
     ai_assinatura_enabled: ctxStr(ctx.ai_assinatura_enabled),
     forma_pagamento: argStr(args, 'forma_pagamento'),
-    troco_para: argStr(args, 'troco_para'),
+    troco_para: trocoParaOrNull(args),
     frete: argStr(args, 'frete'),
     'entrega ou retirada': argStr(args, 'entrega_ou_retirada'),
     workspace_id: String(ctx.workspace_id),
