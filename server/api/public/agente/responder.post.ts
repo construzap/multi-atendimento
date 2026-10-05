@@ -5,7 +5,6 @@ import { buildSystemPrompt, loadPromptPrincipalTexto } from '../../../utils/agen
 import { loadCanalAgenteCredenciais } from '../../../utils/agente/carrega credenciais do canal'
 import {
   buildAgenteSessionId,
-  loadAgenteHistory,
   saveAgenteTurn,
 } from '../../../utils/agente/memory'
 import { runAgentLoop } from '../../../utils/agente/runAgentLoop'
@@ -104,6 +103,11 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     throw createError({ statusCode: 400, statusMessage: 'mensagem é obrigatória.' })
   }
 
+  const ultima_mensagem = strOrEmpty(body.ultima_mensagem)
+  if (!ultima_mensagem) {
+    throw createError({ statusCode: 400, statusMessage: 'ultima_mensagem é obrigatória.' })
+  }
+
   await assertAdminWorkspaceAtivo(event, workspace_id)
 
   const canalCredenciais = await loadCanalAgenteCredenciais(event, {
@@ -127,6 +131,7 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     conversa_key,
     canal_id,
     mensagem,
+    ultima_mensagem,
     session_id: buildAgenteSessionId(workspace_id, conversa_key),
     name: strOrNull(body.name),
     phone: strOrNull(body.phone),
@@ -194,19 +199,21 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
   }
 
   const systemPrompt = buildSystemPrompt(ctx, promptBase)
-  const history = await loadAgenteHistory(event, ctx.session_id, ctx.context_window)
 
   const result = await runAgentLoop(event, {
     ctx,
     systemPrompt,
-    history,
+    history: [],
     openai: {
       apiKey: canalCredenciais.api_key,
       baseUrl: canalCredenciais.url,
     },
   })
 
-  await saveAgenteTurn(event, ctx, result.new_messages)
+  await saveAgenteTurn(event, ctx, [
+    { role: 'user', content: ctx.ultima_mensagem },
+    { role: 'assistant', content: result.reply_text },
+  ])
 
   return {
     ok: true,

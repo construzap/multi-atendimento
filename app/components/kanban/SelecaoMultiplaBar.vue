@@ -125,34 +125,48 @@ async function confirmarAlterarStatus() {
 
   let falhas = 0
   let autoEnviadas = 0
+  const TAMANHO_LOTE = 100
 
-  for (const conversaKey of keys) {
+  for (let i = 0; i < keys.length; i += TAMANHO_LOTE) {
     if (cancelarSolicitado.value) break
 
+    const lote = keys.slice(i, i + TAMANHO_LOTE)
     try {
-      await $fetch('/api/kanban/mover', {
+      const res = await $fetch<{
+        ok: true
+        atualizados: string[]
+        nao_encontradas: string[]
+      }>('/api/kanban/mover', {
         method: 'POST',
         body: {
           workspace_id: props.workspaceId,
-          conversa_key: conversaKey,
+          conversa_keys: lote,
           coluna_id: colunaId,
         },
       })
-      espelharColunaNoPinia(conversaKey, colunaId)
-      const enviou = await kanban.dispararAgendamentoDaColunaSeHouver({
-        workspaceId: props.workspaceId,
-        colunaId,
-        conversaKey,
-        exibirToast: keys.length === 1,
-      })
-      if (enviou) autoEnviadas += 1
+
+      for (const conversaKey of res.atualizados) {
+        espelharColunaNoPinia(conversaKey, colunaId)
+        const enviou = await kanban.dispararAgendamentoDaColunaSeHouver({
+          workspaceId: props.workspaceId,
+          colunaId,
+          conversaKey,
+          exibirToast: keys.length === 1,
+        })
+        if (enviou) autoEnviadas += 1
+      }
+
+      falhas += res.nao_encontradas.length
+      if (res.nao_encontradas.length > 0 && !progressoErro.value) {
+        progressoErro.value = 'Uma ou mais conversas não foram encontradas neste workspace.'
+      }
     } catch (err: unknown) {
-      falhas += 1
+      falhas += lote.length
       if (!progressoErro.value) {
         progressoErro.value = mensagemErroFetch(err, 'Não foi possível alterar o status de uma ou mais conversas.')
       }
     } finally {
-      progressoEnviados.value += 1
+      progressoEnviados.value += lote.length
     }
   }
 

@@ -3,16 +3,41 @@ import { assertMethod, createError, readBody } from 'h3'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
+const TAMANHO_LOTE = 100
+
 type Body = {
   workspace_id?: unknown
   conversa_key?: unknown
+  conversa_keys?: unknown
   coluna_id?: unknown
+}
+
+function chavesDoBody(body: Body): string[] {
+  const lista: string[] = []
+  if (Array.isArray(body.conversa_keys)) {
+    for (const item of body.conversa_keys) {
+      const key = typeof item === 'string' ? item.trim() : ''
+      if (key) lista.push(key)
+    }
+  }
+  const unica = typeof body.conversa_key === 'string' ? body.conversa_key.trim() : ''
+  if (unica) lista.push(unica)
+
+  const vistas = new Set<string>()
+  const unicas: string[] = []
+  for (const key of lista) {
+    if (vistas.has(key)) continue
+    vistas.add(key)
+    unicas.push(key)
+  }
+  return unicas
 }
 
 /**
  * POST /api/kanban/mover
- * Body: `{ workspace_id, conversa_key, coluna_id }`
+ * Body: `{ workspace_id, coluna_id, conversa_key? , conversa_keys? }`
  * Atualiza `conversas.coluna_id` e `conversas.funil_id`.
+ * Várias conversas são gravadas de 100 em 100. O último lote leva só o que restar.
  */
 export default defineEventHandler(async (event) => {
   assertMethod(event, 'POST')
@@ -40,9 +65,8 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'workspace_id inválido.' })
   }
 
-  const conversaKey =
-    typeof body.conversa_key === 'string' ? body.conversa_key.trim() : ''
-  if (!conversaKey) {
+  const conversaKeys = chavesDoBody(body)
+  if (conversaKeys.length === 0) {
     throw createError({ statusCode: 400, statusMessage: 'Informe conversa_key.' })
   }
 
@@ -98,30 +122,46 @@ export default defineEventHandler(async (event) => {
   }
 
   const nowIso = new Date().toISOString()
+  const atualizados: string[] = []
 
-  const { data: updated, error: upErr } = await admin
-    .from('conversas')
-    .update({
-      coluna_id: colunaId,
-      funil_id: funilId,
-      updated_at: nowIso,
-    })
-    .eq('key', conversaKey)
-    .eq('workspace_id', workspaceId)
-    .is('deleted_at', null)
-    .select('key')
-    .maybeSingle()
+  for (let i = 0; i < conversaKeys.length; i += TAMANHO_LOTE) {
+    const lote = conversaKeys.slice(i, i + TAMANHO_LOTE)
 
-  if (upErr) {
-    throw createError({ statusCode: 500, statusMessage: upErr.message })
+    const { data: updated, error: upErr } = await admin
+      .from('conversas')
+      .update({
+        coluna_id: colunaId,
+        funil_id: funilId,
+        updated_at: nowIso,
+      })
+      .in('key', lote)
+      .eq('workspace_id', workspaceId)
+      .is('deleted_at', null)
+      .select('key')
+
+    if (upErr) {
+      throw createError({ statusCode: 500, statusMessage: upErr.message })
+    }
+
+    for (const row of updated ?? []) {
+      const key = typeof row.key === 'string' ? row.key.trim() : ''
+      if (key) atualizados.push(key)
+    }
   }
 
-  if (!updated) {
+  const encontradas = new Set(atualizados)
+  const naoEncontradas = conversaKeys.filter((key) => !encontradas.has(key))
+
+  if (conversaKeys.length === 1 && atualizados.length === 0) {
     throw createError({
       statusCode: 404,
       statusMessage: 'Conversa não encontrada neste workspace.',
     })
   }
 
-  return { ok: true as const }
+  return {
+    ok: true as const,
+    atualizados,
+    nao_encontradas: naoEncontradas,
+  }
 })

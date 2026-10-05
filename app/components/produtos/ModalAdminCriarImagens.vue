@@ -38,6 +38,7 @@ const IMAGENS_POR_BUSCA = 200
 const ativoId = ref<number | null>(null)
 const queryEdit = ref('')
 const resultados = ref<AdminImagemBraveItem[]>([])
+const filtroTitulo = ref('')
 const imagemExpandida = ref<AdminImagemBraveItem | null>(null)
 /** Produto escolhido por URL de imagem. Sem entrada, usa o produto selecionado à esquerda. */
 const destinoPorLink = ref<Record<string, number>>({})
@@ -80,6 +81,14 @@ const temAlvoBulk = computed(() => linhas.value.length > 0)
 const linhaAtiva = computed(() =>
   linhas.value.find((l) => l.produtoId === ativoId.value) ?? null,
 )
+
+const resultadosFiltrados = computed((): AdminImagemBraveItem[] => {
+  const termo = filtroTitulo.value.trim().toLocaleLowerCase('pt-BR')
+  if (!termo) return resultados.value
+  return resultados.value.filter((item) =>
+    item.title.toLocaleLowerCase('pt-BR').includes(termo),
+  )
+})
 
 function fechar() {
   if (bulkRodando.value) {
@@ -153,6 +162,7 @@ async function buscarImagens(qOverride?: string) {
   }
   buscando.value = true
   destinoPorLink.value = {}
+  filtroTitulo.value = ''
   imagemExpandida.value = null
   try {
     const res = await $fetch<AdminBuscarImagensBraveResponse>(
@@ -286,6 +296,7 @@ async function aplicarPrimeiraEmMassa() {
 
       ativoId.value = atual.produtoId
       queryEdit.value = atual.nome
+      filtroTitulo.value = ''
       resultados.value = []
 
       try {
@@ -332,6 +343,7 @@ watch(open, (isOpen) => {
     ativoId.value = null
     queryEdit.value = ''
     resultados.value = []
+    filtroTitulo.value = ''
     destinoPorLink.value = {}
     imagemExpandida.value = null
     bulkErro.value = null
@@ -480,6 +492,22 @@ watch(imagemExpandida, (img, _anterior, onCleanup) => {
           </BaseButton>
         </div>
 
+        <label
+          v-if="resultados.length && !buscando"
+          class="text-sm"
+        >
+          <span class="mb-1 block text-on-surface-variant dark:text-dark-on-surface-variant">
+            Filtrar pelo título
+          </span>
+          <input
+            v-model="filtroTitulo"
+            type="search"
+            placeholder="Digite para filtrar os resultados"
+            class="w-full rounded-xl border border-outline/40 bg-surface px-3 py-2.5 text-on-surface outline-none ring-primary-600/30 focus:ring-2 dark:border-dark-outline/40 dark:bg-dark-surface dark:text-dark-on-surface"
+            :disabled="bulkRodando"
+          >
+        </label>
+
         <div
           class="min-h-[12rem] flex-1 overflow-y-auto rounded-xl border border-dashed border-outline/40 p-2 dark:border-dark-outline/40"
         >
@@ -501,15 +529,21 @@ watch(imagemExpandida, (img, _anterior, onCleanup) => {
           >
             Clique em «Buscar na Brave» para ver candidatos.
           </p>
+          <p
+            v-else-if="!resultadosFiltrados.length"
+            class="px-2 py-8 text-center text-sm text-on-surface-variant"
+          >
+            Nenhuma imagem com esse título.
+          </p>
           <p v-else class="mb-2 px-1 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
-            {{ resultados.length }} imagens. Arraste para o produto ou use Aplicar.
+            {{ resultadosFiltrados.length }} de {{ resultados.length }} imagens. Arraste para o produto ou use Aplicar.
           </p>
           <div
-            v-if="resultados.length"
+            v-if="resultadosFiltrados.length"
             class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4"
           >
             <div
-              v-for="img in resultados"
+              v-for="img in resultadosFiltrados"
               :key="img.link"
               class="flex flex-col overflow-hidden rounded-lg border border-outline/30 bg-surface-container-low dark:border-dark-outline/30 dark:bg-dark-surface-container-low"
               :title="img.title"

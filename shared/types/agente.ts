@@ -109,6 +109,8 @@ export type AgenteContext = {
   conversa_key: string
   canal_id: number
   mensagem: string
+  /** Texto curto deste turno, gravado no histórico. O contexto completo vai em mensagem. */
+  ultima_mensagem: string
   session_id: string
   name: string | null
   phone: string | null
