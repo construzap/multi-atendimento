@@ -72,7 +72,77 @@ export interface Canal {
    * Na UI só aparece o toggle quando `loja_aberta` é false.
    */
   agenda_pedido: boolean
+  /** Assina a mensagem da I.A. (`canais.assinatura_ia_na_mensagem`). */
+  assinatura_ia_na_mensagem: boolean
+  /** Exibe botão para o cliente iniciar a I.A. (`canais.botao_para_iniciar_ia`). */
+  botao_para_iniciar_ia: boolean
+  /** Texto de saudação do canal (`canais.mensagem_saudacao`). */
+  mensagem_saudacao: string | null
+  /** URL da imagem de saudação (`canais.imagem_saudacao`). */
+  imagem_saudacao: string | null
+  /** Slug público da loja (`canais.loja_slug`). */
+  loja_slug: string | null
+  formas_pagamento: CanalFormasPagamento
+  /** Disparo em massa ativo (`canais.disparo_ativo`). */
+  disparo_ativo: boolean
+  /** Passos de follow-up: `{ "1": { minutos_espera: 5 }, ... }`. */
+  config_follow_up: CanalConfigFollowUp
 }
+
+export type CanalFormasPagamentoOnline = {
+  pix: boolean
+  boleto: boolean
+  cartao_debito: boolean
+  cartao_credito: boolean
+}
+
+export type CanalFormasPagamentoEntrega = {
+  dinheiro: boolean
+  cartao_debito: boolean
+  vale_refeicao: boolean
+  cartao_credito: boolean
+}
+
+export type CanalFormasPagamento = {
+  online: CanalFormasPagamentoOnline
+  entrega: CanalFormasPagamentoEntrega
+}
+
+export const CANAL_FORMAS_PAGAMENTO_PADRAO: CanalFormasPagamento = {
+  online: {
+    pix: true,
+    boleto: false,
+    cartao_debito: false,
+    cartao_credito: false,
+  },
+  entrega: {
+    dinheiro: true,
+    cartao_debito: true,
+    vale_refeicao: false,
+    cartao_credito: true,
+  },
+}
+
+export const CANAL_FORMAS_ONLINE: { key: keyof CanalFormasPagamentoOnline; label: string }[] = [
+  { key: 'pix', label: 'PIX' },
+  { key: 'boleto', label: 'Boleto' },
+  { key: 'cartao_debito', label: 'Cartão de débito' },
+  { key: 'cartao_credito', label: 'Cartão de crédito' },
+]
+
+export const CANAL_FORMAS_ENTREGA: { key: keyof CanalFormasPagamentoEntrega; label: string }[] = [
+  { key: 'dinheiro', label: 'Dinheiro' },
+  { key: 'cartao_debito', label: 'Cartão de débito' },
+  { key: 'cartao_credito', label: 'Cartão de crédito' },
+  { key: 'vale_refeicao', label: 'Vale-refeição' },
+]
+
+/** Um passo de follow-up (`config_follow_up`). */
+export type CanalFollowUpPasso = {
+  minutos_espera: number
+}
+
+export type CanalConfigFollowUp = Record<string, CanalFollowUpPasso>
 
 export type CanalProvedorPagamentos = 'pagar.me' | 'asaas' | 'pix_manual'
 
@@ -126,6 +196,14 @@ export type CanalCreateInput = {
   tempo_aviso_minutos?: number
   valor_pedido_minimo?: number
   horarios?: CanalHorarios
+  assinatura_ia_na_mensagem?: boolean
+  botao_para_iniciar_ia?: boolean
+  mensagem_saudacao?: string | null
+  imagem_saudacao?: string | null
+  loja_slug?: string | null
+  formas_pagamento?: CanalFormasPagamento
+  disparo_ativo?: boolean
+  config_follow_up?: CanalConfigFollowUp
 }
 
 /** Payload de atualização de canal (POST /api/canais/editarcanal). */
@@ -147,4 +225,12 @@ export type CanalUpdateInput = {
   api_key?: string | null
   loja_aberta?: boolean
   agenda_pedido?: boolean
+  assinatura_ia_na_mensagem?: boolean
+  botao_para_iniciar_ia?: boolean
+  mensagem_saudacao?: string | null
+  imagem_saudacao?: string | null
+  loja_slug?: string | null
+  formas_pagamento?: CanalFormasPagamento
+  disparo_ativo?: boolean
+  config_follow_up?: CanalConfigFollowUp
 }

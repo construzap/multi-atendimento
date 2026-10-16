@@ -5,9 +5,43 @@ function buildContentHashInput(content: string, workspaceId: number): string {
   return [content, `workspace_id:${String(workspaceId)}`].join('\n')
 }
 
-function buildTermoContent(nome: string, descricao: string | null): string {
-  if (!descricao) return nome
-  return `${nome}\n\n${descricao}`
+function parseProdutosJson(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
+/** Nomes de `produtos` (json da view), na ordem já agregada (`v.ordem`, `p.id`). */
+export function extrairNomesProdutos(row: Record<string, unknown>): string[] {
+  const nomes: string[] = []
+  const seen = new Set<string>()
+
+  for (const item of parseProdutosJson(row.produtos)) {
+    if (item == null || typeof item !== 'object') continue
+    const nome = (item as { nome?: unknown }).nome
+    const texto = nome == null ? '' : String(nome).trim()
+    if (!texto) continue
+    const chave = texto.toLocaleLowerCase('pt-BR')
+    if (seen.has(chave)) continue
+    seen.add(chave)
+    nomes.push(texto)
+  }
+
+  return nomes
+}
+
+function buildTermoContent(nome: string, descricao: string | null, nomesProdutos: string[]): string {
+  const partes = [nome]
+  if (descricao) partes.push(descricao)
+  if (nomesProdutos.length) partes.push(`Produtos:\n${nomesProdutos.join('\n')}`)
+  return partes.join('\n\n')
 }
 
 export function buildTermoEmbeddingPayload(
@@ -28,7 +62,8 @@ export function buildTermoEmbeddingPayload(
   const wsId =
     Number.isFinite(rowWorkspaceId) && rowWorkspaceId > 0 ? rowWorkspaceId : workspaceId
 
-  const content = buildTermoContent(nome, descricao)
+  const nomesProdutos = extrairNomesProdutos(row)
+  const content = buildTermoContent(nome, descricao, nomesProdutos)
   const lineCount = content.split('\n').length
 
   const contentHash = createHash('sha256')

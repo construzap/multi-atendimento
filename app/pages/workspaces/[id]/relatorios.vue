@@ -11,7 +11,8 @@ import { imprimirRelatorios } from '~/components/relatorios/imprimirRelatorios'
 import RelatoriosPagosVsPendentes from '~/components/relatorios/RelatoriosPagosVsPendentes.vue'
 import RelatoriosPedidosPorFormaPagamento from '~/components/relatorios/RelatoriosPedidosPorFormaPagamento.vue'
 import RelatoriosPorCanal from '~/components/relatorios/RelatoriosPorCanal.vue'
-import RelatoriosPorEntregador from '~/components/relatorios/RelatoriosPorEntregador.vue'
+import RelatoriosPorCliente from '~/components/relatorios/RelatoriosPorCliente.vue'
+import RelatoriosPorEntregador from '~/components/relatorios/entregador/RelatoriosPorEntregador.vue'
 import RelatoriosProdutosMaisVendidos from '~/components/relatorios/RelatoriosProdutosMaisVendidos.vue'
 import RelatoriosSecaoTitulo from '~/components/relatorios/RelatoriosSecaoTitulo.vue'
 import RelatoriosStatusDaEntrega from '~/components/relatorios/RelatoriosStatusDaEntrega.vue'
@@ -45,6 +46,7 @@ const {
   entregaVsRetirada,
   statusDaEntrega,
   porCanal,
+  porCliente,
   porEntregador,
   produtosMaisVendidos,
   horariosDePico,
@@ -111,6 +113,7 @@ function onImprimir() {
       entregaVsRetirada: entregaVsRetirada.value,
       statusDaEntrega: statusDaEntrega.value,
       porCanal: porCanal.value,
+      porCliente: porCliente.value,
       porEntregador: porEntregador.value,
       produtosMaisVendidos: produtosMaisVendidos.value,
       horariosDePico: horariosDePico.value,
@@ -296,13 +299,14 @@ async function onAtalho(preset: 'hoje' | 'ontem' | '7dias' | '30dias') {
       <section class="space-y-4" aria-label="Operação">
         <RelatoriosSecaoTitulo
           titulo="Operação"
-          descricao="Entrega, status, canais e entregadores."
+          descricao="Entrega, status, canais, entregadores e clientes."
         />
         <div class="grid gap-4 md:grid-cols-2">
           <RelatoriosEntregaVsRetirada :delay="60" />
           <RelatoriosStatusDaEntrega :delay="110" />
           <RelatoriosPorCanal :delay="160" />
           <RelatoriosPorEntregador :delay="210" />
+          <RelatoriosPorCliente :delay="260" />
         </div>
       </section>
 

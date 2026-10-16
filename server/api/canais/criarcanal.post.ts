@@ -7,6 +7,14 @@ import {
   parseTempoAvisoMinutos,
   parseValorPedidoMinimo,
 } from '#shared/utils/validarCanalConfigLoja'
+import {
+  parseConfigFollowUp,
+  parseFlagCanal,
+  parseFormasPagamento,
+  parseImagemSaudacao,
+  parseLojaSlug,
+  parseMensagemSaudacao,
+} from '#shared/utils/validarCanalCamposExtras'
 import { createError, readBody } from 'h3'
 import { checkSubscription } from '../../utils/checkSubscription'
 import { getAuthUserId } from '../../utils/getAuthUserId'
@@ -23,10 +31,24 @@ type CreateCanalBody = {
   valor_pedido_minimo?: number | string
   horarios?: unknown
   endereco?: string
+  assinatura_ia_na_mensagem?: boolean
+  botao_para_iniciar_ia?: boolean
+  mensagem_saudacao?: string | null
+  imagem_saudacao?: string | null
+  loja_slug?: string | null
+  formas_pagamento?: unknown
+  disparo_ativo?: boolean
+  config_follow_up?: unknown
 }
 
 const CANAL_SELECT_PUBLICO =
-  'id, workspace_id, user_id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios'
+  'id, workspace_id, user_id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up'
+
+function mensagemErroCanal(error: { message?: string; code?: string }): string {
+  const msg = error.message ?? 'Falha ao salvar o canal.'
+  if (/loja_slug/i.test(msg)) return 'Este slug de loja já está em uso.'
+  return msg
+}
 
 /**
  * POST /api/canais/criarcanal
@@ -106,6 +128,53 @@ export default defineEventHandler(async (event) => {
 
   const endereco = parseEndereco(body.endereco)
 
+  const assinaturaIa =
+    body.assinatura_ia_na_mensagem === undefined
+      ? false
+      : parseFlagCanal(body.assinatura_ia_na_mensagem, 'assinatura_ia_na_mensagem')
+  if (typeof assinaturaIa === 'string') {
+    throw createError({ statusCode: 400, statusMessage: assinaturaIa })
+  }
+
+  const botaoIniciarIa =
+    body.botao_para_iniciar_ia === undefined
+      ? false
+      : parseFlagCanal(body.botao_para_iniciar_ia, 'botao_para_iniciar_ia')
+  if (typeof botaoIniciarIa === 'string') {
+    throw createError({ statusCode: 400, statusMessage: botaoIniciarIa })
+  }
+
+  const disparoAtivo =
+    body.disparo_ativo === undefined ? false : parseFlagCanal(body.disparo_ativo, 'disparo_ativo')
+  if (typeof disparoAtivo === 'string') {
+    throw createError({ statusCode: 400, statusMessage: disparoAtivo })
+  }
+
+  const mensagemSaudacao = parseMensagemSaudacao(body.mensagem_saudacao)
+  if (mensagemSaudacao && typeof mensagemSaudacao === 'object' && 'erro' in mensagemSaudacao) {
+    throw createError({ statusCode: 400, statusMessage: mensagemSaudacao.erro })
+  }
+
+  const imagemSaudacao = parseImagemSaudacao(body.imagem_saudacao)
+  if (imagemSaudacao && typeof imagemSaudacao === 'object' && 'erro' in imagemSaudacao) {
+    throw createError({ statusCode: 400, statusMessage: imagemSaudacao.erro })
+  }
+
+  const lojaSlug = parseLojaSlug(body.loja_slug)
+  if (lojaSlug && typeof lojaSlug === 'object' && 'erro' in lojaSlug) {
+    throw createError({ statusCode: 400, statusMessage: lojaSlug.erro })
+  }
+
+  const formasPagamento = parseFormasPagamento(body.formas_pagamento)
+  if (typeof formasPagamento === 'string') {
+    throw createError({ statusCode: 400, statusMessage: formasPagamento })
+  }
+
+  const configFollowUp = parseConfigFollowUp(body.config_follow_up)
+  if (typeof configFollowUp === 'string') {
+    throw createError({ statusCode: 400, statusMessage: configFollowUp })
+  }
+
   const rawWs = body.workspace_id
   if (rawWs === undefined || rawWs === null || rawWs === '') {
     throw createError({
@@ -177,6 +246,14 @@ export default defineEventHandler(async (event) => {
       tempo_aviso_minutos: tempoAvisoParsed,
       valor_pedido_minimo: valorPedidoMinimoParsed,
       ...(horariosParsed ? { horarios: horariosParsed } : {}),
+      assinatura_ia_na_mensagem: assinaturaIa,
+      botao_para_iniciar_ia: botaoIniciarIa,
+      mensagem_saudacao: mensagemSaudacao,
+      imagem_saudacao: imagemSaudacao,
+      loja_slug: lojaSlug,
+      formas_pagamento: formasPagamento,
+      disparo_ativo: disparoAtivo,
+      config_follow_up: configFollowUp,
     })
     .select(CANAL_SELECT_PUBLICO)
     .single()
@@ -184,7 +261,7 @@ export default defineEventHandler(async (event) => {
   if (error) {
     throw createError({
       statusCode: 500,
-      statusMessage: error.message
+      statusMessage: mensagemErroCanal(error)
     })
   }
 
@@ -203,7 +280,7 @@ export default defineEventHandler(async (event) => {
     if (upErr) {
       throw createError({
         statusCode: 500,
-        statusMessage: upErr.message
+        statusMessage: mensagemErroCanal(upErr)
       })
     }
 

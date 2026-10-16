@@ -1,6 +1,10 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, getQuery } from 'h3'
-import type { RelatorioPedidoProntoItem, RelatoriosListResponse } from '#shared/types/relatorios'
+import type {
+  RelatorioClienteConversa,
+  RelatorioPedidoProntoItem,
+  RelatoriosListResponse,
+} from '#shared/types/relatorios'
 import {
   normalizeEntregaStatus,
   normalizeProdutosRaw,
@@ -18,12 +22,15 @@ const SELECT = [
   'entrega_ou_retirada',
   'entrega_status',
   'coletado_at',
+  'no_local_at',
   'entregue_at',
   'canal_id',
   'entregador_id',
+  'conversa_key',
   'produtos',
   'canais ( nome )',
   'entregadores ( nome )',
+  'conversas!notificacoes_ia_conversa_key_fkey ( name, phone, photo, latitude, longitude, coluna_id, funil_id )',
 ].join(', ')
 
 function parseWorkspaceId(raw: unknown): number {
@@ -45,6 +52,37 @@ function parseIsoOrNull(raw: unknown): string | null {
     throw createError({ statusCode: 400, statusMessage: 'Data inválida (de/ate).' })
   }
   return d.toISOString()
+}
+
+function numOrNull(raw: unknown): number | null {
+  if (raw == null || raw === '') return null
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  return Number.isFinite(n) ? n : null
+}
+
+function intOrNull(raw: unknown): number | null {
+  const n = numOrNull(raw)
+  if (n == null) return null
+  const i = Math.trunc(n)
+  return i >= 1 ? i : null
+}
+
+function nestedCliente(raw: unknown): RelatorioClienteConversa | null {
+  const row = Array.isArray(raw) ? raw[0] : raw
+  if (!row || typeof row !== 'object') return null
+  const o = row as Record<string, unknown>
+  const name = o.name != null ? String(o.name).trim() : ''
+  const phone = o.phone != null ? String(o.phone).trim() : ''
+  const photo = o.photo != null ? String(o.photo).trim() : ''
+  return {
+    name: name || null,
+    phone: phone || null,
+    photo: photo || null,
+    latitude: numOrNull(o.latitude),
+    longitude: numOrNull(o.longitude),
+    coluna_id: intOrNull(o.coluna_id),
+    funil_id: intOrNull(o.funil_id),
+  }
 }
 
 function nestedNome(raw: unknown): string | null {
@@ -73,6 +111,9 @@ function mapRow(r: Record<string, unknown>): RelatorioPedidoProntoItem | null {
   const canalId = typeof r.canal_id === 'number' ? r.canal_id : Number(r.canal_id)
   if (!Number.isFinite(canalId) || canalId < 1) return null
 
+  const conversaKey = r.conversa_key != null ? String(r.conversa_key).trim() : ''
+  if (!conversaKey) return null
+
   const entregadorRaw = r.entregador_id
   let entregador_id: number | null = null
   if (entregadorRaw != null && entregadorRaw !== '') {
@@ -96,11 +137,14 @@ function mapRow(r: Record<string, unknown>): RelatorioPedidoProntoItem | null {
       r.entrega_ou_retirada != null ? String(r.entrega_ou_retirada) : null,
     entrega_status: normalizeEntregaStatus(r.entrega_status),
     coletado_at: isoOrNull(r.coletado_at),
+    no_local_at: isoOrNull(r.no_local_at),
     entregue_at: isoOrNull(r.entregue_at),
     canal_id: canalId,
     canal_nome: nestedNome(r.canais),
     entregador_id,
     entregador_nome: nestedNome(r.entregadores),
+    conversa_key: conversaKey,
+    cliente: nestedCliente(r.conversas),
     produtos: normalizeProdutosRaw(r.produtos),
   }
 }

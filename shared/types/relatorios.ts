@@ -8,6 +8,17 @@ import type {
   KanbanNotificacaoTotalOrcamento,
 } from './kanban'
 
+/** Dados de `conversas` ligados por `notificacoes_ia.conversa_key`. */
+export type RelatorioClienteConversa = {
+  name: string | null
+  phone: string | null
+  photo: string | null
+  latitude: number | null
+  longitude: number | null
+  coluna_id: number | null
+  funil_id: number | null
+}
+
 /** Linha para agregações do relatório. */
 export type RelatorioPedidoProntoItem = {
   id: number
@@ -18,11 +29,14 @@ export type RelatorioPedidoProntoItem = {
   entrega_ou_retirada: string | null
   entrega_status: string
   coletado_at: string | null
+  no_local_at: string | null
   entregue_at: string | null
   canal_id: number
   canal_nome: string | null
   entregador_id: number | null
   entregador_nome: string | null
+  conversa_key: string
+  cliente: RelatorioClienteConversa | null
   produtos: Array<string | KanbanNotificacaoProdutoItem>
 }
 
@@ -61,4 +75,11 @@ export type RelatorioHorarioPico = {
   hora: number
   label: string
   quantidade: number
+}
+
+/** Pedidos agrupados por cliente (`conversas.key`). */
+export type RelatorioPorCliente = RelatorioClienteConversa & {
+  conversa_key: string
+  quantidade: number
+  valor: number
 }

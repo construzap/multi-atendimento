@@ -307,6 +307,14 @@ export const useCanaisStore = defineStore('canais', {
             tempo_aviso_minutos: input.tempo_aviso_minutos,
             valor_pedido_minimo: input.valor_pedido_minimo,
             horarios: input.horarios,
+            assinatura_ia_na_mensagem: input.assinatura_ia_na_mensagem,
+            botao_para_iniciar_ia: input.botao_para_iniciar_ia,
+            mensagem_saudacao: input.mensagem_saudacao,
+            imagem_saudacao: input.imagem_saudacao,
+            loja_slug: input.loja_slug,
+            formas_pagamento: input.formas_pagamento,
+            disparo_ativo: input.disparo_ativo,
+            config_follow_up: input.config_follow_up,
           }
         })
         await Promise.all([
@@ -347,6 +355,22 @@ export const useCanaisStore = defineStore('canais', {
           body.valor_pedido_minimo = input.valor_pedido_minimo
         }
         if (input.horarios !== undefined) body.horarios = input.horarios
+        if (input.assinatura_ia_na_mensagem !== undefined) {
+          body.assinatura_ia_na_mensagem = input.assinatura_ia_na_mensagem
+        }
+        if (input.botao_para_iniciar_ia !== undefined) {
+          body.botao_para_iniciar_ia = input.botao_para_iniciar_ia
+        }
+        if (input.mensagem_saudacao !== undefined) {
+          body.mensagem_saudacao = input.mensagem_saudacao
+        }
+        if (input.imagem_saudacao !== undefined) {
+          body.imagem_saudacao = input.imagem_saudacao
+        }
+        if (input.loja_slug !== undefined) body.loja_slug = input.loja_slug
+        if (input.formas_pagamento !== undefined) body.formas_pagamento = input.formas_pagamento
+        if (input.disparo_ativo !== undefined) body.disparo_ativo = input.disparo_ativo
+        if (input.config_follow_up !== undefined) body.config_follow_up = input.config_follow_up
         if (input.tem_inteligencia_artificial !== undefined) {
           body.tem_inteligencia_artificial = input.tem_inteligencia_artificial
         }

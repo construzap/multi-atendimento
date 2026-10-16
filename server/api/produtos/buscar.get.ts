@@ -37,6 +37,15 @@ function parsePageSize(raw: unknown, fallback: number): number {
   return Math.min(1000, Math.max(1, n))
 }
 
+/** `status=true` ou `status=false`. Ausente = sem filtro de status. */
+function parseStatusFiltro(raw: unknown): boolean | undefined {
+  const s = String(Array.isArray(raw) ? raw[0] : (raw ?? '')).trim().toLowerCase()
+  if (!s) return undefined
+  if (s === 'true') return true
+  if (s === 'false') return false
+  throw createError({ statusCode: 400, statusMessage: 'status inválido. Use true ou false.' })
+}
+
 /** Escapa `%` e `_` para uso em padrões `ilike` do PostgREST. */
 function escapeIlike(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
@@ -56,13 +65,14 @@ function sortByIdOrder<T extends { id: number }>(rows: T[], orderedIds: number[]
 }
 
 /**
- * GET /api/produtos/buscar?workspace_id=&page=&page_size=&q=&termo_id=
+ * GET /api/produtos/buscar?workspace_id=&page=&page_size=&q=&termo_id=&status=
  *
  * Lista paginada de produtos pai via `view_produtos_com_variacoes` (após `checkWorkspace`).
  * Com `q` não vazio, filtra por **nome** ou **termos de pesquisa** (`termos_pesquisa_busca`, ilike).
  * Sem `termo_id`: todos os produtos do workspace.
  * `termo_id=null`: produtos **sem** vínculo em `produto_termo_de_pesquisa_vinculo`.
  * Com `termo_id` numérico: restringe aos produtos do vínculo e ordena por `vinculo.ordem`.
+ * `status=true` ou `status=false`: restringe a listagem geral do workspace a esse status.
  */
 export default defineEventHandler(async (event): Promise<ProdutosBuscaResponse> => {
   const client = await serverSupabaseClient(event)
@@ -84,6 +94,8 @@ export default defineEventHandler(async (event): Promise<ProdutosBuscaResponse> 
   const page = parsePage(q.page, 1)
   const page_size = parsePageSize(q.page_size, 10)
   const searchRaw = typeof q.q === 'string' ? q.q.trim() : ''
+
+  const statusFiltro = parseStatusFiltro(q.status)
 
   const termoRaw = String(Array.isArray(q.termo_id) ? q.termo_id[0] : q.termo_id ?? '').trim()
   let termoId: number | null = null
@@ -253,6 +265,10 @@ export default defineEventHandler(async (event): Promise<ProdutosBuscaResponse> 
     .from('view_produtos_com_variacoes')
     .select(SELECT, { count: 'exact' })
     .eq('workspace_id', workspaceId)
+
+  if (statusFiltro !== undefined) {
+    query = query.eq('status', statusFiltro)
+  }
 
   if (searchRaw.length > 0) {
     const esc = escapeIlike(searchRaw)

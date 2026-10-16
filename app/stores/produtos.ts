@@ -145,12 +145,24 @@ export function isFiltroCategoriaId(
   return typeof filtroId === 'number' && Number.isFinite(filtroId) && filtroId >= 1
 }
 
+/** Filtros fixos da coluna (não são id de categoria). */
+export function isFiltroListaFixo(
+  filtroId: ProdutosListaFiltroId | null | undefined,
+): filtroId is 'todos' | 'sem_categoria' | 'ativados' | 'desativados' {
+  return (
+    filtroId === 'todos' ||
+    filtroId === 'sem_categoria' ||
+    filtroId === 'ativados' ||
+    filtroId === 'desativados'
+  )
+}
+
 export function produtosTermoBucketKey(
   workspaceId: number,
   filtroId: ProdutosListaFiltroId,
 ): ProdutosTermoBucketKey {
   const wid = Math.trunc(workspaceId)
-  if (filtroId === 'todos' || filtroId === 'sem_categoria') return `${wid}:${filtroId}`
+  if (isFiltroListaFixo(filtroId)) return `${wid}:${filtroId}`
   return `${wid}:${Math.trunc(filtroId)}`
 }
 
@@ -188,7 +200,7 @@ function resolverFiltroId(input: {
   filtroId?: ProdutosListaFiltroId | null
   termoId?: number | null
 }): ProdutosListaFiltroId | null {
-  if (input.filtroId === 'todos' || input.filtroId === 'sem_categoria') return input.filtroId
+  if (isFiltroListaFixo(input.filtroId)) return input.filtroId
   if (isFiltroCategoriaId(input.filtroId)) return Math.trunc(input.filtroId)
   if (isFiltroCategoriaId(input.termoId)) return Math.trunc(input.termoId)
   return null
@@ -200,6 +212,8 @@ function queryBuscarPorFiltro(
 ): Record<string, string | number> {
   const query: Record<string, string | number> = { workspace_id: workspaceId }
   if (filtroId === 'sem_categoria') query.termo_id = 'null'
+  else if (filtroId === 'ativados') query.status = 'true'
+  else if (filtroId === 'desativados') query.status = 'false'
   else if (isFiltroCategoriaId(filtroId)) query.termo_id = filtroId
   return query
 }
@@ -551,6 +565,7 @@ export const useProdutosStore = defineStore('produtos', {
       const paiIdx = this.items.findIndex((x) => x.id === row.id)
       if (paiIdx !== -1) {
         const prev = this.items[paiIdx]!
+        const statusMudou = prev.status !== row.status
         this.items.splice(paiIdx, 1, {
           ...prev,
           ...row,
@@ -562,6 +577,13 @@ export const useProdutosStore = defineStore('produtos', {
         })
         this.ultimoSnapshotKey = null
         this.syncActiveBucketFromView()
+        if (statusMudou) {
+          const wid = this.activeKey ? this.byKey[this.activeKey]?.workspaceId : null
+          if (wid != null) {
+            this.invalidarCacheTermo(wid, 'ativados')
+            this.invalidarCacheTermo(wid, 'desativados')
+          }
+        }
         return
       }
       for (let i = 0; i < this.items.length; i++) {

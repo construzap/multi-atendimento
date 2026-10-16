@@ -250,12 +250,19 @@ export type ProdutoTermoPesquisaItem = {
 }
 
 /** Filtro da coluna esquerda na listagem de produtos. */
-export type ProdutosListaFiltroId = number | 'todos' | 'sem_categoria'
+export type ProdutosListaFiltroId =
+  | number
+  | 'todos'
+  | 'sem_categoria'
+  | 'ativados'
+  | 'desativados'
 
 /** Seleção emitida pela lista de categorias. */
 export type ProdutosListaSelecao =
   | { tipo: 'todos' }
   | { tipo: 'sem_categoria' }
+  | { tipo: 'ativados' }
+  | { tipo: 'desativados' }
   | { tipo: 'categoria'; termo: ProdutoTermoPesquisaItem }
 
 /** Item de reordenação (termos ou produtos no vínculo). */

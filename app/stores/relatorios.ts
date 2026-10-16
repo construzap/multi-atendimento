@@ -4,6 +4,7 @@ import type {
   RelatorioHorarioPico,
   RelatorioPedidoProntoItem,
   RelatorioPedidosPorForma,
+  RelatorioPorCliente,
   RelatorioProdutoVendido,
   RelatoriosListResponse,
   RelatorioValoresPorForma,
@@ -35,6 +36,16 @@ export function labelEntregaOuRetirada(raw: string | null | undefined): string {
   if (/retir/i.test(t)) return 'Retirada'
   if (/entreg/i.test(t)) return 'Entrega'
   return (raw ?? '').trim() || 'Não informado'
+}
+
+export function labelEntregadorRelatorio(item: {
+  entregador_nome: string | null
+  entregador_id: number | null
+}): string {
+  return (
+    item.entregador_nome?.trim() ||
+    (item.entregador_id != null ? `Entregador #${item.entregador_id}` : 'Sem entregador')
+  )
 }
 
 export function labelStatusEntregaRelatorio(status: string | null | undefined): string {
@@ -276,12 +287,52 @@ export const useRelatoriosStore = defineStore('relatorios', {
         .sort((a, b) => b.quantidade - a.quantidade || a.hora - b.hora)
     },
 
+    porCliente(state): RelatorioPorCliente[] {
+      const map = new Map<string, RelatorioPorCliente>()
+      for (const item of state.items) {
+        const key = item.conversa_key.trim()
+        if (!key) continue
+        const cliente = item.cliente
+        const cur = map.get(key)
+        if (cur) {
+          cur.quantidade += 1
+          cur.valor += valorPedido(item)
+          if (!cur.name && cliente?.name) cur.name = cliente.name
+          if (!cur.phone && cliente?.phone) cur.phone = cliente.phone
+          if (!cur.photo && cliente?.photo) cur.photo = cliente.photo
+          if (cur.latitude == null && cliente?.latitude != null) cur.latitude = cliente.latitude
+          if (cur.longitude == null && cliente?.longitude != null) cur.longitude = cliente.longitude
+          if (cur.coluna_id == null && cliente?.coluna_id != null) cur.coluna_id = cliente.coluna_id
+          if (cur.funil_id == null && cliente?.funil_id != null) cur.funil_id = cliente.funil_id
+          continue
+        }
+        map.set(key, {
+          conversa_key: key,
+          name: cliente?.name ?? null,
+          phone: cliente?.phone ?? null,
+          photo: cliente?.photo ?? null,
+          latitude: cliente?.latitude ?? null,
+          longitude: cliente?.longitude ?? null,
+          coluna_id: cliente?.coluna_id ?? null,
+          funil_id: cliente?.funil_id ?? null,
+          quantidade: 1,
+          valor: valorPedido(item),
+        })
+      }
+      return Array.from(map.values()).sort(
+        (a, b) =>
+          b.quantidade - a.quantidade ||
+          (a.name ?? a.phone ?? a.conversa_key).localeCompare(
+            b.name ?? b.phone ?? b.conversa_key,
+            'pt-BR',
+          ),
+      )
+    },
+
     porEntregador(state): RelatorioContagemValor[] {
       const map = new Map<string, { quantidade: number; valor: number }>()
       for (const item of state.items) {
-        const label =
-          item.entregador_nome?.trim() ||
-          (item.entregador_id != null ? `Entregador #${item.entregador_id}` : 'Sem entregador')
+        const label = labelEntregadorRelatorio(item)
         const cur = map.get(label) ?? { quantidade: 0, valor: 0 }
         cur.quantidade += 1
         cur.valor += valorPedido(item)

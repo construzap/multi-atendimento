@@ -4,9 +4,13 @@ import type { Canal, CanalHorarios } from '#shared/types/canal'
 import { ordenarCanalHorarios } from '#shared/types/canal'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 import { checkWorkspace } from '../../utils/checkWorkspace'
+import {
+  normalizarConfigFollowUp,
+  normalizarFormasPagamento,
+} from '#shared/utils/validarCanalCamposExtras'
 
 const CANAL_SELECT =
-  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido'
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up'
 
 type CanalRow = Record<string, unknown> & {
   api_key_encrypted?: unknown
@@ -45,6 +49,14 @@ function mapCanalPublico(row: CanalRow): Canal {
       | 'loja_aberta'
       | 'agenda_pedido'
       | 'valor_pedido_minimo'
+      | 'assinatura_ia_na_mensagem'
+      | 'botao_para_iniciar_ia'
+      | 'mensagem_saudacao'
+      | 'imagem_saudacao'
+      | 'loja_slug'
+      | 'formas_pagamento'
+      | 'disparo_ativo'
+      | 'config_follow_up'
     >),
     horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
@@ -56,6 +68,23 @@ function mapCanalPublico(row: CanalRow): Canal {
     // DB default false; null legado trata como desligado
     agenda_pedido: row.agenda_pedido === true,
     valor_pedido_minimo: parseValorPedidoMinimoRow(row.valor_pedido_minimo),
+    assinatura_ia_na_mensagem: row.assinatura_ia_na_mensagem === true,
+    botao_para_iniciar_ia: row.botao_para_iniciar_ia === true,
+    mensagem_saudacao:
+      typeof row.mensagem_saudacao === 'string' && row.mensagem_saudacao.trim()
+        ? row.mensagem_saudacao
+        : null,
+    imagem_saudacao:
+      typeof row.imagem_saudacao === 'string' && row.imagem_saudacao.trim()
+        ? row.imagem_saudacao.trim()
+        : null,
+    loja_slug:
+      typeof row.loja_slug === 'string' && row.loja_slug.trim()
+        ? row.loja_slug.trim().toLowerCase()
+        : null,
+    formas_pagamento: normalizarFormasPagamento(row.formas_pagamento),
+    disparo_ativo: row.disparo_ativo === true,
+    config_follow_up: normalizarConfigFollowUp(row.config_follow_up),
   }
 }
 

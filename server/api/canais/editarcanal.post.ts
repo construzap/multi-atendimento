@@ -9,6 +9,16 @@ import {
   parseTempoAvisoMinutos,
   parseValorPedidoMinimo,
 } from '#shared/utils/validarCanalConfigLoja'
+import {
+  normalizarConfigFollowUp,
+  normalizarFormasPagamento,
+  parseConfigFollowUp,
+  parseFlagCanal,
+  parseFormasPagamento,
+  parseImagemSaudacao,
+  parseLojaSlug,
+  parseMensagemSaudacao,
+} from '#shared/utils/validarCanalCamposExtras'
 import { createError, readBody } from 'h3'
 import { checkChannel } from '../../utils/checkChannel'
 import { getAuthUserId } from '../../utils/getAuthUserId'
@@ -33,10 +43,24 @@ type EditarCanalBody = {
   api_key?: string | null
   loja_aberta?: boolean
   agenda_pedido?: boolean
+  assinatura_ia_na_mensagem?: boolean
+  botao_para_iniciar_ia?: boolean
+  mensagem_saudacao?: string | null
+  imagem_saudacao?: string | null
+  loja_slug?: string | null
+  formas_pagamento?: unknown
+  disparo_ativo?: boolean
+  config_follow_up?: unknown
 }
 
 const CANAL_SELECT =
-  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido'
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up'
+
+function mensagemErroCanal(error: { message?: string; code?: string }): string {
+  const msg = error.message ?? 'Falha ao salvar o canal.'
+  if (/loja_slug/i.test(msg)) return 'Este slug de loja já está em uso.'
+  return msg
+}
 
 type CanalRow = Record<string, unknown> & {
   api_key_encrypted?: unknown
@@ -75,6 +99,14 @@ function mapCanalPublico(row: CanalRow): Canal {
       | 'loja_aberta'
       | 'agenda_pedido'
       | 'valor_pedido_minimo'
+      | 'assinatura_ia_na_mensagem'
+      | 'botao_para_iniciar_ia'
+      | 'mensagem_saudacao'
+      | 'imagem_saudacao'
+      | 'loja_slug'
+      | 'formas_pagamento'
+      | 'disparo_ativo'
+      | 'config_follow_up'
     >),
     horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
@@ -84,6 +116,23 @@ function mapCanalPublico(row: CanalRow): Canal {
     loja_aberta: row.loja_aberta !== false,
     agenda_pedido: row.agenda_pedido === true,
     valor_pedido_minimo: parseValorPedidoMinimoRow(row.valor_pedido_minimo),
+    assinatura_ia_na_mensagem: row.assinatura_ia_na_mensagem === true,
+    botao_para_iniciar_ia: row.botao_para_iniciar_ia === true,
+    mensagem_saudacao:
+      typeof row.mensagem_saudacao === 'string' && row.mensagem_saudacao.trim()
+        ? row.mensagem_saudacao
+        : null,
+    imagem_saudacao:
+      typeof row.imagem_saudacao === 'string' && row.imagem_saudacao.trim()
+        ? row.imagem_saudacao.trim()
+        : null,
+    loja_slug:
+      typeof row.loja_slug === 'string' && row.loja_slug.trim()
+        ? row.loja_slug.trim().toLowerCase()
+        : null,
+    formas_pagamento: normalizarFormasPagamento(row.formas_pagamento),
+    disparo_ativo: row.disparo_ativo === true,
+    config_follow_up: normalizarConfigFollowUp(row.config_follow_up),
   }
 }
 
@@ -225,6 +274,70 @@ export default defineEventHandler(async (event) => {
     patch.valor_pedido_minimo = valorPedidoMinimoParsed
   }
 
+  if (hasOwn(body, 'assinatura_ia_na_mensagem')) {
+    const parsed = parseFlagCanal(body.assinatura_ia_na_mensagem, 'assinatura_ia_na_mensagem')
+    if (typeof parsed === 'string') {
+      throw createError({ statusCode: 400, statusMessage: parsed })
+    }
+    patch.assinatura_ia_na_mensagem = parsed
+  }
+
+  if (hasOwn(body, 'botao_para_iniciar_ia')) {
+    const parsed = parseFlagCanal(body.botao_para_iniciar_ia, 'botao_para_iniciar_ia')
+    if (typeof parsed === 'string') {
+      throw createError({ statusCode: 400, statusMessage: parsed })
+    }
+    patch.botao_para_iniciar_ia = parsed
+  }
+
+  if (hasOwn(body, 'disparo_ativo')) {
+    const parsed = parseFlagCanal(body.disparo_ativo, 'disparo_ativo')
+    if (typeof parsed === 'string') {
+      throw createError({ statusCode: 400, statusMessage: parsed })
+    }
+    patch.disparo_ativo = parsed
+  }
+
+  if (hasOwn(body, 'mensagem_saudacao')) {
+    const parsed = parseMensagemSaudacao(body.mensagem_saudacao)
+    if (parsed && typeof parsed === 'object' && 'erro' in parsed) {
+      throw createError({ statusCode: 400, statusMessage: parsed.erro })
+    }
+    patch.mensagem_saudacao = parsed
+  }
+
+  if (hasOwn(body, 'imagem_saudacao')) {
+    const parsed = parseImagemSaudacao(body.imagem_saudacao)
+    if (parsed && typeof parsed === 'object' && 'erro' in parsed) {
+      throw createError({ statusCode: 400, statusMessage: parsed.erro })
+    }
+    patch.imagem_saudacao = parsed
+  }
+
+  if (hasOwn(body, 'loja_slug')) {
+    const parsed = parseLojaSlug(body.loja_slug)
+    if (parsed && typeof parsed === 'object' && 'erro' in parsed) {
+      throw createError({ statusCode: 400, statusMessage: parsed.erro })
+    }
+    patch.loja_slug = parsed
+  }
+
+  if (hasOwn(body, 'formas_pagamento')) {
+    const parsed = parseFormasPagamento(body.formas_pagamento)
+    if (typeof parsed === 'string') {
+      throw createError({ statusCode: 400, statusMessage: parsed })
+    }
+    patch.formas_pagamento = parsed
+  }
+
+  if (hasOwn(body, 'config_follow_up')) {
+    const parsed = parseConfigFollowUp(body.config_follow_up)
+    if (typeof parsed === 'string') {
+      throw createError({ statusCode: 400, statusMessage: parsed })
+    }
+    patch.config_follow_up = parsed
+  }
+
   if (hasOwn(body, 'horarios')) {
     const horariosParsed = parseCanalHorariosOpcional(body.horarios)
     if (typeof horariosParsed === 'string') {
@@ -317,7 +430,7 @@ export default defineEventHandler(async (event) => {
     if (upErr) {
       throw createError({
         statusCode: 500,
-        statusMessage: upErr.message,
+        statusMessage: mensagemErroCanal(upErr),
       })
     }
     if (!updatedRows?.length) {

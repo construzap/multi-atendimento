@@ -18,6 +18,7 @@ import {
   useProdutosStore,
   PRODUTOS_PAGE_SIZE_TODOS,
   isFiltroCategoriaId,
+  isFiltroListaFixo,
   produtosTermoBucketKey,
 } from '~/stores/produtos'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
@@ -73,6 +74,8 @@ const termoAtivoId = computed(() =>
 const tituloVista = computed(() => {
   if (filtroAtivo.value === 'todos') return 'Todos os produtos'
   if (filtroAtivo.value === 'sem_categoria') return 'Sem categoria'
+  if (filtroAtivo.value === 'ativados') return 'Produtos ativados'
+  if (filtroAtivo.value === 'desativados') return 'Produtos desativados'
   return termoAtivo.value?.nome ?? ''
 })
 
@@ -120,7 +123,7 @@ function selecaoDeFiltro(
   filtroId: ProdutosListaFiltroId,
   termos: ProdutoTermoPesquisaItem[],
 ): ProdutosListaSelecao | null {
-  if (filtroId === 'todos' || filtroId === 'sem_categoria') return { tipo: filtroId }
+  if (isFiltroListaFixo(filtroId)) return { tipo: filtroId }
   const t = termos.find((x) => x.id === filtroId)
   return t ? { tipo: 'categoria', termo: { ...t } } : null
 }
@@ -146,7 +149,7 @@ function vistaDoCacheProdutos(
 }
 
 function aplicarSelecao(sel: ProdutosListaSelecao, wid: number | null) {
-  if (sel.tipo === 'todos' || sel.tipo === 'sem_categoria') {
+  if (sel.tipo !== 'categoria') {
     const mesmo = filtroAtivo.value === sel.tipo
     filtroAtivo.value = sel.tipo
     termoAtivo.value = null
@@ -288,6 +291,8 @@ async function aposEliminados() {
   const filtroId = filtroAtivo.value
   if (wid != null && filtroId != null) {
     produtosStore.invalidarCacheTermo(wid, filtroId)
+    produtosStore.invalidarCacheTermo(wid, 'ativados')
+    produtosStore.invalidarCacheTermo(wid, 'desativados')
   }
   await carregarLista({ force: true })
   if (produtosStore.page > produtosStore.totalPages) {
@@ -301,6 +306,8 @@ async function aoProdutoNovoGravado() {
   const filtroId = filtroAtivo.value
   if (wid == null || filtroId == null) return
   produtosStore.invalidarCacheTermo(wid, filtroId)
+  produtosStore.invalidarCacheTermo(wid, 'ativados')
+  produtosStore.invalidarCacheTermo(wid, 'desativados')
   produtosStore.page = 1
   await produtosStore.fetchPagina(wid, {
     page: 1,

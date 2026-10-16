@@ -19,7 +19,7 @@ import BaseModal from '~/components/BaseModal.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import { CONFIG_SELECAO_MULTIPLA } from '~/components/produtos/selecao-multipla/produtosSelecaoMultiplaConfig'
 import { mensagemErroFetch } from '~/stores/canais'
-import { produtosTermoBucketKey, useProdutosStore } from '~/stores/produtos'
+import { isFiltroListaFixo, produtosTermoBucketKey, useProdutosStore } from '~/stores/produtos'
 import { useProdutoTermosPesquisaStore } from '~/stores/produtoTermosPesquisa'
 
 const props = withDefaults(
@@ -222,7 +222,7 @@ async function carregar(opts?: { autoSelecionar?: boolean }) {
 }
 
 function tentarAutoSelecionar() {
-  if (props.selectedFiltro === 'todos' || props.selectedFiltro === 'sem_categoria') return
+  if (isFiltroListaFixo(props.selectedFiltro)) return
   const lista = termos.value
   if (typeof props.selectedFiltro === 'number' && lista.some((t) => t.id === props.selectedFiltro)) {
     return
@@ -250,6 +250,14 @@ function aoSelecionarTodos() {
 
 function aoSelecionarSemCategoria() {
   emit('selecionar', { tipo: 'sem_categoria' })
+}
+
+function aoSelecionarAtivados() {
+  emit('selecionar', { tipo: 'ativados' })
+}
+
+function aoSelecionarDesativados() {
+  emit('selecionar', { tipo: 'desativados' })
 }
 
 function itemEspecialClass(ativo: boolean) {
@@ -657,6 +665,32 @@ async function confirmarTransferenciaEEliminar() {
               label_off
             </span>
             <span class="min-w-0 flex-1 truncate">Sem categoria</span>
+          </button>
+        </li>
+        <li class="px-1.5 py-1">
+          <button
+            type="button"
+            :class="itemEspecialClass(selectedFiltro === 'ativados')"
+            :aria-current="selectedFiltro === 'ativados' ? 'true' : undefined"
+            @click="aoSelecionarAtivados"
+          >
+            <span class="material-symbols-outlined text-[18px] text-on-surface-variant dark:text-dark-on-surface-variant" aria-hidden="true">
+              toggle_on
+            </span>
+            <span class="min-w-0 flex-1 truncate">Produtos ativados</span>
+          </button>
+        </li>
+        <li class="px-1.5 py-1">
+          <button
+            type="button"
+            :class="itemEspecialClass(selectedFiltro === 'desativados')"
+            :aria-current="selectedFiltro === 'desativados' ? 'true' : undefined"
+            @click="aoSelecionarDesativados"
+          >
+            <span class="material-symbols-outlined text-[18px] text-on-surface-variant dark:text-dark-on-surface-variant" aria-hidden="true">
+              toggle_off
+            </span>
+            <span class="min-w-0 flex-1 truncate">Produtos desativados</span>
           </button>
         </li>
       </ul>

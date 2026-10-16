@@ -1,14 +1,30 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseModal from '~/components/BaseModal.vue'
+import BaseTextarea from '~/components/BaseTextarea.vue'
 import type { CanalCriado } from '~/stores/canais'
-import type { Canal, CanalHorarioDia, CanalHorarioDiaKey, CanalHorarios } from '#shared/types/canal'
-import { CANAL_HORARIO_DIAS, ordenarCanalHorarios } from '#shared/types/canal'
+import type {
+  Canal,
+  CanalConfigFollowUp,
+  CanalFormasPagamento,
+  CanalFormasPagamentoEntrega,
+  CanalFormasPagamentoOnline,
+  CanalHorarioDia,
+  CanalHorarioDiaKey,
+  CanalHorarios,
+} from '#shared/types/canal'
+import {
+  CANAL_FORMAS_ENTREGA,
+  CANAL_FORMAS_ONLINE,
+  CANAL_FORMAS_PAGAMENTO_PADRAO,
+  CANAL_HORARIO_DIAS,
+  ordenarCanalHorarios,
+} from '#shared/types/canal'
 
 type HorarioDia = CanalHorarioDia
 
@@ -186,6 +202,38 @@ const fieldIdSuffix = computed(() =>
   isEdit.value ? `edit-${props.canalEdicaoId ?? 'canal'}` : 'create',
 )
 
+function clonarFormasPagamento(raw?: CanalFormasPagamento | null): CanalFormasPagamento {
+  const base = JSON.parse(JSON.stringify(CANAL_FORMAS_PAGAMENTO_PADRAO)) as CanalFormasPagamento
+  if (!raw) return base
+  return {
+    online: { ...base.online, ...raw.online },
+    entrega: { ...base.entrega, ...raw.entrega },
+  }
+}
+
+type FollowLinha = { id: string; minutos: string }
+
+function followUpParaLinhas(cfg: CanalConfigFollowUp | null | undefined): FollowLinha[] {
+  const keys = Object.keys(cfg ?? {}).sort((a, b) => Number(a) - Number(b))
+  return keys.map((k) => ({
+    id: `fu-${k}-${Math.random().toString(36).slice(2, 7)}`,
+    minutos: String(cfg?.[k]?.minutos_espera ?? ''),
+  }))
+}
+
+function linhasParaFollowUp(linhas: FollowLinha[]): CanalConfigFollowUp | string {
+  const preenchidas = linhas.filter((l) => l.minutos.trim())
+  const out: CanalConfigFollowUp = {}
+  for (let i = 0; i < preenchidas.length; i++) {
+    const n = Number.parseInt(preenchidas[i]!.minutos.trim(), 10)
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+      return `Minutos de espera inválidos no follow-up ${i + 1} (informe um inteiro >= 1).`
+    }
+    out[String(i + 1)] = { minutos_espera: n }
+  }
+  return out
+}
+
 const nome = ref('')
 const descricao = ref('')
 const endereco = ref('')
@@ -194,6 +242,19 @@ const longitude = ref('')
 const tempoAvisoMinutos = ref('30')
 const valorPedidoMinimo = ref('0')
 const horarios = ref(horariosPadrao())
+const assinaturaIaNaMensagem = ref(false)
+const botaoParaIniciarIa = ref(false)
+const mensagemSaudacao = ref('')
+const imagemSaudacaoUrl = ref('')
+const imagemArquivo = ref<File | null>(null)
+const imagemPreviewLocal = ref('')
+const imagemRemovida = ref(false)
+const enviandoImagem = ref(false)
+const lojaSlug = ref('')
+const formasPagamento = ref<CanalFormasPagamento>(clonarFormasPagamento())
+const disparoAtivo = ref(false)
+
+const followUpLinhas = ref<FollowLinha[]>([])
 
 /** Snapshot do canal no Pinia ao abrir o modal (restauração no cancelar/fechar). */
 const snapshotCanal = ref<Canal | null>(null)
@@ -242,16 +303,130 @@ function toggleDiaAberto(key: CanalHorarioDiaKey) {
   }
 }
 
+function toggleFormaOnline(key: keyof CanalFormasPagamentoOnline) {
+  formasPagamento.value = {
+    ...formasPagamento.value,
+    online: {
+      ...formasPagamento.value.online,
+      [key]: !formasPagamento.value.online[key],
+    },
+  }
+}
+
+function toggleFormaEntrega(key: keyof CanalFormasPagamentoEntrega) {
+  formasPagamento.value = {
+    ...formasPagamento.value,
+    entrega: {
+      ...formasPagamento.value.entrega,
+      [key]: !formasPagamento.value.entrega[key],
+    },
+  }
+}
+
+function adicionarFollowUp() {
+  followUpLinhas.value = [
+    ...followUpLinhas.value,
+    { id: `fu-${Date.now()}`, minutos: '' },
+  ]
+}
+
+function removerFollowUp(id: string) {
+  followUpLinhas.value = followUpLinhas.value.filter((l) => l.id !== id)
+}
+
+const MIMES_IMAGEM_SAUDACAO = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+
+const previewImagemSaudacao = computed(() => {
+  if (imagemPreviewLocal.value) return imagemPreviewLocal.value
+  if (imagemRemovida.value) return ''
+  return imagemSaudacaoUrl.value
+})
+
+function descartarArquivoImagemLocal() {
+  if (imagemPreviewLocal.value.startsWith('blob:')) URL.revokeObjectURL(imagemPreviewLocal.value)
+  imagemArquivo.value = null
+  imagemPreviewLocal.value = ''
+}
+
+function onSelecionarImagemSaudacao(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  const mime = (file.type || '').split(';')[0]?.trim().toLowerCase() ?? ''
+  if (!MIMES_IMAGEM_SAUDACAO.has(mime)) {
+    toast.warning('Use uma imagem jpeg, png, webp ou gif.')
+    return
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    toast.warning('A imagem pode ter no máximo 10MB.')
+    return
+  }
+  descartarArquivoImagemLocal()
+  imagemArquivo.value = file
+  imagemPreviewLocal.value = URL.createObjectURL(file)
+  imagemRemovida.value = false
+}
+
+function removerImagemSaudacao() {
+  descartarArquivoImagemLocal()
+  imagemSaudacaoUrl.value = ''
+  imagemRemovida.value = true
+}
+
+function lerArquivoComoBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      const base64 = result.includes('base64,') ? result.split('base64,')[1] ?? '' : result
+      if (!base64) reject(new Error('Não foi possível ler a imagem.'))
+      else resolve(base64)
+    }
+    reader.onerror = () => reject(new Error('Não foi possível ler a imagem.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/** Se houver arquivo novo, sobe no Blackblaze e devolve a URL. Sem arquivo, mantém a URL atual ou null se removida. */
+async function resolverImagemSaudacaoUrl(): Promise<string | null> {
+  const arquivo = imagemArquivo.value
+  if (!arquivo) {
+    if (imagemRemovida.value) return null
+    return imagemSaudacaoUrl.value.trim() || null
+  }
+  const data_base64 = await lerArquivoComoBase64(arquivo)
+  const res = await $fetch<{ imagem_url: string }>('/api/canais/enviarimagemparablackblaze', {
+    method: 'POST',
+    body: {
+      workspace_id: props.workspaceId,
+      mime: arquivo.type || 'image/jpeg',
+      data_base64,
+      filename: arquivo.name,
+    },
+  })
+  const url = res.imagem_url?.trim()
+  if (!url) throw new Error('Upload da imagem não devolveu a URL.')
+  return url
+}
+
+onBeforeUnmount(descartarArquivoImagemLocal)
+
 function buildConfigPayload():
   | {
-      nome?: string
-      descricao?: string | null
       endereco: string | null
       latitude: number | null
       longitude: number | null
       tempo_aviso_minutos: number
       valor_pedido_minimo: number
       horarios: CanalHorarios
+      assinatura_ia_na_mensagem: boolean
+      botao_para_iniciar_ia: boolean
+      mensagem_saudacao: string | null
+      loja_slug: string | null
+      formas_pagamento: CanalFormasPagamento
+      disparo_ativo: boolean
+      config_follow_up: CanalConfigFollowUp
     }
   | string {
   const erroExtras = validarCamposExtras()
@@ -265,6 +440,8 @@ function buildConfigPayload():
   const minimo = minimoRaw
     ? Number.parseFloat(minimoRaw.replace(',', '.'))
     : 0
+  const follow = linhasParaFollowUp(followUpLinhas.value)
+  if (typeof follow === 'string') return follow
 
   return {
     endereco: endereco.value.trim() || null,
@@ -272,8 +449,14 @@ function buildConfigPayload():
     longitude: lngRaw ? parseCoordenadaFormulario(longitude.value, -180, 180) : null,
     tempo_aviso_minutos: aviso,
     valor_pedido_minimo: Number.isFinite(minimo) ? Math.round(minimo * 100) / 100 : 0,
-    // Clone puro do que está na tela — fonte da verdade no save
     horarios: montarHorariosDoFormulario(),
+    assinatura_ia_na_mensagem: assinaturaIaNaMensagem.value,
+    botao_para_iniciar_ia: botaoParaIniciarIa.value,
+    mensagem_saudacao: mensagemSaudacao.value.trim() || null,
+    loja_slug: lojaSlug.value.trim().toLowerCase() || null,
+    formas_pagamento: clonarFormasPagamento(formasPagamento.value),
+    disparo_ativo: disparoAtivo.value,
+    config_follow_up: follow,
   }
 }
 
@@ -297,6 +480,8 @@ function sincronizarFormularioNoPinia() {
     ? Number.parseFloat(minimoRaw.replace(',', '.'))
     : 0
 
+  const follow = linhasParaFollowUp(followUpLinhas.value)
+
   canaisStore.items[idx] = {
     ...atual,
     nome: nome.value.trim() || null,
@@ -309,6 +494,18 @@ function sincronizarFormularioNoPinia() {
       ? Math.round(minimo * 100) / 100
       : atual.valor_pedido_minimo,
     horarios: montarHorariosDoFormulario(),
+    assinatura_ia_na_mensagem: assinaturaIaNaMensagem.value,
+    botao_para_iniciar_ia: botaoParaIniciarIa.value,
+    mensagem_saudacao: mensagemSaudacao.value.trim() || null,
+    imagem_saudacao: imagemRemovida.value
+      ? null
+      : imagemArquivo.value
+        ? atual.imagem_saudacao
+        : imagemSaudacaoUrl.value.trim() || null,
+    loja_slug: lojaSlug.value.trim().toLowerCase() || null,
+    formas_pagamento: clonarFormasPagamento(formasPagamento.value),
+    disparo_ativo: disparoAtivo.value,
+    config_follow_up: typeof follow === 'string' ? atual.config_follow_up : follow,
   }
 }
 
@@ -327,6 +524,16 @@ function resetarCamposExtras() {
   tempoAvisoMinutos.value = '30'
   valorPedidoMinimo.value = '0'
   horarios.value = horariosPadrao()
+  assinaturaIaNaMensagem.value = false
+  botaoParaIniciarIa.value = false
+  mensagemSaudacao.value = ''
+  descartarArquivoImagemLocal()
+  imagemSaudacaoUrl.value = ''
+  imagemRemovida.value = false
+  lojaSlug.value = ''
+  formasPagamento.value = clonarFormasPagamento()
+  disparoAtivo.value = false
+  followUpLinhas.value = []
 }
 
 function preencherDoPinia() {
@@ -353,6 +560,16 @@ function preencherDoPinia() {
     tempoAvisoMinutos.value = String(canal.tempo_aviso_minutos ?? 30)
     valorPedidoMinimo.value = formatarValorPedidoMinimo(canal.valor_pedido_minimo)
     horarios.value = horariosFromCanal(canal.horarios)
+    assinaturaIaNaMensagem.value = canal.assinatura_ia_na_mensagem === true
+    botaoParaIniciarIa.value = canal.botao_para_iniciar_ia === true
+    mensagemSaudacao.value = canal.mensagem_saudacao?.trim() ?? ''
+    descartarArquivoImagemLocal()
+    imagemRemovida.value = false
+    imagemSaudacaoUrl.value = canal.imagem_saudacao?.trim() ?? ''
+    lojaSlug.value = canal.loja_slug?.trim() ?? ''
+    formasPagamento.value = clonarFormasPagamento(canal.formas_pagamento)
+    disparoAtivo.value = canal.disparo_ativo === true
+    followUpLinhas.value = followUpParaLinhas(canal.config_follow_up)
   } finally {
     // nextTick seria melhor, mas microtask evita sync com form ainda “velho”
     queueMicrotask(() => {
@@ -410,7 +627,7 @@ watch(
 )
 
 watch(
-  [nome, descricao, endereco, latitude, longitude, tempoAvisoMinutos, valorPedidoMinimo, horarios],
+  [nome, descricao, endereco, latitude, longitude, tempoAvisoMinutos, valorPedidoMinimo, horarios, assinaturaIaNaMensagem, botaoParaIniciarIa, mensagemSaudacao, imagemSaudacaoUrl, imagemRemovida, lojaSlug, formasPagamento, disparoAtivo, followUpLinhas],
   () => {
     if (!isOpen.value || !isEdit.value) return
     sincronizarFormularioNoPinia()
@@ -448,6 +665,14 @@ function validarCamposExtras(): string | null {
       return 'Valor mínimo do pedido inválido (informe um número >= 0).'
     }
   }
+
+  const slug = lojaSlug.value.trim().toLowerCase()
+  if (slug && !/^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$/.test(slug)) {
+    return 'Slug da loja inválido. Use letras minúsculas, números e hífen (sem hífen no início ou no fim).'
+  }
+
+  const followErro = linhasParaFollowUp(followUpLinhas.value)
+  if (typeof followErro === 'string') return followErro
 
   for (const { key, label } of DIAS_HORARIO) {
     const dia = horarios.value[key]
@@ -511,6 +736,17 @@ async function onCreate() {
     return
   }
 
+  let imagem_saudacao: string | null
+  enviandoImagem.value = true
+  try {
+    imagem_saudacao = await resolverImagemSaudacaoUrl()
+  } catch (err: unknown) {
+    toast.error(mensagemErroApi(err))
+    return
+  } finally {
+    enviandoImagem.value = false
+  }
+
   if (isEdit.value) {
     const idCanal = idCanalEmEdicao()
     if (!idCanal) {
@@ -538,6 +774,14 @@ async function onCreate() {
         tempo_aviso_minutos: payload.tempo_aviso_minutos,
         valor_pedido_minimo: payload.valor_pedido_minimo,
         horarios: payload.horarios,
+        assinatura_ia_na_mensagem: payload.assinatura_ia_na_mensagem,
+        botao_para_iniciar_ia: payload.botao_para_iniciar_ia,
+        mensagem_saudacao: payload.mensagem_saudacao,
+        imagem_saudacao,
+        loja_slug: payload.loja_slug,
+        formas_pagamento: payload.formas_pagamento,
+        disparo_ativo: payload.disparo_ativo,
+        config_follow_up: payload.config_follow_up,
       })
       edicaoCommitada.value = true
       snapshotCanal.value = null
@@ -566,6 +810,14 @@ async function onCreate() {
       tempo_aviso_minutos: payload.tempo_aviso_minutos,
       valor_pedido_minimo: payload.valor_pedido_minimo,
       horarios: payload.horarios,
+      assinatura_ia_na_mensagem: payload.assinatura_ia_na_mensagem,
+      botao_para_iniciar_ia: payload.botao_para_iniciar_ia,
+      mensagem_saudacao: payload.mensagem_saudacao,
+      imagem_saudacao,
+      loja_slug: payload.loja_slug,
+      formas_pagamento: payload.formas_pagamento,
+      disparo_ativo: payload.disparo_ativo,
+      config_follow_up: payload.config_follow_up,
     })
     toast.success('Canal criado com sucesso.')
     emit('criado', created)
@@ -727,6 +979,26 @@ async function onCreate() {
               Use 0 se não houver valor mínimo. Aceita vírgula ou ponto.
             </p>
           </div>
+
+          <div>
+            <label
+              class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface"
+              :for="`canal-loja-slug-${fieldIdSuffix}`"
+            >
+              Slug da loja
+            </label>
+            <BaseInput
+              :id="`canal-loja-slug-${fieldIdSuffix}`"
+              v-model="lojaSlug"
+              type="text"
+              name="canal_loja_slug"
+              placeholder="ex: minha-loja"
+              autocomplete="off"
+            />
+            <p class="mt-1.5 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+              Opcional. Letras minúsculas, números e hífen. Deixe vazio se ainda não tiver loja pública.
+            </p>
+          </div>
         </div>
 
         <div class="space-y-3 border-t border-outline-variant/15 pt-5 dark:border-dark-outline/20">
@@ -851,6 +1123,220 @@ async function onCreate() {
             </div>
           </div>
         </div>
+
+        <div class="space-y-4 border-t border-outline-variant/15 pt-5 dark:border-dark-outline/20">
+          <h3 class="text-sm font-bold text-on-surface dark:text-dark-on-surface">I.A. e saudação</h3>
+
+          <label class="flex items-center justify-between gap-3">
+            <span class="text-sm text-on-surface dark:text-dark-on-surface">Assinatura da I.A. na mensagem</span>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="assinaturaIaNaMensagem"
+              class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
+              :class="assinaturaIaNaMensagem ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'"
+              @click="assinaturaIaNaMensagem = !assinaturaIaNaMensagem"
+            >
+              <span
+                class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                :class="assinaturaIaNaMensagem ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </label>
+
+          <label class="flex items-center justify-between gap-3">
+            <span class="text-sm text-on-surface dark:text-dark-on-surface">Botão para iniciar a I.A.</span>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="botaoParaIniciarIa"
+              class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
+              :class="botaoParaIniciarIa ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'"
+              @click="botaoParaIniciarIa = !botaoParaIniciarIa"
+            >
+              <span
+                class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                :class="botaoParaIniciarIa ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </label>
+
+          <div>
+            <label
+              class="mb-2 block text-sm font-semibold text-on-surface dark:text-dark-on-surface"
+              :for="`canal-mensagem-saudacao-${fieldIdSuffix}`"
+            >
+              Mensagem de saudação
+            </label>
+            <BaseTextarea
+              :id="`canal-mensagem-saudacao-${fieldIdSuffix}`"
+              v-model="mensagemSaudacao"
+              name="canal_mensagem_saudacao"
+              :submit-on-enter="false"
+              :min-height-px="88"
+              :max-height-px="200"
+              placeholder="Texto enviado ao iniciar o atendimento"
+            />
+          </div>
+
+          <div>
+            <p class="mb-2 text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+              Imagem de saudação
+            </p>
+            <div class="flex flex-wrap items-center gap-3">
+              <img
+                v-if="previewImagemSaudacao"
+                :src="previewImagemSaudacao"
+                alt="Prévia da imagem de saudação"
+                class="h-20 w-20 rounded-xl object-cover ring-1 ring-outline-variant/30 dark:ring-dark-outline/40"
+              >
+              <div class="flex flex-wrap items-center gap-2">
+                <label
+                  class="inline-flex cursor-pointer items-center rounded-xl bg-surface-container px-3 py-2 text-sm font-semibold text-on-surface ring-1 ring-outline-variant/30 hover:bg-surface-container-high dark:bg-dark-surface-container dark:text-dark-on-surface dark:ring-dark-outline/40 dark:hover:bg-dark-surface-container-high"
+                  :for="`canal-imagem-saudacao-${fieldIdSuffix}`"
+                >
+                  Selecionar imagem
+                </label>
+                <input
+                  :id="`canal-imagem-saudacao-${fieldIdSuffix}`"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  class="sr-only"
+                  @change="onSelecionarImagemSaudacao"
+                >
+                <button
+                  v-if="previewImagemSaudacao"
+                  type="button"
+                  class="text-sm font-semibold text-error"
+                  @click="removerImagemSaudacao"
+                >
+                  Remover
+                </button>
+              </div>
+            </div>
+            <p class="mt-2 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+              JPEG, PNG, WEBP ou GIF. Máximo 10MB.
+            </p>
+          </div>
+        </div>
+
+        <div class="space-y-4 border-t border-outline-variant/15 pt-5 dark:border-dark-outline/20">
+          <h3 class="text-sm font-bold text-on-surface dark:text-dark-on-surface">Formas de pagamento</h3>
+
+          <div>
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+              Online
+            </p>
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label
+                v-for="opt in CANAL_FORMAS_ONLINE"
+                :key="`online-${opt.key}`"
+                class="flex items-center gap-2 text-sm text-on-surface dark:text-dark-on-surface"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 accent-primary"
+                  :checked="formasPagamento.online[opt.key]"
+                  @change="toggleFormaOnline(opt.key)"
+                >
+                {{ opt.label }}
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+              Na entrega
+            </p>
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <label
+                v-for="opt in CANAL_FORMAS_ENTREGA"
+                :key="`entrega-${opt.key}`"
+                class="flex items-center gap-2 text-sm text-on-surface dark:text-dark-on-surface"
+              >
+                <input
+                  type="checkbox"
+                  class="h-4 w-4 accent-primary"
+                  :checked="formasPagamento.entrega[opt.key]"
+                  @change="toggleFormaEntrega(opt.key)"
+                >
+                {{ opt.label }}
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4 border-t border-outline-variant/15 pt-5 dark:border-dark-outline/20">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-bold text-on-surface dark:text-dark-on-surface">Disparo e follow-up</h3>
+              <p class="mt-1 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+                Cada passo vira a chave 1, 2, 3… com os minutos de espera.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              :aria-checked="disparoAtivo"
+              aria-label="Disparo ativo"
+              class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
+              :class="disparoAtivo ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'"
+              @click="disparoAtivo = !disparoAtivo"
+            >
+              <span
+                class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                :class="disparoAtivo ? 'translate-x-6' : 'translate-x-1'"
+              />
+            </button>
+          </div>
+
+          <div class="space-y-2">
+            <div
+              v-for="(linha, index) in followUpLinhas"
+              :key="linha.id"
+              class="flex items-end gap-2"
+            >
+              <div class="w-16 shrink-0 pt-6 text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                {{ index + 1 }}
+              </div>
+              <div class="min-w-0 flex-1">
+                <label
+                  class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+                  :for="`canal-follow-${linha.id}`"
+                >
+                  Minutos de espera
+                </label>
+                <BaseInput
+                  :id="`canal-follow-${linha.id}`"
+                  v-model="linha.minutos"
+                  type="number"
+                  :name="`canal_follow_${linha.id}`"
+                  inputmode="numeric"
+                  placeholder="Ex: 5"
+                />
+              </div>
+              <button
+                type="button"
+                class="mb-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-error hover:bg-error/10"
+                :aria-label="`Remover follow-up ${index + 1}`"
+                @click="removerFollowUp(linha.id)"
+              >
+                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">delete</span>
+              </button>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="inline-flex h-11 w-11 items-center justify-center rounded-2xl text-primary hover:bg-primary/10"
+                aria-label="Adicionar follow-up"
+                @click="adicionarFollowUp"
+              >
+                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">add</span>
+              </button>
+            </div>
+          </div>
+        </div>
     </div>
 
     <template #footer>
@@ -860,10 +1346,10 @@ async function onCreate() {
       <div class="w-full sm:w-44">
         <BaseButton
           type="button"
-          :disabled="!formularioValido || canaisStore.pending"
+          :disabled="!formularioValido || canaisStore.pending || enviandoImagem"
           @click="onCreate"
         >
-          {{ isEdit ? 'Salvar' : 'Criar canal' }}
+          {{ enviandoImagem ? 'Enviando imagem…' : isEdit ? 'Salvar' : 'Criar canal' }}
         </BaseButton>
       </div>
     </template>

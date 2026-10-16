@@ -2,6 +2,7 @@ import type {
   RelatorioContagemValor,
   RelatorioHorarioPico,
   RelatorioPedidosPorForma,
+  RelatorioPorCliente,
   RelatorioProdutoVendido,
   RelatorioValoresPorForma,
 } from '#shared/types/relatorios'
@@ -22,6 +23,7 @@ export type RelatorioImpressaoInput = {
   entregaVsRetirada: RelatorioContagemValor[]
   statusDaEntrega: RelatorioContagemValor[]
   porCanal: RelatorioContagemValor[]
+  porCliente: RelatorioPorCliente[]
   porEntregador: RelatorioContagemValor[]
   produtosMaisVendidos: RelatorioProdutoVendido[]
   horariosDePico: RelatorioHorarioPico[]
@@ -113,6 +115,14 @@ function buildRelatorioHtml(input: RelatorioImpressaoInput): string {
 
   const canais = input.porCanal
     .map((i) => linha(`${i.label} (${i.quantidade})`, formatMoeda(i.valor)))
+    .join('')
+
+  const clientes = input.porCliente
+    .map((i) => {
+      const nome = i.name?.trim() || i.phone?.trim() || 'Cliente sem nome'
+      const extra = i.name?.trim() && i.phone?.trim() ? ` · ${i.phone.trim()}` : ''
+      return linha(`${nome}${extra}`, String(i.quantidade))
+    })
     .join('')
 
   const entregadores = input.porEntregador
@@ -255,6 +265,9 @@ function buildRelatorioHtml(input: RelatorioImpressaoInput): string {
 
     <hr class="sep" />
     ${secao('Por entregador', entregadores, 'Nenhum dado')}
+
+    <hr class="sep" />
+    ${secao('Por cliente', clientes, 'Nenhum cliente')}
 
     <hr class="sep" />
     ${secao('Produtos mais vendidos', produtos, 'Nenhum produto')}
