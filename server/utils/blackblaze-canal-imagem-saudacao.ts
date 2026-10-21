@@ -23,6 +23,19 @@ export function chaveObjetoImagemSaudacao(workspaceId: number, mime: string): st
   return `imagem-saudacao/${workspaceId}/${Date.now()}_${rand}${ext}`
 }
 
+/**
+ * URL pública amigável do B2.
+ * `us-east-005` → `https://f005.backblazeb2.com/file/{bucket}/{key}`
+ */
+export function urlAmigavelImagemSaudacao(bucket: string, key: string, region: string): string {
+  const num = String(region ?? '').trim().match(/(\d{3})$/)
+  if (!num) {
+    throw new Error(`Região B2 inválida para montar a URL amigável: ${region || '(vazia)'}`)
+  }
+  const pathEncoded = key.split('/').map((p) => encodeURIComponent(p)).join('/')
+  return `https://f${num[1]}.backblazeb2.com/file/${bucket}/${pathEncoded}`
+}
+
 export function mensagemErroB2CanalGeral(erro: unknown, bucket: string): string {
   const raw = erro instanceof Error ? erro.message : String(erro ?? '')
   const lower = raw.toLowerCase()

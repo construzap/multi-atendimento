@@ -6,6 +6,7 @@ import {
   chaveObjetoImagemSaudacao,
   mensagemErroB2CanalGeral,
   normalizarMimeImagemCanal,
+  urlAmigavelImagemSaudacao,
 } from '../../utils/blackblaze-canal-imagem-saudacao'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
@@ -67,7 +68,13 @@ export default defineEventHandler(async (event): Promise<EnviarImagemCanalBlackb
   const key = chaveObjetoImagemSaudacao(workspaceId, mime)
 
   try {
-    const imagem_url = await uploadToB2(buffer, key, mime, CANAL_GERAL_B2_BUCKET)
+    await uploadToB2(buffer, key, mime, CANAL_GERAL_B2_BUCKET)
+    const config = useRuntimeConfig()
+    const imagem_url = urlAmigavelImagemSaudacao(
+      CANAL_GERAL_B2_BUCKET,
+      key,
+      String(config.b2Region ?? ''),
+    )
     return { imagem_url }
   } catch (e) {
     throw createError({
