@@ -13,6 +13,7 @@ import type {
   ProdutosTermosPesquisaReordenarResponse,
 } from '#shared/types/produtos'
 import BaseButton from '~/components/BaseButton.vue'
+import CategoriaMidiaUpload from '~/components/produtos/CategoriaMidiaUpload.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseModal from '~/components/BaseModal.vue'
@@ -798,7 +799,7 @@ async function confirmarTransferenciaEEliminar() {
     <BaseModal
       v-model:open="modalFormAberto"
       :title="tituloModal"
-      panel-class="w-full max-w-md"
+      panel-class="w-full max-w-lg"
       :show-close="!guardandoModal"
       :close-on-backdrop="!guardandoModal"
       :close-on-escape="!guardandoModal"
@@ -836,6 +837,12 @@ async function confirmarTransferenciaEEliminar() {
             :maxlength="2000"
           />
         </div>
+
+        <CategoriaMidiaUpload
+          v-if="modoModal === 'editar'"
+          :key="termoEmEdicao?.id"
+          :disabled="guardandoModal"
+        />
 
         <div class="flex justify-end gap-2 pt-1">
           <BaseButton
