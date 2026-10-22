@@ -1,37 +1,112 @@
 <script setup lang="ts">
 import { onUnmounted, ref } from 'vue'
+import type { ProdutoTermoMidiaItem } from '#shared/types/produtos'
 
-type TipoArquivo = 'imagem' | 'pdf' | 'video'
+type TipoArquivo = 'imagem' | 'documento' | 'video' | 'audio'
 
 type ArquivoLocal = {
   id: string
   nome: string
   tipo: TipoArquivo
+  mime: string
   tamanho: string
   previewUrl: string | null
+  file: File | null
+}
+
+export type ArquivoCategoriaPendente = {
+  nome: string
+  mime: string
+  file: File
 }
 
 const props = withDefaults(
   defineProps<{
     disabled?: boolean
+    /** Mídias já gravadas na categoria. */
+    salvas?: ProdutoTermoMidiaItem[]
   }>(),
   {
     disabled: false,
+    salvas: () => [],
   },
 )
 
 const inputRef = ref<HTMLInputElement | null>(null)
 const arrastando = ref(false)
-const arquivos = ref<ArquivoLocal[]>([])
+function mimePeloNome(nome: string): string {
+  if (nome.endsWith('.png')) return 'image/png'
+  if (nome.endsWith('.jpg') || nome.endsWith('.jpeg')) return 'image/jpeg'
+  if (nome.endsWith('.webp')) return 'image/webp'
+  if (nome.endsWith('.gif')) return 'image/gif'
+  if (nome.endsWith('.pdf')) return 'application/pdf'
+  if (nome.endsWith('.doc')) return 'application/msword'
+  if (nome.endsWith('.docx')) return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  if (nome.endsWith('.xls')) return 'application/vnd.ms-excel'
+  if (nome.endsWith('.xlsx')) return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  if (nome.endsWith('.mp4')) return 'video/mp4'
+  if (nome.endsWith('.webm')) return 'video/webm'
+  if (nome.endsWith('.mov')) return 'video/quicktime'
+  if (nome.endsWith('.mp3')) return 'audio/mpeg'
+  if (nome.endsWith('.ogg')) return 'audio/ogg'
+  return ''
+}
+
+const MIMES_DOCUMENTO = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+])
+
+function tipoVisualSalvo(tipo: string): TipoArquivo {
+  if (tipo === 'image' || tipo === 'imagem' || tipo === 'sticker') return 'imagem'
+  if (tipo === 'video' || tipo === 'videoplay' || tipo === 'ptv') return 'video'
+  if (tipo === 'audio' || tipo === 'myaudio' || tipo === 'ptt') return 'audio'
+  return 'documento'
+}
+
+function tipoPeloMime(mime: string): TipoArquivo | null {
+  if (MIMES_DOCUMENTO.has(mime)) return 'documento'
+  if (mime.startsWith('video/')) return 'video'
+  if (mime.startsWith('audio/')) return 'audio'
+  if (mime.startsWith('image/')) return 'imagem'
+  return null
+}
+
+const arquivos = ref<ArquivoLocal[]>(
+  props.salvas
+    .filter((item) => item.url.trim().length > 0)
+    .map((item, index) => ({
+      id: `salva-${index}-${item.url}`,
+      nome: item.nome.trim() || item.url,
+      tipo: tipoVisualSalvo(item.tipo),
+      mime: '',
+      tamanho: 'Salvo',
+      previewUrl: tipoVisualSalvo(item.tipo) === 'imagem' ? item.url : null,
+      file: null,
+    })),
+)
 const aviso = ref<string | null>(null)
 let dragProfundidade = 0
 
-function tipoDoArquivo(file: File): TipoArquivo | null {
+function tipoDoArquivo(file: File): { tipo: TipoArquivo; mime: string } | null {
   const nome = file.name.toLowerCase()
-  if (file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(nome)) return 'imagem'
-  if (file.type === 'application/pdf' || nome.endsWith('.pdf')) return 'pdf'
-  if (file.type.startsWith('video/') || /\.(mp4|webm|mov|mkv|avi)$/.test(nome)) return 'video'
-  return null
+  const mime = (file.type.split(';')[0] ?? '').trim().toLowerCase() || mimePeloNome(nome)
+  const tipo = tipoPeloMime(mime)
+  if (!tipo) return null
+  if (tipo === 'imagem' && !['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'].includes(mime)) {
+    return null
+  }
+  if (tipo === 'video' && !['video/mp4', 'video/webm', 'video/quicktime'].includes(mime)) {
+    return null
+  }
+  if (tipo === 'audio' && !['audio/mpeg', 'audio/mp3', 'audio/ogg'].includes(mime)) {
+    return null
+  }
+  return { tipo, mime }
 }
 
 function formatarTamanho(bytes: number): string {
@@ -41,14 +116,16 @@ function formatarTamanho(bytes: number): string {
 }
 
 function iconeDoTipo(tipo: TipoArquivo): string {
-  if (tipo === 'pdf') return 'picture_as_pdf'
+  if (tipo === 'documento') return 'picture_as_pdf'
   if (tipo === 'video') return 'movie'
+  if (tipo === 'audio') return 'audio_file'
   return 'image'
 }
 
 function rotuloDoTipo(tipo: TipoArquivo): string {
-  if (tipo === 'pdf') return 'PDF'
+  if (tipo === 'documento') return 'Documento'
   if (tipo === 'video') return 'Vídeo'
+  if (tipo === 'audio') return 'Áudio'
   return 'Imagem'
 }
 
@@ -58,26 +135,38 @@ function adicionarArquivos(lista: FileList | File[]) {
   const proximos = [...arquivos.value]
 
   for (const file of Array.from(lista)) {
-    const tipo = tipoDoArquivo(file)
-    if (!tipo) {
+    const reconhecido = tipoDoArquivo(file)
+    if (!reconhecido) {
       ignorados.push(file.name)
       continue
     }
-    const previewUrl = tipo === 'imagem' ? URL.createObjectURL(file) : null
+    const previewUrl = reconhecido.tipo === 'imagem' ? URL.createObjectURL(file) : null
     proximos.push({
       id: `${file.name}-${file.size}-${file.lastModified}-${proximos.length}`,
       nome: file.name,
-      tipo,
+      tipo: reconhecido.tipo,
+      mime: reconhecido.mime,
       tamanho: formatarTamanho(file.size),
       previewUrl,
+      file,
     })
   }
 
   arquivos.value = proximos
   aviso.value = ignorados.length
-    ? 'Só entram imagem, PDF e vídeo.'
+    ? 'Só entram imagem, PDF, DOCX, XLSX, MP4 ou áudio MP3/OGG.'
     : null
 }
+
+function arquivosPendentes(): ArquivoCategoriaPendente[] {
+  return arquivos.value.flatMap((arquivo) =>
+    arquivo.file
+      ? [{ nome: arquivo.nome, mime: arquivo.mime, file: arquivo.file }]
+      : [],
+  )
+}
+
+defineExpose({ arquivosPendentes })
 
 function abrirSeletor() {
   if (props.disabled) return
@@ -125,7 +214,7 @@ function remover(id: string) {
 
 onUnmounted(() => {
   for (const arquivo of arquivos.value) {
-    if (arquivo.previewUrl) URL.revokeObjectURL(arquivo.previewUrl)
+    if (arquivo.file && arquivo.previewUrl) URL.revokeObjectURL(arquivo.previewUrl)
   }
 })
 </script>
@@ -167,7 +256,7 @@ onUnmounted(() => {
       <input
         ref="inputRef"
         type="file"
-        accept="image/*,application/pdf,video/*"
+        accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,.doc,.docx,.xls,.xlsx,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/ogg,.jpg,.jpeg,.png,.webp,.gif,.pdf,.mp4,.webm,.mov,.mp3,.ogg"
         multiple
         class="sr-only"
         :disabled="disabled"
@@ -180,7 +269,7 @@ onUnmounted(() => {
         {{ arrastando ? 'download' : 'cloud_upload' }}
       </span>
       <p class="text-sm font-semibold text-on-surface dark:text-dark-on-surface">
-        Arraste imagens, PDFs ou vídeos
+        Arraste imagens, documentos ou vídeos
       </p>
       <p class="mt-1 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
         ou clique para escolher · vários arquivos
@@ -210,6 +299,7 @@ onUnmounted(() => {
           :src="arquivo.previewUrl"
           alt=""
           class="size-10 shrink-0 rounded-md object-cover"
+          referrerpolicy="no-referrer"
         >
         <span
           v-else
@@ -227,6 +317,7 @@ onUnmounted(() => {
           </span>
         </span>
         <button
+          v-if="arquivo.file"
           type="button"
           class="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high dark:hover:text-dark-on-surface"
           :aria-label="`Remover ${arquivo.nome}`"

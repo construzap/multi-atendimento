@@ -4,7 +4,7 @@ import type {
   ProdutoTermoPesquisaItem,
   ProdutosTermosPesquisaReordenarResponse,
 } from '#shared/types/produtos'
-import { mapTermoPesquisaRow } from '../../../utils/produtoTermosPesquisa'
+import { COLUNAS_TERMO_PESQUISA, mapTermoPesquisaRow } from '../../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
 
@@ -86,7 +86,7 @@ export default defineEventHandler(async (event): Promise<ProdutosTermosPesquisaR
       .update({ ordem: item.ordem })
       .eq('id', item.id)
       .eq('workspace_id', workspaceId)
-      .select('id, nome, ordem, descricao')
+      .select(COLUNAS_TERMO_PESQUISA)
       .maybeSingle()
 
     if (upErr) {

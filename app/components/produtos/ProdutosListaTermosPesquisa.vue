@@ -11,9 +11,12 @@ import type {
   ProdutosTermoPesquisaCriarResponse,
   ProdutosTermoPesquisaEliminarResponse,
   ProdutosTermosPesquisaReordenarResponse,
+  EnviarMidiaCategoriaBlackblazeResponse,
 } from '#shared/types/produtos'
 import BaseButton from '~/components/BaseButton.vue'
-import CategoriaMidiaUpload from '~/components/produtos/CategoriaMidiaUpload.vue'
+import CategoriaMidiaUpload, {
+  type ArquivoCategoriaPendente,
+} from '~/components/produtos/CategoriaMidiaUpload.vue'
 import BaseInput from '~/components/BaseInput.vue'
 import BaseTextarea from '~/components/BaseTextarea.vue'
 import BaseModal from '~/components/BaseModal.vue'
@@ -53,6 +56,7 @@ const nomeModal = ref('')
 const descricaoModal = ref('')
 const termoEmEdicao = ref<ProdutoTermoPesquisaItem | null>(null)
 const guardandoModal = ref(false)
+const midiaUploadRef = ref<{ arquivosPendentes: () => ArquivoCategoriaPendente[] } | null>(null)
 
 const alertaEliminarAberto = ref(false)
 const alertaPerguntarTransferirAberto = ref(false)
@@ -329,9 +333,33 @@ async function confirmarModalForm() {
   if (itemId == null) return
   guardandoModal.value = true
   try {
+    const pendentes = midiaUploadRef.value?.arquivosPendentes() ?? []
+    let midias: EnviarMidiaCategoriaBlackblazeResponse['midias'] | undefined
+    if (pendentes.length) {
+      const itens = await Promise.all(
+        pendentes.map(async (arquivo) => ({
+          mime: arquivo.mime,
+          filename: arquivo.nome,
+          data_base64: await lerArquivoBase64(arquivo.file),
+        })),
+      )
+      const enviadas = await $fetch<EnviarMidiaCategoriaBlackblazeResponse>(
+        '/api/produtos/fotosblackblaze/enviarmidiadecategoriaparablackblaze',
+        {
+          method: 'POST',
+          body: { workspace_id: wid, termo_id: itemId, itens },
+        },
+      )
+      midias = enviadas.midias
+    }
     const res = await $fetch<ProdutosTermoPesquisaAtualizarResponse>(config.apiItem(itemId), {
       method: 'PATCH',
-      body: { workspace_id: wid, nome, descricao },
+      body: {
+        workspace_id: wid,
+        nome,
+        descricao,
+        ...(midias?.length ? { midias } : {}),
+      },
     })
     termosStore.substituirTermo(wid, res.data)
     cancelarModalForm()
@@ -344,6 +372,20 @@ async function confirmarModalForm() {
   } finally {
     guardandoModal.value = false
   }
+}
+
+function lerArquivoBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = String(reader.result ?? '')
+      const marker = 'base64,'
+      const index = dataUrl.indexOf(marker)
+      resolve(index >= 0 ? dataUrl.slice(index + marker.length) : dataUrl)
+    }
+    reader.onerror = () => reject(reader.error ?? new Error('Falha ao ler o arquivo.'))
+    reader.readAsDataURL(file)
+  })
 }
 
 function limparFluxoTransferencia() {
@@ -840,8 +882,10 @@ async function confirmarTransferenciaEEliminar() {
 
         <CategoriaMidiaUpload
           v-if="modoModal === 'editar'"
+          ref="midiaUploadRef"
           :key="termoEmEdicao?.id"
           :disabled="guardandoModal"
+          :salvas="termoEmEdicao?.midias ?? []"
         />
 
         <div class="flex justify-end gap-2 pt-1">

@@ -239,6 +239,28 @@ export type ProdutosCriarEmMassaResponse = {
   inseridos: number
 }
 
+/**
+ * Tipo da mídia da categoria, no formato usado no envio (WhatsApp).
+ * `image` para fotos, `document` para PDF/DOCX/XLSX, `video` para MP4.
+ */
+export type ProdutoTermoMidiaTipo =
+  | 'image'
+  | 'video'
+  | 'videoplay'
+  | 'document'
+  | 'audio'
+  | 'myaudio'
+  | 'ptt'
+  | 'ptv'
+  | 'sticker'
+
+/** Arquivo da categoria em `produto_termo_de_pesquisa.midias`. */
+export type ProdutoTermoMidiaItem = {
+  url: string
+  nome: string
+  tipo: ProdutoTermoMidiaTipo
+}
+
 /** Linha de `public.produto_termo_de_pesquisa` (lista / multi-select). */
 export type ProdutoTermoPesquisaItem = {
   id: number
@@ -247,6 +269,13 @@ export type ProdutoTermoPesquisaItem = {
   ordem?: number
   /** Texto livre opcional (coluna `descricao`). */
   descricao?: string | null
+  /** URLs públicas já gravadas no Blackblaze. */
+  midias?: ProdutoTermoMidiaItem[]
+}
+
+/** Resposta de `POST /api/produtos/fotosblackblaze/enviarmidiadecategoriaparablackblaze`. */
+export type EnviarMidiaCategoriaBlackblazeResponse = {
+  midias: ProdutoTermoMidiaItem[]
 }
 
 /** Filtro da coluna esquerda na listagem de produtos. */

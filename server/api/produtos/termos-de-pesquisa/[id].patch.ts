@@ -1,12 +1,18 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { assertMethod, createError, getRouterParam, readBody } from 'h3'
-import type { ProdutosTermoPesquisaAtualizarResponse } from '#shared/types/produtos'
+import type {
+  ProdutoTermoMidiaItem,
+  ProdutosTermoPesquisaAtualizarResponse,
+} from '#shared/types/produtos'
 import {
+  COLUNAS_TERMO_PESQUISA,
   DESCRICAO_TERMO_MAX,
   escapeIlikeLiteral,
+  mapMidiasTermo,
   mapTermoPesquisaRow,
   normalizarDescricaoTermoPesquisa,
   normalizarNomeTermoPesquisa,
+  parseMidiasTermoEntrada,
 } from '../../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../../utils/checkWorkspace'
 import { getAuthUserId } from '../../../utils/getAuthUserId'
@@ -15,6 +21,8 @@ type Body = {
   workspace_id?: unknown
   nome?: unknown
   descricao?: unknown
+  /** URLs já enviadas ao Blackblaze. São acrescentadas em `midias`. */
+  midias?: unknown
 }
 
 function parsePositiveInt(raw: unknown, label: string): number {
@@ -57,6 +65,9 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaAt
   }
 
   const body = (await readBody<Body>(event).catch(() => null)) ?? {}
+  if (body.midias != null && !Array.isArray(body.midias)) {
+    throw createError({ statusCode: 400, statusMessage: 'midias deve ser uma lista.' })
+  }
   const workspaceId = parsePositiveInt(body.workspace_id, 'workspace_id')
   const nomeRaw = typeof body.nome === 'string' ? body.nome : String(body.nome ?? '')
   const nome = normalizarNomeTermoPesquisa(nomeRaw)
@@ -81,7 +92,7 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaAt
 
   const { data: atual, error: selErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome, ordem, descricao')
+    .select(COLUNAS_TERMO_PESQUISA)
     .eq('id', termoId)
     .eq('workspace_id', workspaceId)
     .maybeSingle()
@@ -93,15 +104,18 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaAt
     throw createError({ statusCode: 404, statusMessage: 'Termo não encontrado neste workspace.' })
   }
 
-  const nomeAtual = String((atual as Record<string, unknown>).nome ?? '')
+  const atualRow = atual as Record<string, unknown>
+  const nomeAtual = String(atualRow.nome ?? '')
     .trim()
     .toLocaleUpperCase('pt-BR')
-  const descricaoAtual = normalizarDescricaoTermoPesquisa(
-    (atual as Record<string, unknown>).descricao,
-  )
+  const descricaoAtual = normalizarDescricaoTermoPesquisa(atualRow.descricao)
+  const midiasAtuais = mapMidiasTermo(atualRow.midias)
+  const midiasNovas = parseMidiasTermoEntrada(body.midias) ?? []
+  const urlsAtuais = new Set(midiasAtuais.map((item) => item.url))
+  const midiasAcrescentar = midiasNovas.filter((item) => !urlsAtuais.has(item.url))
 
-  if (nomeAtual === nome && descricaoAtual === descricao) {
-    return { data: mapTermoPesquisaRow(atual as Record<string, unknown>) }
+  if (nomeAtual === nome && descricaoAtual === descricao && !midiasAcrescentar.length) {
+    return { data: mapTermoPesquisaRow(atualRow) }
   }
 
   if (nomeAtual !== nome) {
@@ -126,12 +140,16 @@ export default defineEventHandler(async (event): Promise<ProdutosTermoPesquisaAt
     }
   }
 
+  const midias: ProdutoTermoMidiaItem[] = [...midiasAtuais, ...midiasAcrescentar]
+  const patch: Record<string, unknown> = { nome, descricao }
+  if (midiasAcrescentar.length) patch.midias = midias
+
   const { data: updated, error: upErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .update({ nome, descricao })
+    .update(patch)
     .eq('id', termoId)
     .eq('workspace_id', workspaceId)
-    .select('id, nome, ordem, descricao')
+    .select(COLUNAS_TERMO_PESQUISA)
     .single()
 
   if (upErr) {

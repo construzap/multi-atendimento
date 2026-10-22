@@ -57,6 +57,10 @@ export function mimeToExt(mimetype: string): string {
     'text/plain': '.txt',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
     'application/msword': '.doc',
+    'application/vnd.ms-excel': '.xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+    'application/vnd.ms-powerpoint': '.ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
   }
   return map[base] ?? '.bin'
 }

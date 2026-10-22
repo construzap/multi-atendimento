@@ -1,4 +1,10 @@
-import type { ProdutoTermoPesquisaItem, ProdutoWorkspaceItem } from '#shared/types/produtos'
+import { createError } from 'h3'
+import type {
+  ProdutoTermoMidiaItem,
+  ProdutoTermoMidiaTipo,
+  ProdutoTermoPesquisaItem,
+  ProdutoWorkspaceItem,
+} from '#shared/types/produtos'
 import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCategoriaUnica'
 import {
   normalizarTermoImportacao,
@@ -6,6 +12,85 @@ import {
 } from '#shared/utils/parseTermosImportacaoCelula'
 
 export { normalizarTermoImportacao, parseTermosImportacaoCelula }
+
+export const COLUNAS_TERMO_PESQUISA = 'id, nome, ordem, descricao, midias'
+
+const TIPOS_MIDIA_TERMO = new Set<ProdutoTermoMidiaTipo>([
+  'image',
+  'video',
+  'videoplay',
+  'document',
+  'audio',
+  'myaudio',
+  'ptt',
+  'ptv',
+  'sticker',
+])
+
+/** Converte o tipo antigo (`imagem`, `pdf`) para o formato gravado agora. */
+export function normalizarTipoMidiaTermo(raw: string): ProdutoTermoMidiaTipo | null {
+  const tipo = raw.trim().toLowerCase()
+  if (tipo === 'imagem') return 'image'
+  if (tipo === 'pdf') return 'document'
+  if (TIPOS_MIDIA_TERMO.has(tipo as ProdutoTermoMidiaTipo)) return tipo as ProdutoTermoMidiaTipo
+  return null
+}
+
+export function mapMidiasTermo(raw: unknown): ProdutoTermoMidiaItem[] {
+  if (!Array.isArray(raw)) return []
+  const out: ProdutoTermoMidiaItem[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const rec = item as Record<string, unknown>
+    const url = typeof rec.url === 'string' ? rec.url.trim() : ''
+    if (!url.startsWith('https://')) continue
+    const tipoRaw = typeof rec.tipo === 'string' ? rec.tipo : ''
+    const tipo = normalizarTipoMidiaTermo(tipoRaw) ?? 'document'
+    const nomeRaw = typeof rec.nome === 'string' ? rec.nome.trim() : ''
+    out.push({ url, nome: nomeRaw || url, tipo })
+  }
+  return out
+}
+
+/** `null` = campo ausente. Array = mídias novas para acrescentar. */
+export function parseMidiasTermoEntrada(raw: unknown): ProdutoTermoMidiaItem[] | null {
+  if (raw === undefined || raw === null) return null
+  if (!Array.isArray(raw)) {
+    throw createError({ statusCode: 400, statusMessage: 'midias deve ser uma lista.' })
+  }
+  return raw.map((item, index) => {
+    if (!item || typeof item !== 'object') {
+      throw createError({ statusCode: 400, statusMessage: `Mídia ${index + 1} inválida.` })
+    }
+    const rec = item as Record<string, unknown>
+    const url = typeof rec.url === 'string' ? rec.url.trim() : ''
+    let hostname = ''
+    try {
+      const parsed = new URL(url)
+      hostname = parsed.hostname
+      if (parsed.protocol !== 'https:') hostname = ''
+    } catch {
+      hostname = ''
+    }
+    if (!hostname.endsWith('backblazeb2.com')) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: `Mídia ${index + 1}: URL amigável inválida.`,
+      })
+    }
+    const tipoRaw = typeof rec.tipo === 'string' ? rec.tipo : ''
+    const tipo = normalizarTipoMidiaTermo(tipoRaw)
+    if (!tipo) {
+      throw createError({ statusCode: 400, statusMessage: `Mídia ${index + 1}: tipo inválido.` })
+    }
+    const nomeRaw = typeof rec.nome === 'string' ? rec.nome.trim() : ''
+    return {
+      url,
+      nome: (nomeRaw || 'arquivo').slice(0, 240),
+      tipo,
+    }
+  })
+}
 
 export function mapTermoPesquisaRow(r: Record<string, unknown>): ProdutoTermoPesquisaItem {
   const id = typeof r.id === 'number' ? r.id : Number(r.id)
@@ -22,6 +107,7 @@ export function mapTermoPesquisaRow(r: Record<string, unknown>): ProdutoTermoPes
     nome: nomeRaw.length ? nomeRaw.toLocaleUpperCase('pt-BR') : '',
     ordem: Number.isFinite(ordem) ? ordem : 0,
     descricao: descricaoRaw && descricaoRaw.length ? descricaoRaw : null,
+    midias: mapMidiasTermo(r.midias),
   }
 }
 
@@ -63,7 +149,7 @@ export async function obterOuCriarTermoPesquisa(
   const literal = escapeIlikeLiteral(nome)
   const { data: existente, error: selErr } = await admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome, ordem, descricao')
+    .select(COLUNAS_TERMO_PESQUISA)
     .eq('workspace_id', workspaceId)
     .ilike('nome', literal)
     .limit(1)
@@ -113,7 +199,7 @@ export async function obterOuCriarTermoPesquisa(
       ordem,
       descricao: descricao ?? null,
     })
-    .select('id, nome, ordem, descricao')
+    .select(COLUNAS_TERMO_PESQUISA)
     .single()
 
   if (insErr) throw insErr
@@ -155,7 +241,7 @@ async function mapaNomeMinusculoParaTermoItem(
 ): Promise<Map<string, ProdutoTermoPesquisaItem>> {
   const { data, error } = await admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome, ordem, descricao')
+    .select(COLUNAS_TERMO_PESQUISA)
     .eq('workspace_id', workspaceId)
 
   if (error) throw error

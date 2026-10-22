@@ -1,7 +1,7 @@
 import { serverSupabaseClient, serverSupabaseServiceRole } from '#supabase/server'
 import { createError, getQuery } from 'h3'
 import type { ProdutosTermosPesquisaListaResponse } from '#shared/types/produtos'
-import { mapTermoPesquisaRow } from '../../utils/produtoTermosPesquisa'
+import { COLUNAS_TERMO_PESQUISA, mapTermoPesquisaRow } from '../../utils/produtoTermosPesquisa'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 
@@ -59,7 +59,7 @@ export default defineEventHandler(async (event): Promise<ProdutosTermosPesquisaL
 
   let query = admin
     .from('produto_termo_de_pesquisa')
-    .select('id, nome, ordem, descricao')
+    .select(COLUNAS_TERMO_PESQUISA)
     .eq('workspace_id', workspaceId)
     .order('ordem', { ascending: true })
     .order('id', { ascending: true })
