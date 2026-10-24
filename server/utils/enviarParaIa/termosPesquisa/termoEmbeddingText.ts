@@ -37,11 +37,18 @@ export function extrairNomesProdutos(row: Record<string, unknown>): string[] {
   return nomes
 }
 
-function buildTermoContent(nome: string, descricao: string | null, nomesProdutos: string[]): string {
-  const partes = [nome]
-  if (descricao) partes.push(descricao)
-  if (nomesProdutos.length) partes.push(`Produtos:\n${nomesProdutos.join('\n')}`)
-  return partes.join('\n\n')
+function buildTermoContent(
+  id: number,
+  nome: string,
+  descricao: string | null,
+  nomesProdutos: string[],
+): string {
+  const linhas = [`codigo da categoria: ${id}`, `categoria: "${nome}"`]
+  if (descricao) linhas.push(`Descrição da categoria: ${descricao}`)
+  if (nomesProdutos.length) {
+    linhas.push('', 'Produtos da categoria:', ...nomesProdutos)
+  }
+  return linhas.join('\n')
 }
 
 export function buildTermoEmbeddingPayload(
@@ -63,7 +70,7 @@ export function buildTermoEmbeddingPayload(
     Number.isFinite(rowWorkspaceId) && rowWorkspaceId > 0 ? rowWorkspaceId : workspaceId
 
   const nomesProdutos = extrairNomesProdutos(row)
-  const content = buildTermoContent(nome, descricao, nomesProdutos)
+  const content = buildTermoContent(id, nome, descricao, nomesProdutos)
   const lineCount = content.split('\n').length
 
   const contentHash = createHash('sha256')
