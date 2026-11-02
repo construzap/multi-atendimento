@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { faWhatsapp } from '@fortawesome/free-brands-svg-icons'
 import { toast } from 'vue-sonner'
 import type { Canal } from '#shared/types/canal'
+import type { InstanciaStatus } from '#shared/types/instanciaStatus'
 import BaseAvatar from '~/components/BaseAvatar.vue'
+import BaseButton from '~/components/BaseButton.vue'
+import ModalQrCode from '~/components/chat/area-conversa/ModalQrCode.vue'
 import ModalUrlApiKey from '~/components/workspaces/canais/ModalUrlApiKey.vue'
 import ModalAtivarPagamento from '~/components/workspaces/canais/ModalAtivarPagamento.vue'
 import { mensagemErroFetch, useCanaisStore } from '~/stores/canais'
@@ -28,6 +31,10 @@ const emit = defineEmits<{
 const canaisStore = useCanaisStore()
 const togglePending = ref(false)
 const modalIaAberto = ref(false)
+const modalQrAberto = ref(false)
+const statusInstancia = ref<InstanciaStatus | null>(null)
+const statusPending = ref(false)
+const conexaoPending = ref(false)
 /** Modal aberto porque o usuário tentou ligar a I.A. sem API key. */
 const modalParaAtivarIa = ref(false)
 const modalPagamentoAberto = ref(false)
@@ -42,10 +49,82 @@ const iaAtiva = computed(() => {
   return Boolean(c.tem_api_key) && Boolean(c.tem_inteligencia_artificial)
 })
 
-function abrirChat() {
-  canaisStore.setCurrentCanal(canalPinia.value)
-  navigateTo(`/workspaces/${props.workspaceId}/chat/${props.canal.id}`)
+const conectado = computed(() => statusInstancia.value?.status === 'connected')
+const badgeConexao = computed(() => (conectado.value ? 'Conectado' : 'Desconectado'))
+const fotoInstancia = computed(() => statusInstancia.value?.foto?.trim() || null)
+
+function sincronizarStatusNoPinia(status: InstanciaStatus | null) {
+  if (canaisStore.currentCanalId !== props.canal.id) return
+  canaisStore.instanciaStatus = status
+  canaisStore.instanciaStatusCanalIdLoaded = status ? props.canal.id : null
 }
+
+async function carregarStatus() {
+  statusPending.value = true
+  try {
+    const data = await $fetch<InstanciaStatus>('/api/canais/statusInstancia', {
+      method: 'GET',
+      query: { id_canal: props.canal.id },
+    })
+    statusInstancia.value = data
+    sincronizarStatusNoPinia(data)
+    return data
+  } catch (err: unknown) {
+    statusInstancia.value = null
+    toast.error(mensagemErroFetch(err, 'Não foi possível verificar a conexão do canal.'), {
+      duration: 8000,
+    })
+    return null
+  } finally {
+    statusPending.value = false
+  }
+}
+
+async function desconectarCanal() {
+  conexaoPending.value = true
+  try {
+    await $fetch('/api/canais/desconectar', {
+      method: 'POST',
+      body: { id_canal: props.canal.id },
+    })
+    const desconectado: InstanciaStatus = {
+      status: 'disconnected',
+      nome: null,
+      foto: null,
+      numero: null,
+    }
+    statusInstancia.value = desconectado
+    sincronizarStatusNoPinia(desconectado)
+    toast.success('Canal desconectado.')
+  } catch (err: unknown) {
+    toast.error(mensagemErroFetch(err, 'Não foi possível desconectar a instância.'), {
+      duration: 8000,
+    })
+  } finally {
+    conexaoPending.value = false
+  }
+}
+
+async function alternarConexao(e?: Event) {
+  e?.preventDefault()
+  e?.stopPropagation()
+  if (conexaoPending.value || togglePending.value || statusPending.value) return
+
+  if (!statusInstancia.value) {
+    const data = await carregarStatus()
+    if (!data) return
+  }
+
+  if (conectado.value) {
+    await desconectarCanal()
+    return
+  }
+  modalQrAberto.value = true
+}
+
+onMounted(() => {
+  void carregarStatus()
+})
 
 function editarCanal(e: MouseEvent) {
   e.preventDefault()
@@ -145,22 +224,28 @@ watch(modalIaAberto, async (aberto, estavaAberto) => {
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault()
-    abrirChat()
+    void alternarConexao()
   }
 }
+
+watch(modalQrAberto, (aberto, estavaAberto) => {
+  if (aberto || !estavaAberto) return
+  void carregarStatus()
+})
 </script>
 
 <template>
   <div
     role="button"
     tabindex="0"
+    :aria-label="conectado ? 'Desconectar canal' : 'Conectar canal'"
     class="group flex cursor-pointer flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center"
-    @click="abrirChat"
+    @click="alternarConexao"
     @keydown="onKeydown"
   >
     <div class="flex min-w-0 flex-1 items-start gap-4">
       <BaseAvatar
-        :src="avatarSrc ?? null"
+        :src="avatarSrc ?? fotoInstancia ?? null"
         :size="56"
         variant="rounded"
         class="shrink-0"
@@ -177,6 +262,13 @@ function onKeydown(e: KeyboardEvent) {
         </h3>
         <p class="mt-1 line-clamp-2 text-sm text-slate-500 dark:text-slate-400">
           {{ canalPinia.descricao ?? '' }}
+        </p>
+        <p
+          v-if="statusInstancia?.numero || statusInstancia?.nome"
+          class="mt-1 truncate text-xs text-slate-400 dark:text-slate-500"
+        >
+          {{ statusInstancia?.nome || 'sem nome' }}
+          <span v-if="statusInstancia?.numero"> · {{ statusInstancia.numero }}</span>
         </p>
       </div>
     </div>
@@ -234,6 +326,37 @@ function onKeydown(e: KeyboardEvent) {
         <span class="material-symbols-outlined text-[20px]" aria-hidden="true">edit</span>
       </button>
 
+      <div class="flex flex-col items-end gap-2" @click.stop>
+        <span
+          class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide"
+          :class="
+            conectado
+              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+              : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
+          "
+        >
+          <span
+            class="material-symbols-outlined text-[14px]"
+            :class="statusPending && !statusInstancia ? 'animate-spin' : ''"
+            aria-hidden="true"
+          >
+            {{ statusPending ? 'progress_activity' : conectado ? 'wifi' : 'wifi_off' }}
+          </span>
+          {{ statusPending && !statusInstancia ? 'Verificando' : badgeConexao }}
+        </span>
+        <BaseButton
+          type="button"
+          :variant="conectado ? 'secondary' : 'primary'"
+          size="sm"
+          :block="false"
+          class="!px-3"
+          :disabled="statusPending || conexaoPending"
+          @click="alternarConexao"
+        >
+          {{ conexaoPending ? 'Aguarde…' : conectado ? 'Desconectar' : 'Conectar' }}
+        </BaseButton>
+      </div>
+
       <span
         class="flex items-center gap-1.5 rounded-full bg-primary/10 px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-primary"
       >
@@ -264,5 +387,10 @@ function onKeydown(e: KeyboardEvent) {
     v-model:open="modalPagamentoAberto"
     :canal-id="canal.id"
     :workspace-id="workspaceId"
+  />
+
+  <ModalQrCode
+    v-model:open="modalQrAberto"
+    :canal-id="canal.id"
   />
 </template>

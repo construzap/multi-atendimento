@@ -1,5 +1,6 @@
 import { mimeToExt } from './b2Storage'
 import type { AgendamentoMidiaTipoUpload } from './blackblaze-agendamento-de-mensagem'
+import { CANAL_GERAL_B2_BUCKET } from './blackblaze-canal-imagem-saudacao'
 
 export {
   normalizarMimeUpload,
@@ -8,7 +9,7 @@ export {
 } from './blackblaze-agendamento-de-mensagem'
 
 /** Bucket público para mídia de disparo em massa (override: `NUXT_B2_DISPARO_EM_MASSA_BUCKET_NAME`). */
-export const DISPARO_EM_MASSA_B2_BUCKET_PADRAO = 'multiatendimentoconstruzap'
+export const DISPARO_EM_MASSA_B2_BUCKET_PADRAO = CANAL_GERAL_B2_BUCKET
 
 export function resolverBucketDisparoEmMassa(b2DisparoEmMassaBucketName: string | undefined): string {
   const t = String(b2DisparoEmMassaBucketName ?? '').trim()

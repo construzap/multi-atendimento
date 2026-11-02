@@ -10,6 +10,7 @@ import {
 import {
   parseConfigFollowUp,
   parseFlagCanal,
+  parseFollowAtivoEmColunas,
   parseFormasPagamento,
   parseImagemSaudacao,
   parseLojaSlug,
@@ -20,6 +21,11 @@ import { checkSubscription } from '../../utils/checkSubscription'
 import { getAuthUserId } from '../../utils/getAuthUserId'
 import { checkWorkspace } from '../../utils/checkWorkspace'
 import { initUazapiInstance } from '../../utils/uazapi'
+import {
+  adicionarWebhookInstancia,
+  urlWebhookAplicativo,
+  urlWebhookN8n,
+} from '../../utils/canalConfigurarWebhook'
 
 type CreateCanalBody = {
   nome?: string
@@ -39,10 +45,11 @@ type CreateCanalBody = {
   formas_pagamento?: unknown
   disparo_ativo?: boolean
   config_follow_up?: unknown
+  follow_ativo_em_colunas?: unknown
 }
 
 const CANAL_SELECT_PUBLICO =
-  'id, workspace_id, user_id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up'
+  'id, workspace_id, user_id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up, follow_ativo_em_colunas'
 
 function mensagemErroCanal(error: { message?: string; code?: string }): string {
   const msg = error.message ?? 'Falha ao salvar o canal.'
@@ -175,6 +182,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: configFollowUp })
   }
 
+  const followAtivoEmColunas = parseFollowAtivoEmColunas(body.follow_ativo_em_colunas)
+  if (typeof followAtivoEmColunas === 'string') {
+    throw createError({ statusCode: 400, statusMessage: followAtivoEmColunas })
+  }
+
   const rawWs = body.workspace_id
   if (rawWs === undefined || rawWs === null || rawWs === '') {
     throw createError({
@@ -254,6 +266,7 @@ export default defineEventHandler(async (event) => {
       formas_pagamento: formasPagamento,
       disparo_ativo: disparoAtivo,
       config_follow_up: configFollowUp,
+      follow_ativo_em_colunas: followAtivoEmColunas,
     })
     .select(CANAL_SELECT_PUBLICO)
     .single()
@@ -283,6 +296,9 @@ export default defineEventHandler(async (event) => {
         statusMessage: mensagemErroCanal(upErr)
       })
     }
+
+    await adicionarWebhookInstancia(servidor, token, urlWebhookN8n(event))
+    await adicionarWebhookInstancia(servidor, token, urlWebhookAplicativo(event))
 
     return updated
   } catch (err) {

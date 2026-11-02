@@ -1,5 +1,5 @@
 import { createError } from 'h3'
-import type { H3Event } from 'h3'
+import { urlWebhookN8n } from '../../../../utils/canalConfigurarWebhook'
 import {
   extrairErroUazapi,
   headersUazapiWebhook,
@@ -44,18 +44,8 @@ async function removerWebhookInstanciaUazapi(
   }
 }
 
-export function requireUrlIaN8n(event: H3Event): string {
-  const config = useRuntimeConfig(event)
-  const url = String(config.urlIaN8n ?? '').trim()
-
-  if (!url) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'URL_IA_N8N não configurada no servidor.',
-    })
-  }
-
-  return url
+export function requireUrlIaN8n(event: Parameters<typeof urlWebhookN8n>[0]): string {
+  return urlWebhookN8n(event)
 }
 
 /**

@@ -11,6 +11,7 @@ import type { CanalCriado } from '~/stores/canais'
 import type {
   Canal,
   CanalConfigFollowUp,
+  CanalFollowAtivoEmColunas,
   CanalFormasPagamento,
   CanalFormasPagamentoEntrega,
   CanalFormasPagamentoOnline,
@@ -181,6 +182,7 @@ const emit = defineEmits<{
 }>()
 
 const canaisStore = useCanaisStore()
+const kanbanStore = useKanbanStore()
 
 const isOpen = computed({
   get: () => props.open,
@@ -253,8 +255,8 @@ const enviandoImagem = ref(false)
 const lojaSlug = ref('')
 const formasPagamento = ref<CanalFormasPagamento>(clonarFormasPagamento())
 const disparoAtivo = ref(false)
-
 const followUpLinhas = ref<FollowLinha[]>([])
+const followAtivoEmColunas = ref<CanalFollowAtivoEmColunas>([])
 
 /** Snapshot do canal no Pinia ao abrir o modal (restauração no cancelar/fechar). */
 const snapshotCanal = ref<Canal | null>(null)
@@ -332,6 +334,45 @@ function adicionarFollowUp() {
 
 function removerFollowUp(id: string) {
   followUpLinhas.value = followUpLinhas.value.filter((l) => l.id !== id)
+}
+
+function clonarFollowColunas(lista: CanalFollowAtivoEmColunas | null | undefined): CanalFollowAtivoEmColunas {
+  if (!Array.isArray(lista)) return []
+  return lista
+    .map((item) => ({
+      funil_id: Number(item?.funil_id),
+      coluna_id: Number(item?.coluna_id),
+    }))
+    .filter((item) => Number.isInteger(item.funil_id) && item.funil_id > 0 && Number.isInteger(item.coluna_id) && item.coluna_id > 0)
+}
+
+function colunaFollowMarcada(funilId: number, colunaId: number): boolean {
+  return followAtivoEmColunas.value.some((item) => item.funil_id === funilId && item.coluna_id === colunaId)
+}
+
+function toggleFollowColuna(funilId: number, colunaId: number) {
+  if (colunaFollowMarcada(funilId, colunaId)) {
+    followAtivoEmColunas.value = followAtivoEmColunas.value.filter(
+      (item) => !(item.funil_id === funilId && item.coluna_id === colunaId),
+    )
+    return
+  }
+  followAtivoEmColunas.value = [
+    ...followAtivoEmColunas.value,
+    { funil_id: funilId, coluna_id: colunaId },
+  ]
+}
+
+/** Só busca funis se o Pinia ainda não tiver a lista deste workspace. */
+async function carregarFunisSeVazio() {
+  const wid = props.workspaceId
+  if (!Number.isFinite(wid) || wid < 1) return
+  if (kanbanStore.funisWorkspaceIdLoaded === wid) return
+  try {
+    await kanbanStore.ensureFunisLoaded(wid)
+  } catch (err: unknown) {
+    toast.error(mensagemErroApi(err))
+  }
 }
 
 const MIMES_IMAGEM_SAUDACAO = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
@@ -427,6 +468,7 @@ function buildConfigPayload():
       formas_pagamento: CanalFormasPagamento
       disparo_ativo: boolean
       config_follow_up: CanalConfigFollowUp
+      follow_ativo_em_colunas: CanalFollowAtivoEmColunas
     }
   | string {
   const erroExtras = validarCamposExtras()
@@ -457,6 +499,7 @@ function buildConfigPayload():
     formas_pagamento: clonarFormasPagamento(formasPagamento.value),
     disparo_ativo: disparoAtivo.value,
     config_follow_up: follow,
+    follow_ativo_em_colunas: clonarFollowColunas(followAtivoEmColunas.value),
   }
 }
 
@@ -506,6 +549,7 @@ function sincronizarFormularioNoPinia() {
     formas_pagamento: clonarFormasPagamento(formasPagamento.value),
     disparo_ativo: disparoAtivo.value,
     config_follow_up: typeof follow === 'string' ? atual.config_follow_up : follow,
+    follow_ativo_em_colunas: clonarFollowColunas(followAtivoEmColunas.value),
   }
 }
 
@@ -534,6 +578,7 @@ function resetarCamposExtras() {
   formasPagamento.value = clonarFormasPagamento()
   disparoAtivo.value = false
   followUpLinhas.value = []
+  followAtivoEmColunas.value = []
 }
 
 function preencherDoPinia() {
@@ -570,6 +615,7 @@ function preencherDoPinia() {
     formasPagamento.value = clonarFormasPagamento(canal.formas_pagamento)
     disparoAtivo.value = canal.disparo_ativo === true
     followUpLinhas.value = followUpParaLinhas(canal.config_follow_up)
+    followAtivoEmColunas.value = clonarFollowColunas(canal.follow_ativo_em_colunas)
   } finally {
     // nextTick seria melhor, mas microtask evita sync com form ainda “velho”
     queueMicrotask(() => {
@@ -597,6 +643,7 @@ function abrirModal() {
   }
 
   preencherDoPinia()
+  void carregarFunisSeVazio()
   // Garante Pinia = formulário logo ao abrir
   queueMicrotask(() => {
     if (isOpen.value && isEdit.value) sincronizarFormularioNoPinia()
@@ -627,7 +674,7 @@ watch(
 )
 
 watch(
-  [nome, descricao, endereco, latitude, longitude, tempoAvisoMinutos, valorPedidoMinimo, horarios, assinaturaIaNaMensagem, botaoParaIniciarIa, mensagemSaudacao, imagemSaudacaoUrl, imagemRemovida, lojaSlug, formasPagamento, disparoAtivo, followUpLinhas],
+  [nome, descricao, endereco, latitude, longitude, tempoAvisoMinutos, valorPedidoMinimo, horarios, assinaturaIaNaMensagem, botaoParaIniciarIa, mensagemSaudacao, imagemSaudacaoUrl, imagemRemovida, lojaSlug, formasPagamento, disparoAtivo, followUpLinhas, followAtivoEmColunas],
   () => {
     if (!isOpen.value || !isEdit.value) return
     sincronizarFormularioNoPinia()
@@ -782,6 +829,7 @@ async function onCreate() {
         formas_pagamento: payload.formas_pagamento,
         disparo_ativo: payload.disparo_ativo,
         config_follow_up: payload.config_follow_up,
+        follow_ativo_em_colunas: payload.follow_ativo_em_colunas,
       })
       edicaoCommitada.value = true
       snapshotCanal.value = null
@@ -818,6 +866,7 @@ async function onCreate() {
       formas_pagamento: payload.formas_pagamento,
       disparo_ativo: payload.disparo_ativo,
       config_follow_up: payload.config_follow_up,
+      follow_ativo_em_colunas: payload.follow_ativo_em_colunas,
     })
     toast.success('Canal criado com sucesso.')
     emit('criado', created)
@@ -1334,6 +1383,61 @@ async function onCreate() {
               >
                 <span class="material-symbols-outlined text-[20px]" aria-hidden="true">add</span>
               </button>
+            </div>
+          </div>
+
+          <div class="space-y-3 border-t border-outline-variant/15 pt-4 dark:border-dark-outline/20">
+            <div>
+              <h4 class="text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                Follow-up ativo nas colunas
+              </h4>
+              <p class="mt-1 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+                Marque as colunas do kanban. Só o funil e a coluna selecionados são salvos.
+              </p>
+            </div>
+
+            <p
+              v-if="kanbanStore.funisPending"
+              class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant"
+            >
+              Carregando funis…
+            </p>
+            <p
+              v-else-if="!kanbanStore.funis.length"
+              class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant"
+            >
+              Nenhum funil neste workspace.
+            </p>
+
+            <div
+              v-for="funil in kanbanStore.funis"
+              :key="funil.id"
+              class="space-y-2"
+            >
+              <p class="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+                {{ funil.nome }}
+              </p>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <label
+                  v-for="coluna in funil.columns"
+                  :key="coluna.id"
+                  class="flex items-center gap-2 text-sm text-on-surface dark:text-dark-on-surface"
+                >
+                  <input
+                    type="checkbox"
+                    class="h-4 w-4 accent-primary"
+                    :checked="colunaFollowMarcada(funil.id, coluna.id)"
+                    @change="toggleFollowColuna(funil.id, coluna.id)"
+                  >
+                  {{ coluna.nome }}
+                </label>
+              </div>
+              <p
+                v-if="!funil.columns.length"
+                class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+              >
+                Este funil não tem colunas.
+              </p>
             </div>
           </div>
         </div>

@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { toast } from 'vue-sonner'
 import ModalAddWorkspace from '~/components/workspaces/ModalAddWorkspace.vue'
 import WorkspaceAddCard from '~/components/workspaces/WorkspaceAddCard.vue'
 import WorkspaceCard from '~/components/workspaces/WorkspaceCard.vue'
+import { usePageRolesStore } from '~/stores/pageRoles'
 
 const query = ref('')
 const addOpen = ref(false)
 
 const store = useWorkspacesStore()
+const pageRoles = usePageRolesStore()
 
 onMounted(() => {
   // Fora de /workspaces/:id, então não há workspace “atual”
@@ -43,9 +46,34 @@ const filtered = computed(() => {
   return items.filter((w) => `${w.nome} ${w.descricao ?? ''} ${w.id}`.toLowerCase().includes(q))
 })
 
+function caminhoDaPagina(workspaceId: string, slug: string): string {
+  if (slug === 'vector-store') {
+    return `/workspaces/${workspaceId}/produtos/enviar-para-ia/vector-store`
+  }
+  return `/workspaces/${workspaceId}/${slug}`
+}
+
 async function onSelectWorkspace(workspaceId: string) {
+  const id = Number.parseInt(workspaceId, 10)
+  if (!Number.isFinite(id) || id < 1) return
+
   store.setCurrentWorkspaceId(workspaceId)
-  await navigateTo(`/workspaces/${workspaceId}/produtos`)
+
+  let pages: string[] = []
+  try {
+    pages = await pageRoles.checkPageRoles({ workspaceId: id })
+  } catch {
+    toast.error(pageRoles.error || 'Não foi possível carregar as páginas deste workspace.')
+    return
+  }
+
+  const primeira = pages.map((p) => p.trim()).find(Boolean)
+  if (!primeira) {
+    toast.warning('Nenhuma página liberada neste workspace.')
+    return
+  }
+
+  await navigateTo(caminhoDaPagina(workspaceId, primeira))
 }
 </script>
 

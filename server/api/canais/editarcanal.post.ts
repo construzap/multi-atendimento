@@ -11,9 +11,11 @@ import {
 } from '#shared/utils/validarCanalConfigLoja'
 import {
   normalizarConfigFollowUp,
+  normalizarFollowAtivoEmColunas,
   normalizarFormasPagamento,
   parseConfigFollowUp,
   parseFlagCanal,
+  parseFollowAtivoEmColunas,
   parseFormasPagamento,
   parseImagemSaudacao,
   parseLojaSlug,
@@ -51,10 +53,11 @@ type EditarCanalBody = {
   formas_pagamento?: unknown
   disparo_ativo?: boolean
   config_follow_up?: unknown
+  follow_ativo_em_colunas?: unknown
 }
 
 const CANAL_SELECT =
-  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up'
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up, follow_ativo_em_colunas'
 
 function mensagemErroCanal(error: { message?: string; code?: string }): string {
   const msg = error.message ?? 'Falha ao salvar o canal.'
@@ -107,6 +110,7 @@ function mapCanalPublico(row: CanalRow): Canal {
       | 'formas_pagamento'
       | 'disparo_ativo'
       | 'config_follow_up'
+      | 'follow_ativo_em_colunas'
     >),
     horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
@@ -133,6 +137,7 @@ function mapCanalPublico(row: CanalRow): Canal {
     formas_pagamento: normalizarFormasPagamento(row.formas_pagamento),
     disparo_ativo: row.disparo_ativo === true,
     config_follow_up: normalizarConfigFollowUp(row.config_follow_up),
+    follow_ativo_em_colunas: normalizarFollowAtivoEmColunas(row.follow_ativo_em_colunas),
   }
 }
 
@@ -336,6 +341,14 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: parsed })
     }
     patch.config_follow_up = parsed
+  }
+
+  if (hasOwn(body, 'follow_ativo_em_colunas')) {
+    const parsed = parseFollowAtivoEmColunas(body.follow_ativo_em_colunas)
+    if (typeof parsed === 'string') {
+      throw createError({ statusCode: 400, statusMessage: parsed })
+    }
+    patch.follow_ativo_em_colunas = parsed
   }
 
   if (hasOwn(body, 'horarios')) {

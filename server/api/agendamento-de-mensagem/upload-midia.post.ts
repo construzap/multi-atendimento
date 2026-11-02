@@ -1,6 +1,7 @@
 import { serverSupabaseClient } from '#supabase/server'
 import { assertMethod, createError, readBody } from 'h3'
 import { uploadToB2 } from '../../utils/b2Storage'
+import { urlAmigavelImagemSaudacao } from '../../utils/blackblaze-canal-imagem-saudacao'
 import {
   chaveObjetoAgendamentoMidia,
   resolverBucketAgendamentoMidia,
@@ -43,7 +44,7 @@ function safeMime(raw: unknown): string {
 /**
  * POST /api/agendamento-de-mensagem/upload-midia
  *
- * Envia imagem ou áudio ao Backblaze B2 (bucket de agendamentos, default `multiatendimentoconstruzap`)
+ * Envia imagem ou áudio ao Backblaze B2 (bucket `geral-`)
  * e devolve a URL pública para usar em `midia_url` ao criar o agendamento.
  */
 export default defineEventHandler(async (event) => {
@@ -92,7 +93,8 @@ export default defineEventHandler(async (event) => {
 
   let url: string
   try {
-    url = await uploadToB2(buffer, key, mime, bucket)
+    await uploadToB2(buffer, key, mime, bucket)
+    url = urlAmigavelImagemSaudacao(bucket, key, String(config.b2Region ?? ''))
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Falha no upload para o B2.'
     throw createError({ statusCode: 500, statusMessage: msg })

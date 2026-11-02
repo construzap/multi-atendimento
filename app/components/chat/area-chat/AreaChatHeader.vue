@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BaseAvatar from '~/components/BaseAvatar.vue'
+import BaseInput from '~/components/BaseInput.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import { computed, ref } from 'vue'
 import { toast } from 'vue-sonner'
@@ -51,6 +52,86 @@ const modalExcluirAberto = ref(false)
 const excluindo = ref(false)
 
 const podeExcluir = computed(() => Boolean(mensagensStore.activeKey))
+
+const modalCodigoOperadoraAberto = ref(false)
+const codigoOperadoraRascunho = ref('')
+
+const podeLigar = computed(() => {
+  const c = conversaSelecionada.value
+  if (!c || c.is_group) return false
+  const phone = c.phone?.trim()
+  return Boolean(phone && !phone.includes('@'))
+})
+
+/**
+ * Monta o número do discador: código da operadora + DDD + número com o 9.
+ * Tira o DDI 55. Se o 9 depois do DDD já existir, mantém; se faltar, insere.
+ */
+function montarNumeroDiscagem(phone: string, codigoOperadora: string): string | null {
+  const codigo = codigoOperadora.replace(/\D/g, '')
+  let digits = phone.replace(/\D/g, '')
+  if (!codigo || !digits) return null
+
+  if (digits.startsWith('55') && digits.length >= 12) {
+    digits = digits.slice(2)
+  }
+
+  if (digits.length === 10) {
+    digits = `${digits.slice(0, 2)}9${digits.slice(2)}`
+  }
+
+  return `${codigo}${digits}`
+}
+
+function abrirAplicativoLigacao(numero: string) {
+  const a = document.createElement('a')
+  a.href = `tel:${numero}`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
+
+function discarComCodigo(codigo: string) {
+  const phone = conversaSelecionada.value?.phone
+  if (!phone) {
+    toast.error('Esta conversa não tem telefone para ligar.')
+    return
+  }
+  const numero = montarNumeroDiscagem(phone, codigo)
+  if (!numero) {
+    toast.error('Não foi possível montar o número para ligação.')
+    return
+  }
+  abrirAplicativoLigacao(numero)
+}
+
+function ligar() {
+  if (!podeLigar.value) {
+    toast.error('Esta conversa não tem telefone para ligar.')
+    return
+  }
+
+  conversasStore.hidratarCodigoOperadora()
+  const codigo = conversasStore.codigoOperadora
+  if (!codigo) {
+    codigoOperadoraRascunho.value = ''
+    modalCodigoOperadoraAberto.value = true
+    return
+  }
+
+  discarComCodigo(codigo)
+}
+
+function onConfirmarCodigoOperadora() {
+  const digits = codigoOperadoraRascunho.value.replace(/\D/g, '')
+  if (digits.length < 2) {
+    toast.error('Informe o código da operadora. Ex.: 021')
+    return
+  }
+  conversasStore.setCodigoOperadora(digits)
+  modalCodigoOperadoraAberto.value = false
+  discarComCodigo(digits)
+}
 
 function erroExclusaoFetch(err: unknown): string {
   if (err && typeof err === 'object') {
@@ -119,6 +200,15 @@ async function onConfirmarExclusaoConversa() {
     <div class="flex shrink-0 items-center gap-2">
       <button
         type="button"
+        class="rounded-lg p-2 text-zinc-600 transition-colors hover:bg-surface-container-high hover:text-primary disabled:pointer-events-none disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-primary-300"
+        aria-label="Ligar"
+        :disabled="!podeLigar"
+        @click="ligar"
+      >
+        <span class="material-symbols-outlined text-[22px]" aria-hidden="true">call</span>
+      </button>
+      <button
+        type="button"
         class="rounded-lg p-2 text-zinc-600 transition-colors hover:bg-surface-container-high hover:text-danger disabled:pointer-events-none disabled:opacity-40 dark:text-slate-400 dark:hover:bg-slate-800"
         aria-label="Excluir conversa"
         :disabled="!podeExcluir || excluindo"
@@ -134,6 +224,27 @@ async function onConfirmarExclusaoConversa() {
         Fechar conversa
       </button>
     </div>
+
+    <ModalAlerta
+      v-model:open="modalCodigoOperadoraAberto"
+      title="Código da operadora"
+      texto="Informe o código da operadora para completar a ligação. Ele fica salvo neste navegador e não vai para o banco."
+      variante="info"
+      texto-confirmar="Ligar"
+      texto-cancelar="Cancelar"
+      :confirmar-desabilitado="codigoOperadoraRascunho.replace(/\D/g, '').length < 2"
+      @confirmar="onConfirmarCodigoOperadora"
+    >
+      <BaseInput
+        id="codigo-operadora"
+        v-model="codigoOperadoraRascunho"
+        inputmode="numeric"
+        autocomplete="off"
+        placeholder="Ex.: 021"
+        :maxlength="5"
+        title="Código da operadora"
+      />
+    </ModalAlerta>
 
     <ModalAlerta
       v-model:open="modalExcluirAberto"

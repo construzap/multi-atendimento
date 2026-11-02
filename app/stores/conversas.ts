@@ -90,6 +90,33 @@ type ConversasState = {
   byCanal: Record<number, CanalConversasState>
   /** Filtros da lista lateral de conversas. */
   filtros: ConversasFiltros
+  /**
+   * Código da operadora para discagem (ex.: `021`).
+   * Só neste navegador — não vai para o banco.
+   */
+  codigoOperadora: string | null
+}
+
+const CODIGO_OPERADORA_STORAGE_KEY = 'conversas.codigoOperadora'
+
+function lerCodigoOperadoraLocal(): string | null {
+  if (!import.meta.client) return null
+  try {
+    const digits = (localStorage.getItem(CODIGO_OPERADORA_STORAGE_KEY) ?? '').replace(/\D/g, '')
+    return digits || null
+  } catch {
+    return null
+  }
+}
+
+function gravarCodigoOperadoraLocal(codigo: string | null) {
+  if (!import.meta.client) return
+  try {
+    if (!codigo) localStorage.removeItem(CODIGO_OPERADORA_STORAGE_KEY)
+    else localStorage.setItem(CODIGO_OPERADORA_STORAGE_KEY, codigo)
+  } catch {
+    /* quota / modo privado */
+  }
 }
 
 function emptyFiltros(): ConversasFiltros {
@@ -167,6 +194,7 @@ export const useConversasStore = defineStore('conversas', {
     activeCanalId: null,
     byCanal: {},
     filtros: emptyFiltros(),
+    codigoOperadora: null,
   }),
   getters: {
     active(state): CanalConversasState | null {
@@ -1045,6 +1073,20 @@ export const useConversasStore = defineStore('conversas', {
       if (idCanal == null) return
       const bucket = this.byCanal[idCanal] ?? (this.byCanal[idCanal] = emptyCanalState())
       bucket.conversaAtual = key && key.trim() ? key.trim() : null
+    },
+
+    /** Lê o código da operadora já gravado neste navegador. */
+    hidratarCodigoOperadora() {
+      if (this.codigoOperadora) return
+      const salvo = lerCodigoOperadoraLocal()
+      if (salvo) this.codigoOperadora = salvo
+    },
+
+    /** Grava o código da operadora no Pinia e no navegador. Não envia ao banco. */
+    setCodigoOperadora(codigo: string) {
+      const digits = codigo.replace(/\D/g, '')
+      this.codigoOperadora = digits || null
+      gravarCodigoOperadoraLocal(this.codigoOperadora)
     },
 
     /**

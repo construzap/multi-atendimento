@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { toast } from 'vue-sonner'
 import BaseButton from '~/components/BaseButton.vue'
 import BaseInput from '~/components/BaseInput.vue'
+import ModalAgendarReuniao from '~/components/chat/area-info-conversa/ModalAgendarReuniao.vue'
 import ModalAlerta from '~/components/ModalAlerta.vue'
 import type { Conversa, ConversaPatch } from '#shared/types/conversa'
 
@@ -18,6 +19,10 @@ const route = useRoute()
 const conversasStore = useConversasStore()
 const kanbanStore = useKanbanStore()
 const workspacesStore = useWorkspacesStore()
+const profileStore = useProfileStore()
+
+/** Mesma regra de `checkAdmin`: `profiles.role === 'ADMIN'`. */
+const ehAdmin = computed(() => profileStore.role === 'ADMIN')
 const { pending: kanbanPending } = storeToRefs(kanbanStore)
 
 const carregandoMetadados = ref(false)
@@ -27,6 +32,8 @@ const salvandoCampo = ref<CampoEditavel | null>(null)
 const salvandoIa = ref(false)
 const modalApagarMemoriaIaAberto = ref(false)
 const apagandoMemoriaIa = ref(false)
+const modalAgendarReuniaoAberto = ref(false)
+const agendandoReuniao = ref(false)
 
 function parseWorkspaceId(raw: unknown): number | null {
   const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10)
@@ -82,6 +89,79 @@ const textoModalApagarMemoriaIa = computed(() => {
   const tel = telefoneLabel.value
   return `Isso vai apagar a memória da I.A. para o número ${tel} e ligar o atendimento da I.A. para este contato. Esta ação não poderá ser desfeita. Tem certeza?`
 })
+
+function emailDaConversa(c: Conversa): string | null {
+  const campos = c.campos_personalizados
+  if (!campos?.length) return null
+  const campo = campos.find((item) => {
+    const nome = item.nome.trim().toLowerCase()
+    return nome === 'email' || nome === 'e-mail' || nome === 'e mail'
+  })
+  const valor = campo?.valor?.trim() ?? ''
+  return valor.includes('@') ? valor : null
+}
+
+function dataAgendadaIso(data: string, hora: string): string {
+  return `${data}T${hora}:00.000-03:00`
+}
+
+function dataFormatadaBr(data: string, hora: string): string {
+  const [ano, mes, dia] = data.split('-')
+  return `${dia}/${mes}/${ano} às ${hora} horas`
+}
+
+function abrirModalAgendarReuniao() {
+  if (!ehAdmin.value || agendandoReuniao.value) return
+  modalAgendarReuniaoAberto.value = true
+}
+
+async function confirmarAgendarReuniao(escolha: { data: string; hora: string; duracaoMinutos: number }) {
+  const c = conversa.value
+  const wsId = workspaceId.value
+  if (!c || !wsId || agendandoReuniao.value) return
+
+  const phone = c.phone?.trim() ?? ''
+  const key = c.key?.trim() ?? ''
+  const canalId = c.id_canal ?? conversasStore.activeCanalId
+  if (!phone || !key || canalId == null) {
+    toast.error('Telefone, conversa ou canal não identificados.')
+    return
+  }
+
+  agendandoReuniao.value = true
+  try {
+    if (!key.startsWith('temp:')) {
+      await conversasStore.ensureCamposPersonalizadosNaConversa(wsId, key).catch(() => undefined)
+    }
+    const atual = conversasStore.findConversaByKey(key) ?? c
+    const email = emailDaConversa(atual)
+
+    await $fetch('/api/conversas/agendar-reuniao', {
+      method: 'POST',
+      body: {
+        workspace_id: wsId,
+        canal_id: canalId,
+        key,
+        phone,
+        email,
+        nome: atual.name?.trim() || '',
+        data_agendada: dataAgendadaIso(escolha.data, escolha.hora),
+        data_formatada: dataFormatadaBr(escolha.data, escolha.hora),
+        duracao_minutos: escolha.duracaoMinutos,
+      },
+    })
+    modalAgendarReuniaoAberto.value = false
+    toast.success('Reunião enviada para o agendamento.')
+  } catch (err: unknown) {
+    const msg =
+      err && typeof err === 'object' && 'data' in err
+        ? String((err as { data?: { statusMessage?: string } }).data?.statusMessage ?? '')
+        : ''
+    toast.error(msg || 'Não foi possível agendar a reunião.')
+  } finally {
+    agendandoReuniao.value = false
+  }
+}
 
 function abrirModalApagarMemoriaIa() {
   if (!podeApagarMemoriaIa.value || apagandoMemoriaIa.value) return
@@ -578,6 +658,18 @@ watch(
       </button>
     </div>
 
+    <div v-if="ehAdmin" class="mt-2 flex justify-end">
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100"
+        aria-label="Agendamento"
+        @click="abrirModalAgendarReuniao"
+      >
+        <span class="material-symbols-outlined text-[14px]" aria-hidden="true">calendar_month</span>
+        Agendamento
+      </button>
+    </div>
+
     <ModalAlerta
       v-model:open="modalApagarMemoriaIaAberto"
       title="Apagar memória da I.A.?"
@@ -589,6 +681,12 @@ watch(
       :cancelar-desabilitado="apagandoMemoriaIa"
       :mostrar-fechar="!apagandoMemoriaIa"
       @confirmar="confirmarApagarMemoriaIa"
+    />
+
+    <ModalAgendarReuniao
+      v-model:open="modalAgendarReuniaoAberto"
+      :enviando="agendandoReuniao"
+      @confirmar="confirmarAgendarReuniao"
     />
   </section>
 </template>

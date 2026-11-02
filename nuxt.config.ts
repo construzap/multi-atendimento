@@ -27,11 +27,11 @@ export default defineNuxtConfig({
     b2KeyId: '',
     b2AppKey: '',
     b2BucketName: '',
-    /** Bucket B2 para mídia de agendamento (default no código: multiatendimentoconstruzap). */
+    /** Bucket B2 para mídia de agendamento (default no código: geral-). */
     b2AgendamentoBucketName: '',
-    /** Bucket B2 para mídia de disparo em massa (default no código: multiatendimentoconstruzap). */
+    /** Bucket B2 para mídia de disparo em massa (default no código: geral-). */
     b2DisparoEmMassaBucketName: '',
-    /** Bucket B2 para mídia de anotações de conversas (default no código: multiatendimentoconstruzap). */
+    /** Bucket B2 para mídia de anotações de conversas (default no código: geral-). */
     b2AnotacoesBucketName: '',
     /** Bucket B2 para fotos de produtos (default no código: produtosconstruzap). */
     b2ProdutosBucketName: '',

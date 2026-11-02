@@ -43,7 +43,7 @@ function safeMime(raw: unknown): string {
 /**
  * POST /api/kanban/disparo_em_massa/upload-midia
  *
- * Envia imagem ou áudio ao Backblaze B2 (bucket default `multiatendimentoconstruzap`,
+ * Envia imagem ou áudio ao Backblaze B2 (bucket `geral-`,
  * pasta `disparo-em-massa/`) e devolve a URL pública para a campanha.
  */
 export default defineEventHandler(async (event) => {

@@ -1,8 +1,9 @@
 import { createError } from 'h3'
 import { mimeToExt } from './b2Storage'
+import { CANAL_GERAL_B2_BUCKET } from './blackblaze-canal-imagem-saudacao'
 
-/** Bucket público pedido para mídia de agendamentos (override: `NUXT_B2_AGENDAMENTO_BUCKET_NAME`). */
-export const AGENDAMENTO_MIDIA_B2_BUCKET_PADRAO = 'multiatendimentoconstruzap'
+/** Bucket público para mídia de agendamentos (override: `NUXT_B2_AGENDAMENTO_BUCKET_NAME`). */
+export const AGENDAMENTO_MIDIA_B2_BUCKET_PADRAO = CANAL_GERAL_B2_BUCKET
 
 const MIMES_IMAGEM = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 

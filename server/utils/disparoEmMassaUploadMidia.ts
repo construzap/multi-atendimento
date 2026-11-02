@@ -1,5 +1,6 @@
 import { createError } from 'h3'
 import { uploadToB2 } from './b2Storage'
+import { urlAmigavelImagemSaudacao } from './blackblaze-canal-imagem-saudacao'
 import {
   chaveObjetoDisparoEmMassaMidia,
   resolverBucketDisparoEmMassa,
@@ -38,7 +39,8 @@ export async function uploadMidiaDisparoEmMassa(payload: {
   const key = chaveObjetoDisparoEmMassaMidia(payload.workspaceId, payload.mensagem_type, mime)
 
   try {
-    return await uploadToB2(buffer, key, mime, bucket)
+    await uploadToB2(buffer, key, mime, bucket)
+    return urlAmigavelImagemSaudacao(bucket, key, String(config.b2Region ?? ''))
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Falha no upload para o B2.'
     throw createError({ statusCode: 500, statusMessage: msg })

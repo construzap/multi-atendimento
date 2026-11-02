@@ -315,6 +315,7 @@ export const useCanaisStore = defineStore('canais', {
             formas_pagamento: input.formas_pagamento,
             disparo_ativo: input.disparo_ativo,
             config_follow_up: input.config_follow_up,
+            follow_ativo_em_colunas: input.follow_ativo_em_colunas,
           }
         })
         await Promise.all([
@@ -371,6 +372,9 @@ export const useCanaisStore = defineStore('canais', {
         if (input.formas_pagamento !== undefined) body.formas_pagamento = input.formas_pagamento
         if (input.disparo_ativo !== undefined) body.disparo_ativo = input.disparo_ativo
         if (input.config_follow_up !== undefined) body.config_follow_up = input.config_follow_up
+        if (input.follow_ativo_em_colunas !== undefined) {
+          body.follow_ativo_em_colunas = input.follow_ativo_em_colunas
+        }
         if (input.tem_inteligencia_artificial !== undefined) {
           body.tem_inteligencia_artificial = input.tem_inteligencia_artificial
         }

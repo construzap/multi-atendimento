@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
+import type { InstanciaStatus } from '#shared/types/instanciaStatus'
 import BaseModal from '~/components/BaseModal.vue'
 
 const props = defineProps<{
@@ -19,9 +20,14 @@ const loading = ref(false)
 const erro = ref<string | null>(null)
 const toast = ref<string | null>(null)
 
-const DURACAO = 60
+const DURACAO = 30
+const INTERVALO_STATUS_MS = 10_000
 const tempoRestante = ref(DURACAO)
+const expirado = ref(false)
 let timerInterval: ReturnType<typeof setInterval> | null = null
+let statusInterval: ReturnType<typeof setInterval> | null = null
+let cicloAtual = 0
+let configurandoWebhooks = false
 
 function pararTimer() {
   if (timerInterval) {
@@ -30,16 +36,45 @@ function pararTimer() {
   }
 }
 
-function iniciarTimer() {
+function pararConsultaStatus() {
+  if (statusInterval) {
+    clearInterval(statusInterval)
+    statusInterval = null
+  }
+}
+
+function pararCiclo() {
+  cicloAtual += 1
   pararTimer()
+  pararConsultaStatus()
+}
+
+function iniciarConsultaStatus(ciclo: number) {
+  pararConsultaStatus()
+  statusInterval = setInterval(() => {
+    void verificarSeConectou(ciclo)
+  }, INTERVALO_STATUS_MS)
+}
+
+function iniciarTimer(ciclo: number) {
+  pararTimer()
+  expirado.value = false
   tempoRestante.value = DURACAO
   timerInterval = setInterval(() => {
+    if (ciclo !== cicloAtual) return
     tempoRestante.value--
     if (tempoRestante.value <= 0) {
       pararTimer()
-      fechar()
+      pararConsultaStatus()
+      void encerrarQrExpirado(ciclo)
     }
   }, 1000)
+}
+
+function iniciarAcompanhamento() {
+  const ciclo = cicloAtual
+  iniciarTimer(ciclo)
+  iniciarConsultaStatus(ciclo)
 }
 
 /** Limpa estado do modal ao abrir (inclui toast de tentativa anterior). */
@@ -48,7 +83,9 @@ function resetarEstadoAoAbrir() {
   loading.value = false
   erro.value = null
   toast.value = null
-  pararTimer()
+  expirado.value = false
+  configurandoWebhooks = false
+  pararCiclo()
   tempoRestante.value = DURACAO
 }
 
@@ -57,14 +94,85 @@ function limparEstadoAoFecharModal() {
   qrcode.value = null
   loading.value = false
   erro.value = null
-  pararTimer()
+  expirado.value = false
+  configurandoWebhooks = false
+  pararCiclo()
   tempoRestante.value = DURACAO
+}
+
+async function configurarWebhooksAoConectar(id: number) {
+  await $fetch('/api/canais/configurarwebhook/remover', {
+    method: 'POST',
+    body: { id_canal: id },
+  })
+  await $fetch('/api/canais/configurarwebhook/adicionarn8n', {
+    method: 'POST',
+    body: { id_canal: id },
+  })
+  await $fetch('/api/canais/configurarwebhook/adicionaraplicativo', {
+    method: 'POST',
+    body: { id_canal: id },
+  })
+}
+
+function mensagemErroWebhook(err: unknown): string {
+  const maybe = err as {
+    data?: Record<string, unknown>
+    message?: string
+    statusMessage?: string
+  }
+  const d = maybe.data
+  if (d && typeof d === 'object') {
+    if (typeof d.statusMessage === 'string' && d.statusMessage) return d.statusMessage
+    if (typeof d.message === 'string' && d.message) return d.message
+  }
+  return maybe.statusMessage || maybe.message || 'Não foi possível atualizar os webhooks da instância.'
+}
+
+async function verificarSeConectou(ciclo: number) {
+  const id = props.canalId
+  if (!id || !props.open || ciclo !== cicloAtual || configurandoWebhooks) return
+
+  try {
+    const data = await $fetch<InstanciaStatus>('/api/canais/statusInstancia', {
+      method: 'GET',
+      query: { id_canal: id },
+    })
+    if (ciclo !== cicloAtual || data.status !== 'connected' || !props.open || configurandoWebhooks) return
+
+    configurandoWebhooks = true
+    pararTimer()
+    pararConsultaStatus()
+    try {
+      await configurarWebhooksAoConectar(id)
+    } catch (err: unknown) {
+      configurandoWebhooks = false
+      qrcode.value = null
+      erro.value = mensagemErroWebhook(err)
+      return
+    }
+
+    canaisStore.instanciaStatus = data
+    canaisStore.instanciaStatusCanalIdLoaded = id
+    await fechar()
+  } catch {
+    /* modal segue aberto até conectar ou o QR expirar */
+  }
+}
+
+async function encerrarQrExpirado(ciclo: number) {
+  await verificarSeConectou(ciclo)
+  if (ciclo !== cicloAtual || !props.open) return
+  qrcode.value = null
+  expirado.value = true
 }
 
 async function buscarQrCode() {
   const id = props.canalId
   if (!id) return
 
+  pararCiclo()
+  expirado.value = false
   loading.value = true
   erro.value = null
   qrcode.value = null
@@ -75,7 +183,7 @@ async function buscarQrCode() {
       body: { id_canal: id, workspace_id: workspacesStore.currentWorkspaceId }
     })
     qrcode.value = res.qrcode ?? null
-    if (qrcode.value) iniciarTimer()
+    if (qrcode.value && props.open) iniciarAcompanhamento()
   } catch (err: unknown) {
     const maybe = err as {
       data?: Record<string, unknown>
@@ -107,7 +215,7 @@ async function buscarQrCode() {
 }
 
 async function fechar() {
-  pararTimer()
+  pararCiclo()
   emit('update:open', false)
   // Ao fechar, atualiza o status da instância para refletir na UI.
   if (props.canalId) {
@@ -128,7 +236,7 @@ watch(
 )
 
 onUnmounted(() => {
-  pararTimer()
+  pararCiclo()
 })
 
 const minutos = '0'
@@ -192,6 +300,23 @@ const progressoPct = computed(() => (tempoRestante.value / DURACAO) * 100)
             :style="{ width: `${progressoPct}%` }"
           />
         </div>
+      </div>
+
+      <div
+        v-else-if="expirado"
+        class="flex h-56 w-56 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 px-4 text-center dark:border-slate-700"
+      >
+        <span class="material-symbols-outlined text-3xl text-slate-400">qr_code_2</span>
+        <p class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+          O QR code expirou.
+        </p>
+        <button
+          type="button"
+          class="rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white hover:opacity-90"
+          @click="buscarQrCode"
+        >
+          Gerar novamente
+        </button>
       </div>
 
       <!-- Placeholder vazio (antes de carregar) -->

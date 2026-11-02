@@ -1,8 +1,9 @@
 import { createError } from 'h3'
 import { mimeToExt } from './b2Storage'
+import { CANAL_GERAL_B2_BUCKET } from './blackblaze-canal-imagem-saudacao'
 
 /** Bucket público para mídia de anotações (override: `NUXT_B2_ANOTACOES_BUCKET_NAME`). */
-export const ANOTACOES_B2_BUCKET_PADRAO = 'multiatendimentoconstruzap'
+export const ANOTACOES_B2_BUCKET_PADRAO = CANAL_GERAL_B2_BUCKET
 
 const MIMES_IMAGEM = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
@@ -104,18 +105,27 @@ export function chaveObjetoAnotacaoMidia(
 
 /**
  * Extrai a object key de uma URL pública B2 do bucket de anotações.
+ * Aceita o host S3 (`{bucket}.s3...`) e a URL amigável (`/file/{bucket}/...`).
  * Só aceita chaves em `anotacoes_das_conversas/`.
  */
 export function extrairChaveB2AnotacaoDeUrl(url: string, bucket: string): string | null {
   try {
     const u = new URL(url.trim())
     if (!u.hostname.includes('backblazeb2.com')) return null
+
+    let key: string | null = null
     const prefix = `${bucket}.s3.`
-    if (!u.hostname.startsWith(prefix)) return null
-    const raw = u.pathname.replace(/^\//, '')
-    if (!raw) return null
-    const key = raw.split('/').map((p) => decodeURIComponent(p)).join('/')
-    if (!key.startsWith('anotacoes_das_conversas/')) return null
+    if (u.hostname.startsWith(prefix)) {
+      const raw = u.pathname.replace(/^\//, '')
+      key = raw ? raw.split('/').map((p) => decodeURIComponent(p)).join('/') : null
+    } else {
+      const parts = u.pathname.replace(/^\//, '').split('/')
+      if (parts[0] === 'file' && parts[1] === bucket && parts.length > 2) {
+        key = parts.slice(2).map((p) => decodeURIComponent(p)).join('/')
+      }
+    }
+
+    if (!key?.startsWith('anotacoes_das_conversas/')) return null
     return key
   } catch {
     return null

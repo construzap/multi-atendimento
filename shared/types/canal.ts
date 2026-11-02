@@ -87,6 +87,8 @@ export interface Canal {
   disparo_ativo: boolean
   /** Passos de follow-up: `{ "1": { minutos_espera: 5 }, ... }`. */
   config_follow_up: CanalConfigFollowUp
+  /** Colunas do kanban em que o follow-up fica ativo (`canais.follow_ativo_em_colunas`). */
+  follow_ativo_em_colunas: CanalFollowAtivoEmColunas
 }
 
 export type CanalFormasPagamentoOnline = {
@@ -143,6 +145,14 @@ export type CanalFollowUpPasso = {
 }
 
 export type CanalConfigFollowUp = Record<string, CanalFollowUpPasso>
+
+/** Par funil + coluna em `canais.follow_ativo_em_colunas`. */
+export type CanalFollowAtivoColuna = {
+  funil_id: number
+  coluna_id: number
+}
+
+export type CanalFollowAtivoEmColunas = CanalFollowAtivoColuna[]
 
 export type CanalProvedorPagamentos = 'pagar.me' | 'asaas' | 'pix_manual'
 
@@ -204,6 +214,7 @@ export type CanalCreateInput = {
   formas_pagamento?: CanalFormasPagamento
   disparo_ativo?: boolean
   config_follow_up?: CanalConfigFollowUp
+  follow_ativo_em_colunas?: CanalFollowAtivoEmColunas
 }
 
 /** Payload de atualização de canal (POST /api/canais/editarcanal). */
@@ -233,4 +244,5 @@ export type CanalUpdateInput = {
   formas_pagamento?: CanalFormasPagamento
   disparo_ativo?: boolean
   config_follow_up?: CanalConfigFollowUp
+  follow_ativo_em_colunas?: CanalFollowAtivoEmColunas
 }

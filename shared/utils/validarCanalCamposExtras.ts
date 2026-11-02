@@ -1,5 +1,6 @@
 import type {
   CanalConfigFollowUp,
+  CanalFollowAtivoEmColunas,
   CanalFormasPagamento,
   CanalFormasPagamentoEntrega,
   CanalFormasPagamentoOnline,
@@ -150,6 +151,56 @@ export function parseImagemSaudacao(raw: unknown): string | null | { erro: strin
   if (!t) return null
   if (t.length > 2000) return { erro: 'URL da imagem de saudação é longa demais.' }
   return t
+}
+
+function inteiroPositivo(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : Number.parseInt(String(raw ?? ''), 10)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return null
+  return n
+}
+
+/** Leitura tolerante (GET). Valor ausente ou inválido vira lista vazia. */
+export function normalizarFollowAtivoEmColunas(raw: unknown): CanalFollowAtivoEmColunas {
+  const parsed = parseFollowAtivoEmColunas(raw)
+  return typeof parsed === 'string' ? [] : parsed
+}
+
+/**
+ * Lista `[{ funil_id, coluna_id }]`.
+ * Vazio ou ausente → `[]`.
+ */
+export function parseFollowAtivoEmColunas(raw: unknown): CanalFollowAtivoEmColunas | string {
+  if (raw == null) return []
+  let arr: unknown = raw
+  if (typeof raw === 'string') {
+    const s = raw.trim()
+    if (!s) return []
+    try {
+      arr = JSON.parse(s) as unknown
+    } catch {
+      return 'follow_ativo_em_colunas inválido.'
+    }
+  }
+  if (!Array.isArray(arr)) return 'follow_ativo_em_colunas inválido.'
+
+  const out: CanalFollowAtivoEmColunas = []
+  const vistos = new Set<string>()
+  for (const item of arr) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return 'Item de follow_ativo_em_colunas inválido.'
+    }
+    const o = item as Record<string, unknown>
+    const funilId = inteiroPositivo(o.funil_id)
+    const colunaId = inteiroPositivo(o.coluna_id)
+    if (funilId == null || colunaId == null) {
+      return 'funil_id e coluna_id devem ser inteiros positivos.'
+    }
+    const chave = `${funilId}:${colunaId}`
+    if (vistos.has(chave)) continue
+    vistos.add(chave)
+    out.push({ funil_id: funilId, coluna_id: colunaId })
+  }
+  return out
 }
 
 export function parseFlagCanal(raw: unknown, label: string): boolean | string {

@@ -1,5 +1,6 @@
 import { createError } from 'h3'
 import type { H3Event } from 'h3'
+import { urlWebhookAplicativo, urlWebhookN8n } from '../../../../utils/canalConfigurarWebhook'
 import {
   extrairErroUazapi,
   headersUazapiWebhook,
@@ -92,23 +93,8 @@ export async function adicionarWebhooksInstanciaIa(
 }
 
 export function requireUrlsWebhookIa(event: H3Event): AdminIaWebhookUrls {
-  const config = useRuntimeConfig(event)
-  const urlIaN8n = String(config.urlIaN8n ?? '').trim()
-  const urlMultiatendimentoConstruzap = String(config.urlMultiatendimentoConstruzap ?? '').trim()
-
-  if (!urlIaN8n) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'URL_IA_N8N não configurada no servidor.',
-    })
+  return {
+    urlIaN8n: urlWebhookN8n(event),
+    urlMultiatendimentoConstruzap: urlWebhookAplicativo(event),
   }
-
-  if (!urlMultiatendimentoConstruzap) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'URL_MULTIATENDIMENTO_CONSTRUZAP não configurada no servidor.',
-    })
-  }
-
-  return { urlIaN8n, urlMultiatendimentoConstruzap }
 }
