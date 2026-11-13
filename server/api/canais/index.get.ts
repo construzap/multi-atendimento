@@ -8,10 +8,13 @@ import {
   normalizarConfigFollowUp,
   normalizarFollowAtivoEmColunas,
   normalizarFormasPagamento,
+  normalizarPalavrasAtivacaoFollowUp,
+  normalizarRegrasFollowUp,
+  normalizarLabelId,
 } from '#shared/utils/validarCanalCamposExtras'
 
 const CANAL_SELECT =
-  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up, follow_ativo_em_colunas'
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up, follow_ativo_em_colunas, regras_follow_up, id_da_lista_de_atendimento_do_whatsapp, id_lista_finalizado_do_whatsapp, id_lista_transferencia_de_atendimento_whatsapp, id_lista_pedido_pronto_whatsapp, connect_phone, palavras_ativacao_follow_up'
 
 type CanalRow = Record<string, unknown> & {
   api_key_encrypted?: unknown
@@ -59,6 +62,13 @@ function mapCanalPublico(row: CanalRow): Canal {
       | 'disparo_ativo'
       | 'config_follow_up'
       | 'follow_ativo_em_colunas'
+      | 'regras_follow_up'
+      | 'id_da_lista_de_atendimento_do_whatsapp'
+      | 'id_lista_finalizado_do_whatsapp'
+      | 'id_lista_transferencia_de_atendimento_whatsapp'
+      | 'id_lista_pedido_pronto_whatsapp'
+      | 'connect_phone'
+      | 'palavras_ativacao_follow_up'
     >),
     horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
@@ -88,6 +98,26 @@ function mapCanalPublico(row: CanalRow): Canal {
     disparo_ativo: row.disparo_ativo === true,
     config_follow_up: normalizarConfigFollowUp(row.config_follow_up),
     follow_ativo_em_colunas: normalizarFollowAtivoEmColunas(row.follow_ativo_em_colunas),
+    regras_follow_up: normalizarRegrasFollowUp(row.regras_follow_up),
+    id_da_lista_de_atendimento_do_whatsapp: normalizarLabelId(
+      row.id_da_lista_de_atendimento_do_whatsapp,
+    ),
+    id_lista_finalizado_do_whatsapp: normalizarLabelId(
+      row.id_lista_finalizado_do_whatsapp,
+    ),
+    id_lista_transferencia_de_atendimento_whatsapp: normalizarLabelId(
+      row.id_lista_transferencia_de_atendimento_whatsapp,
+    ),
+    id_lista_pedido_pronto_whatsapp: normalizarLabelId(
+      row.id_lista_pedido_pronto_whatsapp,
+    ),
+    connect_phone:
+      typeof row.connect_phone === 'string' && row.connect_phone.trim()
+        ? row.connect_phone.trim()
+        : null,
+    palavras_ativacao_follow_up: normalizarPalavrasAtivacaoFollowUp(
+      row.palavras_ativacao_follow_up,
+    ),
   }
 }
 

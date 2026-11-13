@@ -21,7 +21,12 @@ type Body = {
  * 2. Posse do canal (checkChannel)
  * 3. Assinatura ativa (checkSubscription) — cancela se pendente/cancelado
  */
-export default defineEventHandler(async (event): Promise<{ qrcode: string | null; status: string | null }> => {
+export default defineEventHandler(async (event): Promise<{
+  qrcode: string | null
+  status: string | null
+  /** Owner da instância (número conectado), quando a Uazapi devolver. */
+  phone: string | null
+}> => {
   const client = await serverSupabaseClient(event)
   const { data: authData, error: authError } = await client.auth.getUser()
 
@@ -97,8 +102,14 @@ export default defineEventHandler(async (event): Promise<{ qrcode: string | null
     const inst = res?.instance ?? res
     const qrcode = typeof inst?.qrcode === 'string' && inst.qrcode ? inst.qrcode : null
     const status = typeof inst?.status === 'string' ? inst.status : null
+    const phoneRaw =
+      (typeof inst?.owner === 'string' && inst.owner) ||
+      (typeof inst?.phone === 'string' && inst.phone) ||
+      (typeof res?.owner === 'string' && res.owner) ||
+      ''
+    const phone = String(phoneRaw).trim() || null
 
-    return { qrcode, status }
+    return { qrcode, status, phone }
   } catch (err: unknown) {
     const maybe = err as { data?: unknown; message?: string }
     const data = maybe?.data

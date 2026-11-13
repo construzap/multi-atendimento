@@ -1,6 +1,18 @@
 import { randomUUID } from 'node:crypto'
+import { DateTime } from 'luxon'
+import type { CanalConfigFollowUp } from '#shared/types/canal'
 import type { MensagemNormalizada } from '#shared/types/webhook'
 import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
+import { aplicarFollowupNoWebhook } from '../api/followup/aplicarFollowupNoWebhook'
+import {
+  mensagemAtivaFollowUpPorPalavras,
+  normalizarConfigFollowUp,
+  textoMensagemParaAtivacaoFollowUp,
+} from '#shared/utils/validarCanalCamposExtras'
+import {
+  ajustarDataProximoDisparoParaJanela,
+  FOLLOW_UP_TIMEZONE,
+} from '../api/followup/followupJanela'
 import { ensureFunilLeadNoWebhook } from './ensureFunilLeadNoWebhook'
 
 /** Cliente retornado por `serverSupabaseServiceRole` do módulo `@nuxtjs/supabase` (service role). */
@@ -118,15 +130,128 @@ export type PersistWebhookMensagemOptions = {
    * Se `false`/omitido → mantém o default `ia_ligada: true`.
    */
   botao_para_iniciar_ia?: boolean | null
+  /**
+   * `canais.config_follow_up` (só webhook).
+   * Sem isso, não agenda follow-up (ex.: POST /api/mensagens).
+   */
+  config_follow_up?: unknown
+  /**
+   * `canais.palavras_ativacao_follow_up` (só webhook).
+   * Se houver palavras, o vendedor humano só agenda follow-up se a mensagem contiver alguma.
+   */
+  palavras_ativacao_follow_up?: unknown
+}
+
+function minutosEsperaEtapa1(config: CanalConfigFollowUp): number | null {
+  const passo = config['1']
+  if (!passo) return null
+  const n = passo.minutos_espera
+  if (!Number.isFinite(n) || n < 1) return null
+  return Math.trunc(n)
+}
+
+/**
+ * Patch de follow-up em `conversas`:
+ * - from_me + from_ia → não mexe
+ * - from_me humano + etapa 1 → data_proximo_disparo + contagem_follow_up = 1
+ *   (se houver palavras_ativacao_follow_up, só se a mensagem contiver alguma)
+ * - from_me false → data_proximo_disparo = null
+ */
+function patchFollowUp(
+  normalizada: MensagemNormalizada,
+  options: PersistWebhookMensagemOptions,
+): Record<string, unknown> {
+  if (normalizada.from_me && normalizada.from_ia) {
+    return {}
+  }
+
+  if (!normalizada.from_me) {
+    return { data_proximo_disparo: null }
+  }
+
+  // from_me humano: só agenda se o webhook passou config_follow_up com etapa 1.
+  if (options.config_follow_up === undefined) {
+    return {}
+  }
+
+  const texto = textoMensagemParaAtivacaoFollowUp({
+    message: normalizada.message,
+    caption: normalizada.caption,
+  })
+  if (!mensagemAtivaFollowUpPorPalavras(texto, options.palavras_ativacao_follow_up)) {
+    return {}
+  }
+
+  const config = normalizarConfigFollowUp(options.config_follow_up)
+  const minutos = minutosEsperaEtapa1(config)
+  if (minutos == null) {
+    return {}
+  }
+
+  const candidate = DateTime.now().setZone(FOLLOW_UP_TIMEZONE).plus({ minutes: minutos })
+  const ajustada = ajustarDataProximoDisparoParaJanela(candidate)
+  const iso = ajustada.toUTC().toISO()
+  if (!iso) return {}
+  return {
+    data_proximo_disparo: iso,
+    contagem_follow_up: 1,
+  }
 }
 
 type MensagemExistenteRow = {
+  id?: string | null
   replyid: string | null
   key_conversa: string | null
   from_me: boolean | null
   from_api: boolean | null
   id_canal: number | null
   name: string | null
+}
+
+async function loadMensagemUuid(
+  admin: SupabaseAdmin,
+  message_id: string,
+  id_canal: number,
+): Promise<string | null> {
+  const { data, error } = await admin
+    .from('mensagens')
+    .select('id')
+    .eq('message_id', message_id)
+    .eq('id_canal', id_canal)
+    .maybeSingle()
+
+  if (error) {
+    console.warn('[persistWebhookMensagem] lookup mensagens.id:', error.message)
+    return null
+  }
+  const id = data && typeof data === 'object' ? (data as { id?: unknown }).id : null
+  return typeof id === 'string' && id.trim() ? id.trim() : null
+}
+
+/** Ciclos/etapas após persistir; falha não quebra o webhook. */
+async function tentarAplicarFollowupCiclos(
+  admin: SupabaseAdmin,
+  input: {
+    conversa_key: string
+    normalizada: MensagemNormalizada
+    options: PersistWebhookMensagemOptions
+    mensagem_uuid: string | null
+  },
+): Promise<void> {
+  try {
+    await aplicarFollowupNoWebhook(admin, {
+      conversa_key: input.conversa_key,
+      workspace_id: input.normalizada.workspace_id,
+      canal_id: input.normalizada.id_canal,
+      mensagem_uuid: input.mensagem_uuid,
+      normalizada: input.normalizada,
+      config_follow_up: input.options.config_follow_up,
+      palavras_ativacao_follow_up: input.options.palavras_ativacao_follow_up,
+    })
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.warn('[persistWebhookMensagem] followup ciclos/etapas:', msg)
+  }
 }
 
 async function findConversaPorKey(
@@ -284,7 +409,7 @@ async function loadMensagemNoCanal(
 ): Promise<MensagemExistenteRow | null> {
   const { data, error } = await admin
     .from('mensagens')
-    .select('replyid, key_conversa, from_me, from_api, id_canal, name')
+    .select('id, replyid, key_conversa, from_me, from_api, id_canal, name')
     .eq('message_id', message_id)
     .eq('id_canal', id_canal)
     .maybeSingle()
@@ -355,6 +480,7 @@ function buildConversaUpdateRow(
   normalizada: MensagemNormalizada,
   existing: ConversaRow,
   updatedAt: string,
+  options: PersistWebhookMensagemOptions = {},
 ): Record<string, unknown> {
   const row: Record<string, unknown> = {
     message: normalizada.message,
@@ -363,6 +489,7 @@ function buildConversaUpdateRow(
     from_me: normalizada.from_me,
     media_url: normalizada.media_url,
     ...patchNaoLidas(normalizada, existing),
+    ...patchFollowUp(normalizada, options),
   }
 
   if (!normalizada.from_me) {
@@ -394,6 +521,7 @@ async function updateConversaPreviewExistente(
   conversa_key: string,
   normalizada: MensagemNormalizada,
   updatedAt: string,
+  options: PersistWebhookMensagemOptions = {},
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const { data, error } = await admin
     .from('conversas')
@@ -407,7 +535,7 @@ async function updateConversaPreviewExistente(
   const existing = data as ConversaRow
   const { error: convErr } = await admin
     .from('conversas')
-    .update(buildConversaUpdateRow(normalizada, existing, updatedAt))
+    .update(buildConversaUpdateRow(normalizada, existing, updatedAt, options))
     .eq('key', conversa_key)
 
   if (convErr) return { ok: false, message: convErr.message }
@@ -448,6 +576,7 @@ function buildConversaInsertRow(
     nao_lidas: normalizada.from_me ? 0 : 1,
     is_group: false,
     ia_ligada: iaLigadaAoCriarConversa(options.botao_para_iniciar_ia),
+    ...patchFollowUp(normalizada, options),
   }
 }
 
@@ -497,10 +626,27 @@ async function persistIndividual(
   if (mensagemNoCanal) {
     const keyExistente = mensagemNoCanal.key_conversa?.trim() || ''
     if (keyExistente) {
-      const sync = await updateConversaPreviewExistente(admin, keyExistente, normalizada, updatedAt)
+      const sync = await updateConversaPreviewExistente(
+        admin,
+        keyExistente,
+        normalizada,
+        updatedAt,
+        options,
+      )
       if (!sync.ok) {
         return { ok: false, step: 'conversa', message: sync.message }
       }
+      // Eco do webhook (mensagem já gravada pelo app): ainda aplica ciclos/etapas.
+      const mensagemUuid =
+        typeof mensagemNoCanal.id === 'string' && mensagemNoCanal.id.trim()
+          ? mensagemNoCanal.id.trim()
+          : await loadMensagemUuid(admin, normalizada.message_id, normalizada.id_canal)
+      await tentarAplicarFollowupCiclos(admin, {
+        conversa_key: keyExistente,
+        normalizada,
+        options,
+        mensagem_uuid: mensagemUuid,
+      })
       return { ok: true, conversa_key: keyExistente, message_persisted: false }
     }
     // Mensagem órfã (sem key_conversa) — reparar abaixo.
@@ -565,7 +711,11 @@ async function persistIndividual(
 
   // Grava mensagem antes de atualizar preview (evita conversa com última msg sem linha em `mensagens`).
   // onConflict composto: mesmo message_id pode existir em canais diferentes (mesmo WhatsApp ID visto dos dois lados).
-  const { error: msgErr } = await admin.from('mensagens').upsert(mensagemRow, { onConflict: 'message_id,id_canal' })
+  const { data: msgUpsert, error: msgErr } = await admin
+    .from('mensagens')
+    .upsert(mensagemRow, { onConflict: 'message_id,id_canal' })
+    .select('id')
+    .maybeSingle()
 
   if (msgErr) {
     return { ok: false, step: 'mensagem', message: msgErr.message }
@@ -574,13 +724,28 @@ async function persistIndividual(
   if (existing) {
     const { error: convErr } = await admin
       .from('conversas')
-      .update(buildConversaUpdateRow(normalizada, existing, updatedAt))
+      .update(buildConversaUpdateRow(normalizada, existing, updatedAt, options))
       .eq('key', conversa_key)
 
     if (convErr) {
       return { ok: false, step: 'conversa', message: convErr.message }
     }
   }
+
+  let mensagemUuid =
+    msgUpsert && typeof msgUpsert === 'object' && typeof (msgUpsert as { id?: unknown }).id === 'string'
+      ? String((msgUpsert as { id: string }).id)
+      : null
+  if (!mensagemUuid) {
+    mensagemUuid = await loadMensagemUuid(admin, normalizada.message_id, normalizada.id_canal)
+  }
+
+  await tentarAplicarFollowupCiclos(admin, {
+    conversa_key,
+    normalizada,
+    options,
+    mensagem_uuid: mensagemUuid,
+  })
 
   const conversa_name = await loadConversaNameFromDb(admin, conversa_key)
   return {
@@ -612,10 +777,27 @@ async function persistGrupo(
   if (mensagemNoCanal) {
     const keyExistente = mensagemNoCanal.key_conversa?.trim() || ''
     if (keyExistente) {
-      const sync = await updateConversaPreviewExistente(admin, keyExistente, normalizada, updatedAt)
+      const sync = await updateConversaPreviewExistente(
+        admin,
+        keyExistente,
+        normalizada,
+        updatedAt,
+        options,
+      )
       if (!sync.ok) {
         return { ok: false, step: 'conversa', message: sync.message }
       }
+      // Eco do webhook (mensagem já gravada pelo app): ainda aplica ciclos/etapas.
+      const mensagemUuid =
+        typeof mensagemNoCanal.id === 'string' && mensagemNoCanal.id.trim()
+          ? mensagemNoCanal.id.trim()
+          : await loadMensagemUuid(admin, normalizada.message_id, normalizada.id_canal)
+      await tentarAplicarFollowupCiclos(admin, {
+        conversa_key: keyExistente,
+        normalizada,
+        options,
+        mensagem_uuid: mensagemUuid,
+      })
       return { ok: true, conversa_key: keyExistente, message_persisted: false }
     }
   }
@@ -662,6 +844,7 @@ async function persistGrupo(
       conversa_aberta: normalizada.from_me ? null : true,
       nao_lidas: normalizada.from_me ? 0 : 1,
       ia_ligada: iaLigadaAoCriarConversa(options.botao_para_iniciar_ia),
+      ...patchFollowUp(normalizada, options),
     })
 
     if (convErr) {
@@ -671,7 +854,11 @@ async function persistGrupo(
     await ensureFunilLeadNoWebhook(admin, conversa_key, normalizada.workspace_id, updatedAt)
   }
 
-  const { error: msgErr } = await admin.from('mensagens').upsert(mensagemRow, { onConflict: 'message_id,id_canal' })
+  const { data: msgUpsert, error: msgErr } = await admin
+    .from('mensagens')
+    .upsert(mensagemRow, { onConflict: 'message_id,id_canal' })
+    .select('id')
+    .maybeSingle()
 
   if (msgErr) {
     return { ok: false, step: 'mensagem', message: msgErr.message }
@@ -685,6 +872,7 @@ async function persistGrupo(
       from_me: normalizada.from_me,
       media_url: normalizada.media_url,
       ...patchNaoLidas(normalizada, existing),
+      ...patchFollowUp(normalizada, options),
     }
     if (!normalizada.from_me) {
       const photo = coalesceStr(normalizada.photo, existing.photo)
@@ -706,6 +894,21 @@ async function persistGrupo(
       return { ok: false, step: 'conversa', message: convErr.message }
     }
   }
+
+  let mensagemUuid =
+    msgUpsert && typeof msgUpsert === 'object' && typeof (msgUpsert as { id?: unknown }).id === 'string'
+      ? String((msgUpsert as { id: string }).id)
+      : null
+  if (!mensagemUuid) {
+    mensagemUuid = await loadMensagemUuid(admin, normalizada.message_id, normalizada.id_canal)
+  }
+
+  await tentarAplicarFollowupCiclos(admin, {
+    conversa_key,
+    normalizada,
+    options,
+    mensagem_uuid: mensagemUuid,
+  })
 
   const conversa_name = await loadConversaNameFromDb(admin, conversa_key)
   return {

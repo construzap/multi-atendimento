@@ -105,6 +105,14 @@ function onBlurNome(ev: Event) {
   emit('commit', { nome: v })
 }
 
+function onBlurCodigo(ev: Event) {
+  if (props.desabilitado) return
+  const v = (ev.target as HTMLInputElement).value.trim()
+  const atual = (props.row.codigo ?? '').trim()
+  if (v === atual) return
+  emit('commit', { codigo: v.length ? v : null })
+}
+
 function onBlurUnidade(ev: Event) {
   if (props.desabilitado) return
   const v = (ev.target as HTMLInputElement).value.trim()
@@ -330,6 +338,24 @@ const checkboxVisualBaseClass =
           </button>
         </div>
 
+        <div
+          v-if="row.nao_encontrado || row.aguardando_escolha"
+          class="flex flex-wrap items-center gap-1.5"
+        >
+          <span
+            v-if="row.nao_encontrado"
+            class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-950/60 dark:text-amber-200"
+          >
+            Não encontrado
+          </span>
+          <span
+            v-if="row.aguardando_escolha"
+            class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-800 dark:bg-sky-950/60 dark:text-sky-200"
+          >
+            Aguardando escolha
+          </span>
+        </div>
+
         <p
           v-if="tipo === 'variacao' && resumoVariacao"
           class="truncate text-[11px] font-medium leading-tight text-zinc-500 dark:text-zinc-400"
@@ -359,6 +385,22 @@ const checkboxVisualBaseClass =
       class="flex w-full shrink-0 flex-wrap items-center justify-between gap-3 pl-0 sm:w-auto sm:max-w-md sm:flex-nowrap sm:justify-end sm:gap-4 sm:pl-2"
     >
       <div class="flex min-w-0 flex-1 flex-wrap items-center gap-3 sm:flex-none sm:gap-4">
+        <div class="min-w-[5.5rem] max-w-[8rem] flex-1 space-y-0.5 sm:flex-none">
+          <p class="text-[10px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+            Código
+          </p>
+          <input
+            type="text"
+            :value="row.codigo ?? ''"
+            :disabled="desabilitado"
+            placeholder="—"
+            :class="[inputClass, 'font-semibold']"
+            data-campo-produto="codigo"
+            @click.stop
+            @blur="onBlurCodigo"
+            @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
+          >
+        </div>
         <div class="min-w-[5.5rem] max-w-[7rem] flex-1 space-y-0.5 sm:flex-none">
           <p class="text-[10px] font-medium uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
             Unidade

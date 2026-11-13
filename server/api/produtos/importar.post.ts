@@ -48,28 +48,6 @@ function intOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-async function maiorCodigoNoWorkspace(
-  admin: ReturnType<typeof serverSupabaseServiceRole<any>>,
-  workspaceId: number,
-): Promise<number> {
-  const { data, error } = await admin
-    .from('produtos_workspace')
-    .select('codigo')
-    .eq('workspace_id', workspaceId)
-    .not('codigo', 'is', null)
-    .order('codigo', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) {
-    throw createError({ statusCode: 500, statusMessage: error.message })
-  }
-  const raw = data?.codigo
-  if (raw === undefined || raw === null) return 0
-  const n = intOrNull(raw)
-  return n != null && n > 0 ? n : 0
-}
-
 function boolDefault(v: unknown, def: boolean): boolean {
   if (v === undefined || v === null || v === '') return def
   if (typeof v === 'boolean') return v
@@ -90,6 +68,8 @@ function normalizarLinha(raw: unknown): ProdutoImportarLinha | null {
   const precoFinal = preco != null && preco >= 0 ? preco : null
   const linha: ProdutoImportarLinha = {
     nome,
+    codigo: strOrNull(o.codigo),
+    codigo_barras_ean: strOrNull(o.codigo_barras_ean),
     sku: strOrNull(o.sku),
     unidade_venda: strOrNull(o.unidade_venda),
     marca: strOrNull(o.marca),
@@ -169,7 +149,7 @@ async function conjuntoIdsCategoriaValidos(
  *
  * Body: `{ workspace_id, linhas }` — até {@link MAX_LINHAS_POR_REQUISICAO} linhas por pedido.
  * Também serve para criar um único produto (ex.: modal «Novo») com `linhas` de um elemento.
- * Insere em `produtos_workspace` com `codigo` inteiro gerado (maior `codigo` existente no workspace + 1, +2, … neste lote).
+ * Insere em `produtos_workspace`. `codigo` só é gravado quando a linha traz o código do sistema externo.
  * `categoria_id` explícito (validado) ou texto em `categoria` (nome único, case-insensitive) resolvido para id.
  * `termos_pesquisa`: texto da célula separado por `,` → find-or-create cada termo em
  * `produto_termo_de_pesquisa` + vínculos em `produto_termo_de_pesquisa_vinculo`.
@@ -211,7 +191,6 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
   await checkWorkspace(event, workspaceId, userId)
 
   const admin = serverSupabaseServiceRole<any>(event)
-  let codigoAtual = await maiorCodigoNoWorkspace(admin, workspaceId)
 
   const normalizadas: ProdutoImportarLinha[] = []
   for (const item of linhasRaw) {
@@ -263,11 +242,11 @@ export default defineEventHandler(async (event): Promise<ProdutosImportarLoteRes
   }
 
   const insertRows = normalizadas.map((r) => {
-    codigoAtual += 1
     return {
       workspace_id: workspaceId,
-      codigo: codigoAtual,
+      codigo: r.codigo ?? null,
       nome: r.nome,
+      codigo_barras_ean: r.codigo_barras_ean ?? null,
       categoria_id: resolverCategoriaId(r),
       sku: r.sku ?? null,
       unidade_venda: r.unidade_venda ?? null,

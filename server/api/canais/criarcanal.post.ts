@@ -12,9 +12,15 @@ import {
   parseFlagCanal,
   parseFollowAtivoEmColunas,
   parseFormasPagamento,
+  parseIdListaAtendimentoWhatsapp,
+  parseIdListaFinalizadoWhatsapp,
+  parseIdListaPedidoProntoWhatsapp,
+  parseIdListaTransferenciaAtendimentoWhatsapp,
   parseImagemSaudacao,
   parseLojaSlug,
   parseMensagemSaudacao,
+  parsePalavrasAtivacaoFollowUp,
+  parseRegrasFollowUp,
 } from '#shared/utils/validarCanalCamposExtras'
 import { createError, readBody } from 'h3'
 import { checkSubscription } from '../../utils/checkSubscription'
@@ -46,10 +52,16 @@ type CreateCanalBody = {
   disparo_ativo?: boolean
   config_follow_up?: unknown
   follow_ativo_em_colunas?: unknown
+  regras_follow_up?: unknown
+  id_da_lista_de_atendimento_do_whatsapp?: unknown
+  id_lista_finalizado_do_whatsapp?: unknown
+  id_lista_transferencia_de_atendimento_whatsapp?: unknown
+  id_lista_pedido_pronto_whatsapp?: unknown
+  palavras_ativacao_follow_up?: unknown
 }
 
 const CANAL_SELECT_PUBLICO =
-  'id, workspace_id, user_id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up, follow_ativo_em_colunas'
+  'id, workspace_id, user_id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up, follow_ativo_em_colunas, regras_follow_up, id_da_lista_de_atendimento_do_whatsapp, id_lista_finalizado_do_whatsapp, id_lista_transferencia_de_atendimento_whatsapp, id_lista_pedido_pronto_whatsapp, connect_phone, palavras_ativacao_follow_up'
 
 function mensagemErroCanal(error: { message?: string; code?: string }): string {
   const msg = error.message ?? 'Falha ao salvar o canal.'
@@ -187,6 +199,42 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: followAtivoEmColunas })
   }
 
+  const regrasFollowUp = parseRegrasFollowUp(body.regras_follow_up)
+  if (typeof regrasFollowUp === 'object' && 'erro' in regrasFollowUp) {
+    throw createError({ statusCode: 400, statusMessage: regrasFollowUp.erro })
+  }
+
+  const listaAtendimento = parseIdListaAtendimentoWhatsapp(
+    body.id_da_lista_de_atendimento_do_whatsapp,
+  )
+  if (listaAtendimento && typeof listaAtendimento === 'object' && 'erro' in listaAtendimento) {
+    throw createError({ statusCode: 400, statusMessage: listaAtendimento.erro })
+  }
+
+  const listaFinalizado = parseIdListaFinalizadoWhatsapp(body.id_lista_finalizado_do_whatsapp)
+  if (listaFinalizado && typeof listaFinalizado === 'object' && 'erro' in listaFinalizado) {
+    throw createError({ statusCode: 400, statusMessage: listaFinalizado.erro })
+  }
+
+  const listaTransferencia = parseIdListaTransferenciaAtendimentoWhatsapp(
+    body.id_lista_transferencia_de_atendimento_whatsapp,
+  )
+  if (listaTransferencia && typeof listaTransferencia === 'object' && 'erro' in listaTransferencia) {
+    throw createError({ statusCode: 400, statusMessage: listaTransferencia.erro })
+  }
+
+  const listaPedidoPronto = parseIdListaPedidoProntoWhatsapp(
+    body.id_lista_pedido_pronto_whatsapp,
+  )
+  if (listaPedidoPronto && typeof listaPedidoPronto === 'object' && 'erro' in listaPedidoPronto) {
+    throw createError({ statusCode: 400, statusMessage: listaPedidoPronto.erro })
+  }
+
+  const palavrasAtivacao = parsePalavrasAtivacaoFollowUp(body.palavras_ativacao_follow_up)
+  if (typeof palavrasAtivacao === 'string') {
+    throw createError({ statusCode: 400, statusMessage: palavrasAtivacao })
+  }
+
   const rawWs = body.workspace_id
   if (rawWs === undefined || rawWs === null || rawWs === '') {
     throw createError({
@@ -267,6 +315,12 @@ export default defineEventHandler(async (event) => {
       disparo_ativo: disparoAtivo,
       config_follow_up: configFollowUp,
       follow_ativo_em_colunas: followAtivoEmColunas,
+      regras_follow_up: regrasFollowUp,
+      id_da_lista_de_atendimento_do_whatsapp: listaAtendimento,
+      id_lista_finalizado_do_whatsapp: listaFinalizado,
+      id_lista_transferencia_de_atendimento_whatsapp: listaTransferencia,
+      id_lista_pedido_pronto_whatsapp: listaPedidoPronto,
+      palavras_ativacao_follow_up: palavrasAtivacao,
     })
     .select(CANAL_SELECT_PUBLICO)
     .single()

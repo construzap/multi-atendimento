@@ -12,18 +12,27 @@ import type {
   Canal,
   CanalConfigFollowUp,
   CanalFollowAtivoEmColunas,
+  CanalFollowUpTipoMidia,
   CanalFormasPagamento,
   CanalFormasPagamentoEntrega,
   CanalFormasPagamentoOnline,
   CanalHorarioDia,
   CanalHorarioDiaKey,
   CanalHorarios,
+  CanalPalavrasAtivacaoFollowUp,
+  CanalRegrasFollowUp,
+  ListasDoWhatsappResponse,
+  WhatsappLabelItem,
+  WhatsappLabelMutateResponse,
 } from '#shared/types/canal'
 import {
+  CANAL_FOLLOW_UP_TIPOS_MIDIA,
   CANAL_FORMAS_ENTREGA,
   CANAL_FORMAS_ONLINE,
   CANAL_FORMAS_PAGAMENTO_PADRAO,
   CANAL_HORARIO_DIAS,
+  CANAL_REGRAS_FOLLOW_UP_PADRAO,
+  WHATSAPP_LABEL_CORES,
   ordenarCanalHorarios,
 } from '#shared/types/canal'
 
@@ -213,27 +222,162 @@ function clonarFormasPagamento(raw?: CanalFormasPagamento | null): CanalFormasPa
   }
 }
 
-type FollowLinha = { id: string; minutos: string }
+type FollowLinha = {
+  id: string
+  minutos: string
+  mensagem_fixa: boolean
+  tipo: CanalFollowUpTipoMidia
+  conteudo: string
+  media_url: string
+  arquivo: File | null
+  previewLocal: string
+  /** Só o `labelid` da etiqueta. */
+  etiquetaKey: string
+}
+
+function chaveWhatsappLabel(label: WhatsappLabelItem | null | undefined): string {
+  if (!label) return ''
+  const labelid = typeof label.labelid === 'string' ? label.labelid.trim() : ''
+  if (labelid) return labelid
+  const id = typeof label.id === 'string' ? label.id.trim() : ''
+  if (id.includes(':')) return id.split(':').pop()?.trim() || ''
+  return id
+}
+
+function labelIdSalvo(raw: unknown): string {
+  if (raw == null) return ''
+  if (typeof raw === 'string') {
+    const s = raw.trim()
+    if (!s) return ''
+    if (s.includes(':')) return s.split(':').pop()?.trim() || ''
+    return s
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    return chaveWhatsappLabel(raw as WhatsappLabelItem)
+  }
+  return ''
+}
+
+function followLinhaVazia(): FollowLinha {
+  return {
+    id: `fu-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    minutos: '',
+    mensagem_fixa: false,
+    tipo: 'texto',
+    conteudo: '',
+    media_url: '',
+    arquivo: null,
+    previewLocal: '',
+    etiquetaKey: '',
+  }
+}
+
+function descartarPreviewFollow(linha: FollowLinha) {
+  if (linha.previewLocal) URL.revokeObjectURL(linha.previewLocal)
+  linha.previewLocal = ''
+  linha.arquivo = null
+}
 
 function followUpParaLinhas(cfg: CanalConfigFollowUp | null | undefined): FollowLinha[] {
   const keys = Object.keys(cfg ?? {}).sort((a, b) => Number(a) - Number(b))
-  return keys.map((k) => ({
-    id: `fu-${k}-${Math.random().toString(36).slice(2, 7)}`,
-    minutos: String(cfg?.[k]?.minutos_espera ?? ''),
-  }))
+  return keys.map((k) => {
+    const passo = cfg?.[k]
+    return {
+      id: `fu-${k}-${Math.random().toString(36).slice(2, 7)}`,
+      minutos: String(passo?.minutos_espera ?? ''),
+      mensagem_fixa: passo?.mensagem_fixa === true,
+      tipo: passo?.tipo ?? 'texto',
+      conteudo: typeof passo?.conteudo === 'string' ? passo.conteudo : '',
+      media_url: typeof passo?.media_url === 'string' ? passo.media_url : '',
+      arquivo: null,
+      previewLocal: '',
+      etiquetaKey: labelIdSalvo(passo?.etiqueta),
+    }
+  })
 }
 
 function linhasParaFollowUp(linhas: FollowLinha[]): CanalConfigFollowUp | string {
   const preenchidas = linhas.filter((l) => l.minutos.trim())
   const out: CanalConfigFollowUp = {}
   for (let i = 0; i < preenchidas.length; i++) {
-    const n = Number.parseInt(preenchidas[i]!.minutos.trim(), 10)
+    const linha = preenchidas[i]!
+    const n = Number.parseInt(linha.minutos.trim(), 10)
     if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
       return `Minutos de espera inválidos no follow-up ${i + 1} (informe um inteiro >= 1).`
     }
-    out[String(i + 1)] = { minutos_espera: n }
+    const etiqueta = labelIdSalvo(linha.etiquetaKey) || null
+    if (!linha.mensagem_fixa) {
+      out[String(i + 1)] = {
+        minutos_espera: n,
+        mensagem_fixa: false,
+        etiqueta,
+      }
+      continue
+    }
+    const tipo = linha.tipo
+    if (tipo === 'texto') {
+      const texto = linha.conteudo.trim()
+      if (!texto) {
+        return `Informe o texto da mensagem fixa no follow-up ${i + 1}.`
+      }
+      out[String(i + 1)] = {
+        minutos_espera: n,
+        mensagem_fixa: true,
+        tipo: 'texto',
+        conteudo: texto,
+        media_url: null,
+        etiqueta,
+      }
+      continue
+    }
+    const media = linha.media_url.trim()
+    if (!media && !linha.arquivo) {
+      return `Envie o arquivo de mídia do follow-up ${i + 1} antes de salvar.`
+    }
+    out[String(i + 1)] = {
+      minutos_espera: n,
+      mensagem_fixa: true,
+      tipo,
+      conteudo: linha.conteudo.trim() || null,
+      media_url: media || null,
+      etiqueta,
+    }
   }
   return out
+}
+
+async function resolverMidiasFollowUpAntesDeSalvar(): Promise<string | null> {
+  for (let i = 0; i < followUpLinhas.value.length; i++) {
+    const linha = followUpLinhas.value[i]!
+    if (!linha.minutos.trim()) continue
+    if (!linha.mensagem_fixa || linha.tipo === 'texto') continue
+    if (!linha.arquivo) {
+      if (!linha.media_url.trim()) {
+        return `Envie o arquivo de mídia do follow-up ${i + 1} antes de salvar.`
+      }
+      continue
+    }
+    try {
+      const data_base64 = await lerArquivoComoBase64(linha.arquivo)
+      const res = await $fetch<{ media_url: string }>('/api/canais/enviarfollowupmidiaparablackblaze', {
+        method: 'POST',
+        body: {
+          workspace_id: props.workspaceId,
+          tipo: linha.tipo,
+          mime: linha.arquivo.type || 'application/octet-stream',
+          data_base64,
+          filename: linha.arquivo.name,
+        },
+      })
+      const url = res.media_url?.trim()
+      if (!url) return `Falha ao enviar mídia do follow-up ${i + 1}.`
+      linha.media_url = url
+      descartarPreviewFollow(linha)
+    } catch (err: unknown) {
+      return mensagemErroApi(err) || `Falha ao enviar mídia do follow-up ${i + 1}.`
+    }
+  }
+  return null
 }
 
 const nome = ref('')
@@ -257,6 +401,145 @@ const formasPagamento = ref<CanalFormasPagamento>(clonarFormasPagamento())
 const disparoAtivo = ref(false)
 const followUpLinhas = ref<FollowLinha[]>([])
 const followAtivoEmColunas = ref<CanalFollowAtivoEmColunas>([])
+const regrasFollowUp = ref<CanalRegrasFollowUp>(CANAL_REGRAS_FOLLOW_UP_PADRAO)
+type PalavraAtivacaoLinha = { id: string; texto: string }
+function palavraAtivacaoVazia(): PalavraAtivacaoLinha {
+  return {
+    id: `pa-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    texto: '',
+  }
+}
+function palavrasParaLinhas(lista: CanalPalavrasAtivacaoFollowUp | null | undefined): PalavraAtivacaoLinha[] {
+  const itens = Array.isArray(lista) ? lista : []
+  return itens
+    .map((t) => (typeof t === 'string' ? t.trim() : ''))
+    .filter(Boolean)
+    .map((texto) => ({
+      id: `pa-${Math.random().toString(36).slice(2, 9)}`,
+      texto,
+    }))
+}
+function linhasParaPalavras(linhas: PalavraAtivacaoLinha[]): CanalPalavrasAtivacaoFollowUp | string {
+  const out: CanalPalavrasAtivacaoFollowUp = []
+  const vistos = new Set<string>()
+  for (let i = 0; i < linhas.length; i++) {
+    const texto = linhas[i]!.texto.trim()
+    if (!texto) continue
+    if (texto.length > 200) {
+      return `Palavra/frase ${i + 1} é longa demais (máx. 200 caracteres).`
+    }
+    const chave = texto.toLocaleLowerCase('pt-BR')
+    if (vistos.has(chave)) continue
+    vistos.add(chave)
+    out.push(texto)
+  }
+  if (out.length > 50) return 'Informe no máximo 50 palavras/frases.'
+  return out
+}
+const palavrasAtivacaoLinhas = ref<PalavraAtivacaoLinha[]>([])
+/** Só o `labelid` da lista de atendimento. */
+const listaAtendimentoKey = ref('')
+/** Só o `labelid` da lista de finalizado. */
+const listaFinalizadoKey = ref('')
+/** Só o `labelid` da lista de transferência de atendimento. */
+const listaTransferenciaKey = ref('')
+/** Só o `labelid` da lista de pedido pronto. */
+const listaPedidoProntoKey = ref('')
+const enviandoFollowMidia = ref(false)
+const labelsWhatsapp = ref<WhatsappLabelItem[]>([])
+const labelsWhatsappPending = ref(false)
+const labelsWhatsappErro = ref<string | null>(null)
+const labelsWhatsappCarregadas = ref(false)
+const labelFormAberto = ref(false)
+const labelFormModo = ref<'criar' | 'editar'>('criar')
+const labelFormLabelId = ref<string | null>(null)
+const labelFormNome = ref('')
+const labelFormCor = ref(2)
+const labelFormPending = ref(false)
+
+function labelPlaceholder(labelid: string): WhatsappLabelItem {
+  return {
+    id: labelid,
+    name: `Etiqueta #${labelid}`,
+    color: null,
+    colorHex: null,
+    labelid,
+    owner: null,
+    created: null,
+    updated: null,
+  }
+}
+
+const opcoesLabelsWhatsapp = computed(() => {
+  const mapa = new Map<string, WhatsappLabelItem>()
+  for (const label of labelsWhatsapp.value) {
+    const chave = chaveWhatsappLabel(label)
+    if (chave) mapa.set(chave, label)
+  }
+  const listaKey = labelIdSalvo(listaAtendimentoKey.value)
+  if (listaKey && !mapa.has(listaKey)) mapa.set(listaKey, labelPlaceholder(listaKey))
+  const finalizadoKey = labelIdSalvo(listaFinalizadoKey.value)
+  if (finalizadoKey && !mapa.has(finalizadoKey)) {
+    mapa.set(finalizadoKey, labelPlaceholder(finalizadoKey))
+  }
+  const transferenciaKey = labelIdSalvo(listaTransferenciaKey.value)
+  if (transferenciaKey && !mapa.has(transferenciaKey)) {
+    mapa.set(transferenciaKey, labelPlaceholder(transferenciaKey))
+  }
+  const pedidoProntoKey = labelIdSalvo(listaPedidoProntoKey.value)
+  if (pedidoProntoKey && !mapa.has(pedidoProntoKey)) {
+    mapa.set(pedidoProntoKey, labelPlaceholder(pedidoProntoKey))
+  }
+  for (const linha of followUpLinhas.value) {
+    const chave = labelIdSalvo(linha.etiquetaKey)
+    if (chave && !mapa.has(chave)) mapa.set(chave, labelPlaceholder(chave))
+  }
+  return Array.from(mapa.values())
+})
+
+function listaAtendimentoSelecionada(): string | null {
+  return labelIdSalvo(listaAtendimentoKey.value) || null
+}
+
+function listaFinalizadoSelecionada(): string | null {
+  return labelIdSalvo(listaFinalizadoKey.value) || null
+}
+
+function listaTransferenciaSelecionada(): string | null {
+  return labelIdSalvo(listaTransferenciaKey.value) || null
+}
+
+function listaPedidoProntoSelecionada(): string | null {
+  return labelIdSalvo(listaPedidoProntoKey.value) || null
+}
+
+function onChangeListaAtendimento(event: Event) {
+  listaAtendimentoKey.value = labelIdSalvo((event.target as HTMLSelectElement).value)
+}
+
+function onChangeListaFinalizado(event: Event) {
+  listaFinalizadoKey.value = labelIdSalvo((event.target as HTMLSelectElement).value)
+}
+
+function onChangeListaTransferencia(event: Event) {
+  listaTransferenciaKey.value = labelIdSalvo((event.target as HTMLSelectElement).value)
+}
+
+function onChangeListaPedidoPronto(event: Event) {
+  listaPedidoProntoKey.value = labelIdSalvo((event.target as HTMLSelectElement).value)
+}
+
+function onChangeEtiquetaFollow(linha: FollowLinha, event: Event) {
+  linha.etiquetaKey = labelIdSalvo((event.target as HTMLSelectElement).value)
+}
+
+function adicionarPalavraAtivacao() {
+  palavrasAtivacaoLinhas.value = [...palavrasAtivacaoLinhas.value, palavraAtivacaoVazia()]
+}
+
+function removerPalavraAtivacao(id: string) {
+  palavrasAtivacaoLinhas.value = palavrasAtivacaoLinhas.value.filter((l) => l.id !== id)
+}
 
 /** Snapshot do canal no Pinia ao abrir o modal (restauração no cancelar/fechar). */
 const snapshotCanal = ref<Canal | null>(null)
@@ -296,6 +579,132 @@ function canalNoPinia(): Canal | null {
   return canaisStore.items.find((c) => c.id === id) ?? null
 }
 
+function limparLabelsWhatsapp() {
+  labelsWhatsapp.value = []
+  labelsWhatsappPending.value = false
+  labelsWhatsappErro.value = null
+  labelsWhatsappCarregadas.value = false
+  fecharFormLabel()
+  labelFormPending.value = false
+}
+
+function idCanalParaLabels(): number | null {
+  return idCanalEmEdicao() ?? canaisStore.currentCanalId ?? null
+}
+
+function fecharFormLabel() {
+  labelFormAberto.value = false
+  labelFormModo.value = 'criar'
+  labelFormLabelId.value = null
+  labelFormNome.value = ''
+  labelFormCor.value = 2
+}
+
+function abrirCriarLabel() {
+  if (idCanalParaLabels() == null) {
+    toast.warning('Salve o canal antes de criar uma etiqueta.')
+    return
+  }
+  labelFormModo.value = 'criar'
+  labelFormLabelId.value = null
+  labelFormNome.value = ''
+  labelFormCor.value = 2
+  labelFormAberto.value = true
+}
+
+function abrirEditarLabel(label: WhatsappLabelItem) {
+  const labelid = label.labelid?.trim()
+  if (!labelid) {
+    toast.warning('Esta etiqueta não tem labelid para editar.')
+    return
+  }
+  labelFormModo.value = 'editar'
+  labelFormLabelId.value = labelid
+  labelFormNome.value = label.name
+  labelFormCor.value =
+    typeof label.color === 'number' && label.color >= 0 && label.color <= 19 ? label.color : 2
+  labelFormAberto.value = true
+}
+
+async function carregarListasDoWhatsapp(options?: { silencioso?: boolean }) {
+  const id = idCanalParaLabels()
+  if (id == null) {
+    toast.warning('Salve o canal antes de buscar as listas do WhatsApp.')
+    return
+  }
+
+  labelsWhatsappPending.value = true
+  labelsWhatsappErro.value = null
+  try {
+    const res = await $fetch<ListasDoWhatsappResponse>('/api/canais/listas_do_whatsapp', {
+      method: 'GET',
+      query: { id_canal: id },
+    })
+    labelsWhatsapp.value = res.labels ?? []
+    labelsWhatsappCarregadas.value = true
+    if (!options?.silencioso && !labelsWhatsapp.value.length) {
+      toast.message('Nenhuma lista encontrada neste WhatsApp.')
+    }
+  } catch (err: unknown) {
+    labelsWhatsapp.value = []
+    labelsWhatsappCarregadas.value = false
+    const msg = mensagemErroApi(err)
+    labelsWhatsappErro.value = msg
+    if (!options?.silencioso) toast.error(msg, { duration: 8000 })
+  } finally {
+    labelsWhatsappPending.value = false
+  }
+}
+
+async function salvarLabelWhatsapp() {
+  const id = idCanalParaLabels()
+  if (id == null) {
+    toast.warning('Salve o canal antes de salvar a etiqueta.')
+    return
+  }
+  const nome = labelFormNome.value.trim()
+  if (!nome) {
+    toast.warning('Informe o nome da etiqueta.')
+    return
+  }
+  if (labelFormModo.value === 'editar' && !labelFormLabelId.value) {
+    toast.warning('labelid inválido para edição.')
+    return
+  }
+
+  labelFormPending.value = true
+  try {
+    if (labelFormModo.value === 'criar') {
+      await $fetch<WhatsappLabelMutateResponse>('/api/canais/listas_do_whatsapp/criar', {
+        method: 'POST',
+        body: {
+          id_canal: id,
+          name: nome,
+          color: labelFormCor.value,
+        },
+      })
+      toast.success('Etiqueta criada.')
+    } else {
+      await $fetch<WhatsappLabelMutateResponse>('/api/canais/listas_do_whatsapp/editar', {
+        method: 'POST',
+        body: {
+          id_canal: id,
+          labelid: labelFormLabelId.value,
+          name: nome,
+          color: labelFormCor.value,
+        },
+      })
+      toast.success('Etiqueta atualizada.')
+    }
+    fecharFormLabel()
+    await carregarListasDoWhatsapp({ silencioso: true })
+  } catch (err: unknown) {
+    toast.error(mensagemErroApi(err), { duration: 8000 })
+  } finally {
+    labelFormPending.value = false
+  }
+}
+
 /** Alterna o dia com replace imutável (garante reatividade + sync no Pinia). */
 function toggleDiaAberto(key: CanalHorarioDiaKey) {
   const dia = horarios.value[key]
@@ -326,14 +735,32 @@ function toggleFormaEntrega(key: keyof CanalFormasPagamentoEntrega) {
 }
 
 function adicionarFollowUp() {
-  followUpLinhas.value = [
-    ...followUpLinhas.value,
-    { id: `fu-${Date.now()}`, minutos: '' },
-  ]
+  followUpLinhas.value = [...followUpLinhas.value, followLinhaVazia()]
 }
 
 function removerFollowUp(id: string) {
+  const alvo = followUpLinhas.value.find((l) => l.id === id)
+  if (alvo) descartarPreviewFollow(alvo)
   followUpLinhas.value = followUpLinhas.value.filter((l) => l.id !== id)
+}
+
+function onFollowArquivoChange(linha: FollowLinha, event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  input.value = ''
+  if (!file) return
+  if (file.size > 25 * 1024 * 1024) {
+    toast.warning('O arquivo pode ter no máximo 25MB.')
+    return
+  }
+  descartarPreviewFollow(linha)
+  linha.arquivo = file
+  linha.previewLocal = URL.createObjectURL(file)
+}
+
+function limparFollowArquivo(linha: FollowLinha) {
+  descartarPreviewFollow(linha)
+  linha.media_url = ''
 }
 
 function clonarFollowColunas(lista: CanalFollowAtivoEmColunas | null | undefined): CanalFollowAtivoEmColunas {
@@ -469,6 +896,12 @@ function buildConfigPayload():
       disparo_ativo: boolean
       config_follow_up: CanalConfigFollowUp
       follow_ativo_em_colunas: CanalFollowAtivoEmColunas
+      regras_follow_up: CanalRegrasFollowUp
+      id_da_lista_de_atendimento_do_whatsapp: string | null
+      id_lista_finalizado_do_whatsapp: string | null
+      id_lista_transferencia_de_atendimento_whatsapp: string | null
+      id_lista_pedido_pronto_whatsapp: string | null
+      palavras_ativacao_follow_up: CanalPalavrasAtivacaoFollowUp
     }
   | string {
   const erroExtras = validarCamposExtras()
@@ -484,6 +917,8 @@ function buildConfigPayload():
     : 0
   const follow = linhasParaFollowUp(followUpLinhas.value)
   if (typeof follow === 'string') return follow
+  const palavras = linhasParaPalavras(palavrasAtivacaoLinhas.value)
+  if (typeof palavras === 'string') return palavras
 
   return {
     endereco: endereco.value.trim() || null,
@@ -500,6 +935,12 @@ function buildConfigPayload():
     disparo_ativo: disparoAtivo.value,
     config_follow_up: follow,
     follow_ativo_em_colunas: clonarFollowColunas(followAtivoEmColunas.value),
+    regras_follow_up: regrasFollowUp.value,
+    id_da_lista_de_atendimento_do_whatsapp: listaAtendimentoSelecionada(),
+    id_lista_finalizado_do_whatsapp: listaFinalizadoSelecionada(),
+    id_lista_transferencia_de_atendimento_whatsapp: listaTransferenciaSelecionada(),
+    id_lista_pedido_pronto_whatsapp: listaPedidoProntoSelecionada(),
+    palavras_ativacao_follow_up: palavras,
   }
 }
 
@@ -524,6 +965,7 @@ function sincronizarFormularioNoPinia() {
     : 0
 
   const follow = linhasParaFollowUp(followUpLinhas.value)
+  const palavras = linhasParaPalavras(palavrasAtivacaoLinhas.value)
 
   canaisStore.items[idx] = {
     ...atual,
@@ -550,6 +992,13 @@ function sincronizarFormularioNoPinia() {
     disparo_ativo: disparoAtivo.value,
     config_follow_up: typeof follow === 'string' ? atual.config_follow_up : follow,
     follow_ativo_em_colunas: clonarFollowColunas(followAtivoEmColunas.value),
+    regras_follow_up: regrasFollowUp.value,
+    id_da_lista_de_atendimento_do_whatsapp: listaAtendimentoSelecionada(),
+    id_lista_finalizado_do_whatsapp: listaFinalizadoSelecionada(),
+    id_lista_transferencia_de_atendimento_whatsapp: listaTransferenciaSelecionada(),
+    id_lista_pedido_pronto_whatsapp: listaPedidoProntoSelecionada(),
+    palavras_ativacao_follow_up:
+      typeof palavras === 'string' ? atual.palavras_ativacao_follow_up : palavras,
   }
 }
 
@@ -577,8 +1026,16 @@ function resetarCamposExtras() {
   lojaSlug.value = ''
   formasPagamento.value = clonarFormasPagamento()
   disparoAtivo.value = false
+  for (const linha of followUpLinhas.value) descartarPreviewFollow(linha)
   followUpLinhas.value = []
   followAtivoEmColunas.value = []
+  regrasFollowUp.value = CANAL_REGRAS_FOLLOW_UP_PADRAO
+  palavrasAtivacaoLinhas.value = []
+  listaAtendimentoKey.value = ''
+  listaFinalizadoKey.value = ''
+  listaTransferenciaKey.value = ''
+  listaPedidoProntoKey.value = ''
+  limparLabelsWhatsapp()
 }
 
 function preencherDoPinia() {
@@ -614,8 +1071,20 @@ function preencherDoPinia() {
     lojaSlug.value = canal.loja_slug?.trim() ?? ''
     formasPagamento.value = clonarFormasPagamento(canal.formas_pagamento)
     disparoAtivo.value = canal.disparo_ativo === true
+    for (const linha of followUpLinhas.value) descartarPreviewFollow(linha)
     followUpLinhas.value = followUpParaLinhas(canal.config_follow_up)
     followAtivoEmColunas.value = clonarFollowColunas(canal.follow_ativo_em_colunas)
+    regrasFollowUp.value =
+      typeof canal.regras_follow_up === 'string'
+        ? canal.regras_follow_up
+        : CANAL_REGRAS_FOLLOW_UP_PADRAO
+    palavrasAtivacaoLinhas.value = palavrasParaLinhas(canal.palavras_ativacao_follow_up)
+    listaAtendimentoKey.value = labelIdSalvo(canal.id_da_lista_de_atendimento_do_whatsapp)
+    listaFinalizadoKey.value = labelIdSalvo(canal.id_lista_finalizado_do_whatsapp)
+    listaTransferenciaKey.value = labelIdSalvo(
+      canal.id_lista_transferencia_de_atendimento_whatsapp,
+    )
+    listaPedidoProntoKey.value = labelIdSalvo(canal.id_lista_pedido_pronto_whatsapp)
   } finally {
     // nextTick seria melhor, mas microtask evita sync com form ainda “velho”
     queueMicrotask(() => {
@@ -674,7 +1143,7 @@ watch(
 )
 
 watch(
-  [nome, descricao, endereco, latitude, longitude, tempoAvisoMinutos, valorPedidoMinimo, horarios, assinaturaIaNaMensagem, botaoParaIniciarIa, mensagemSaudacao, imagemSaudacaoUrl, imagemRemovida, lojaSlug, formasPagamento, disparoAtivo, followUpLinhas, followAtivoEmColunas],
+  [nome, descricao, endereco, latitude, longitude, tempoAvisoMinutos, valorPedidoMinimo, horarios, assinaturaIaNaMensagem, botaoParaIniciarIa, mensagemSaudacao, imagemSaudacaoUrl, imagemRemovida, lojaSlug, formasPagamento, disparoAtivo, followUpLinhas, followAtivoEmColunas, regrasFollowUp, palavrasAtivacaoLinhas, listaAtendimentoKey, listaFinalizadoKey, listaTransferenciaKey, listaPedidoProntoKey],
   () => {
     if (!isOpen.value || !isEdit.value) return
     sincronizarFormularioNoPinia()
@@ -777,6 +1246,17 @@ async function onCreate() {
     return
   }
 
+  enviandoFollowMidia.value = true
+  try {
+    const erroMidia = await resolverMidiasFollowUpAntesDeSalvar()
+    if (erroMidia) {
+      toast.warning(erroMidia)
+      return
+    }
+  } finally {
+    enviandoFollowMidia.value = false
+  }
+
   const payload = buildConfigPayload()
   if (typeof payload === 'string') {
     toast.warning(payload)
@@ -830,6 +1310,14 @@ async function onCreate() {
         disparo_ativo: payload.disparo_ativo,
         config_follow_up: payload.config_follow_up,
         follow_ativo_em_colunas: payload.follow_ativo_em_colunas,
+        regras_follow_up: payload.regras_follow_up,
+        id_da_lista_de_atendimento_do_whatsapp:
+          payload.id_da_lista_de_atendimento_do_whatsapp,
+        id_lista_finalizado_do_whatsapp: payload.id_lista_finalizado_do_whatsapp,
+        id_lista_transferencia_de_atendimento_whatsapp:
+          payload.id_lista_transferencia_de_atendimento_whatsapp,
+        id_lista_pedido_pronto_whatsapp: payload.id_lista_pedido_pronto_whatsapp,
+        palavras_ativacao_follow_up: payload.palavras_ativacao_follow_up,
       })
       edicaoCommitada.value = true
       snapshotCanal.value = null
@@ -867,6 +1355,14 @@ async function onCreate() {
       disparo_ativo: payload.disparo_ativo,
       config_follow_up: payload.config_follow_up,
       follow_ativo_em_colunas: payload.follow_ativo_em_colunas,
+      regras_follow_up: payload.regras_follow_up,
+      id_da_lista_de_atendimento_do_whatsapp:
+        payload.id_da_lista_de_atendimento_do_whatsapp,
+      id_lista_finalizado_do_whatsapp: payload.id_lista_finalizado_do_whatsapp,
+      id_lista_transferencia_de_atendimento_whatsapp:
+        payload.id_lista_transferencia_de_atendimento_whatsapp,
+      id_lista_pedido_pronto_whatsapp: payload.id_lista_pedido_pronto_whatsapp,
+      palavras_ativacao_follow_up: payload.palavras_ativacao_follow_up,
     })
     toast.success('Canal criado com sucesso.')
     emit('criado', created)
@@ -1316,62 +1812,478 @@ async function onCreate() {
         </div>
 
         <div class="space-y-4 border-t border-outline-variant/15 pt-5 dark:border-dark-outline/20">
-          <div class="flex items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-bold text-on-surface dark:text-dark-on-surface">Disparo e follow-up</h3>
               <p class="mt-1 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
-                Cada passo vira a chave 1, 2, 3… com os minutos de espera.
+                Cada passo vira a chave 1, 2, 3… com minutos, mensagem da I.A. ou fixa (texto/mídia).
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              :aria-checked="disparoAtivo"
-              aria-label="Disparo ativo"
-              class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
-              :class="disparoAtivo ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'"
-              @click="disparoAtivo = !disparoAtivo"
-            >
-              <span
-                class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
-                :class="disparoAtivo ? 'translate-x-6' : 'translate-x-1'"
-              />
-            </button>
+            <div class="flex items-center gap-3">
+              <BaseButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                :block="false"
+                class="!px-3"
+                :disabled="labelsWhatsappPending"
+                @click="carregarListasDoWhatsapp"
+              >
+                {{ labelsWhatsappPending ? 'Buscando…' : 'Listas do WhatsApp' }}
+              </BaseButton>
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="disparoAtivo"
+                aria-label="Disparo ativo"
+                class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
+                :class="disparoAtivo ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'"
+                @click="disparoAtivo = !disparoAtivo"
+              >
+                <span
+                  class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                  :class="disparoAtivo ? 'translate-x-6' : 'translate-x-1'"
+                />
+              </button>
+            </div>
           </div>
 
-          <div class="space-y-2">
+          <div
+            v-if="labelsWhatsappErro || labelsWhatsappCarregadas || labelsWhatsappPending"
+            class="space-y-3 rounded-2xl border border-outline-variant/20 p-3 dark:border-dark-outline/25"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+                Listas do WhatsApp
+              </p>
+              <button
+                type="button"
+                class="inline-flex h-9 w-9 items-center justify-center rounded-2xl text-primary hover:bg-primary/10 disabled:opacity-50"
+                aria-label="Criar etiqueta"
+                title="Criar etiqueta"
+                :disabled="labelsWhatsappPending || labelFormPending"
+                @click="abrirCriarLabel"
+              >
+                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">add</span>
+              </button>
+            </div>
+
+            <div
+              v-if="labelFormAberto"
+              class="space-y-3 rounded-xl border border-outline-variant/25 bg-surface-container-lowest p-3 dark:border-dark-outline/30 dark:bg-dark-surface-container-lowest"
+            >
+              <p class="text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                {{ labelFormModo === 'criar' ? 'Nova etiqueta' : `Editar etiqueta #${labelFormLabelId}` }}
+              </p>
+              <div>
+                <label
+                  class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+                  :for="`canal-label-nome-${fieldIdSuffix}`"
+                >
+                  Nome
+                </label>
+                <BaseInput
+                  :id="`canal-label-nome-${fieldIdSuffix}`"
+                  v-model="labelFormNome"
+                  name="canal_label_nome"
+                  placeholder="Ex: Para Atender"
+                />
+              </div>
+              <div>
+                <p class="mb-2 text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+                  Cor
+                </p>
+                <div class="flex flex-wrap gap-2">
+                  <button
+                    v-for="cor in WHATSAPP_LABEL_CORES"
+                    :key="cor.value"
+                    type="button"
+                    class="h-7 w-7 rounded-full ring-offset-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    :class="labelFormCor === cor.value ? 'ring-2 ring-primary' : 'ring-1 ring-black/10'"
+                    :style="{ backgroundColor: cor.hex }"
+                    :title="`Cor ${cor.value}`"
+                    :aria-label="`Cor ${cor.value}`"
+                    @click="labelFormCor = cor.value"
+                  />
+                </div>
+              </div>
+              <div class="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  class="rounded-xl px-3 py-2 text-sm font-medium text-on-surface-variant hover:bg-surface-container dark:text-dark-on-surface-variant"
+                  :disabled="labelFormPending"
+                  @click="fecharFormLabel"
+                >
+                  Cancelar
+                </button>
+                <BaseButton
+                  type="button"
+                  size="sm"
+                  :block="false"
+                  class="!px-3"
+                  :disabled="labelFormPending || !labelFormNome.trim()"
+                  @click="salvarLabelWhatsapp"
+                >
+                  {{ labelFormPending ? 'Salvando…' : labelFormModo === 'criar' ? 'Criar' : 'Salvar' }}
+                </BaseButton>
+              </div>
+            </div>
+
+            <p
+              v-if="labelsWhatsappPending"
+              class="text-sm text-on-surface-variant dark:text-dark-on-surface-variant"
+            >
+              Carregando labels…
+            </p>
+            <p
+              v-else-if="labelsWhatsappErro"
+              class="text-sm text-error"
+            >
+              {{ labelsWhatsappErro }}
+            </p>
+            <ul
+              v-else
+              class="grid grid-cols-1 gap-2 sm:grid-cols-2"
+            >
+              <li
+                v-for="label in labelsWhatsapp"
+                :key="label.id"
+                class="flex items-center gap-2 rounded-xl bg-surface-container px-3 py-2 text-sm text-on-surface dark:bg-dark-surface-container dark:text-dark-on-surface"
+              >
+                <span
+                  class="inline-block h-3 w-3 shrink-0 rounded-full ring-1 ring-black/10"
+                  :style="{ backgroundColor: label.colorHex || '#94a3b8' }"
+                  aria-hidden="true"
+                />
+                <span class="min-w-0 flex-1 truncate font-medium">{{ label.name }}</span>
+                <span
+                  v-if="label.labelid"
+                  class="shrink-0 text-[10px] tabular-nums text-on-surface-variant dark:text-dark-on-surface-variant"
+                >
+                  #{{ label.labelid }}
+                </span>
+                <button
+                  type="button"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-on-surface-variant hover:bg-surface-container-high hover:text-primary dark:text-dark-on-surface-variant dark:hover:bg-dark-surface-container-high"
+                  :aria-label="`Editar ${label.name}`"
+                  title="Editar etiqueta"
+                  :disabled="labelFormPending"
+                  @click="abrirEditarLabel(label)"
+                >
+                  <span class="material-symbols-outlined text-[18px]" aria-hidden="true">edit</span>
+                </button>
+              </li>
+              <li
+                v-if="!labelsWhatsapp.length"
+                class="col-span-full text-sm text-on-surface-variant dark:text-dark-on-surface-variant"
+              >
+                Nenhuma etiqueta neste WhatsApp. Use + para criar.
+              </li>
+            </ul>
+          </div>
+
+          <div>
+            <label
+              class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+              :for="`canal-lista-atendimento-${fieldIdSuffix}`"
+            >
+              Lista de atendimento (única)
+            </label>
+            <select
+              :id="`canal-lista-atendimento-${fieldIdSuffix}`"
+              class="w-full rounded-2xl border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface"
+              :value="listaAtendimentoKey"
+              @change="onChangeListaAtendimento"
+            >
+              <option value="">
+                Nenhuma
+              </option>
+              <option
+                v-for="label in opcoesLabelsWhatsapp"
+                :key="`lista-${chaveWhatsappLabel(label)}`"
+                :value="chaveWhatsappLabel(label)"
+              >
+                {{ label.name }}{{ label.labelid ? ` (#${label.labelid})` : '' }}
+              </option>
+            </select>
+            <p class="mt-1 text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+              Busque as listas do WhatsApp para escolher. Salva apenas o labelid.
+            </p>
+          </div>
+
+          <div>
+            <label
+              class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+              :for="`canal-lista-finalizado-${fieldIdSuffix}`"
+            >
+              Lista de finalizado (única)
+            </label>
+            <select
+              :id="`canal-lista-finalizado-${fieldIdSuffix}`"
+              class="w-full rounded-2xl border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface"
+              :value="listaFinalizadoKey"
+              @change="onChangeListaFinalizado"
+            >
+              <option value="">
+                Nenhuma
+              </option>
+              <option
+                v-for="label in opcoesLabelsWhatsapp"
+                :key="`finalizado-${chaveWhatsappLabel(label)}`"
+                :value="chaveWhatsappLabel(label)"
+              >
+                {{ label.name }}{{ label.labelid ? ` (#${label.labelid})` : '' }}
+              </option>
+            </select>
+            <p class="mt-1 text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+              Etiqueta aplicada quando o atendimento é finalizado. Salva apenas o labelid.
+            </p>
+          </div>
+
+          <div>
+            <label
+              class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+              :for="`canal-lista-transferencia-${fieldIdSuffix}`"
+            >
+              Lista de transferência de atendimento (única)
+            </label>
+            <select
+              :id="`canal-lista-transferencia-${fieldIdSuffix}`"
+              class="w-full rounded-2xl border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface"
+              :value="listaTransferenciaKey"
+              @change="onChangeListaTransferencia"
+            >
+              <option value="">
+                Nenhuma
+              </option>
+              <option
+                v-for="label in opcoesLabelsWhatsapp"
+                :key="`transferencia-${chaveWhatsappLabel(label)}`"
+                :value="chaveWhatsappLabel(label)"
+              >
+                {{ label.name }}{{ label.labelid ? ` (#${label.labelid})` : '' }}
+              </option>
+            </select>
+            <p class="mt-1 text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+              Etiqueta aplicada na transferência de atendimento. Salva apenas o labelid.
+            </p>
+          </div>
+
+          <div>
+            <label
+              class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+              :for="`canal-lista-pedido-pronto-${fieldIdSuffix}`"
+            >
+              Lista de pedido pronto (única)
+            </label>
+            <select
+              :id="`canal-lista-pedido-pronto-${fieldIdSuffix}`"
+              class="w-full rounded-2xl border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface"
+              :value="listaPedidoProntoKey"
+              @change="onChangeListaPedidoPronto"
+            >
+              <option value="">
+                Nenhuma
+              </option>
+              <option
+                v-for="label in opcoesLabelsWhatsapp"
+                :key="`pedido-pronto-${chaveWhatsappLabel(label)}`"
+                :value="chaveWhatsappLabel(label)"
+              >
+                {{ label.name }}{{ label.labelid ? ` (#${label.labelid})` : '' }}
+              </option>
+            </select>
+            <p class="mt-1 text-[11px] text-on-surface-variant dark:text-dark-on-surface-variant">
+              Etiqueta aplicada quando o pedido fica pronto. Salva apenas o labelid.
+            </p>
+          </div>
+
+          <div class="space-y-4">
             <div
               v-for="(linha, index) in followUpLinhas"
               :key="linha.id"
-              class="flex items-end gap-2"
+              class="space-y-3 rounded-2xl border border-outline-variant/20 p-3 dark:border-dark-outline/25"
             >
-              <div class="w-16 shrink-0 pt-6 text-sm font-semibold text-on-surface dark:text-dark-on-surface">
-                {{ index + 1 }}
+              <div class="flex items-end gap-2">
+                <div class="w-10 shrink-0 pt-6 text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                  {{ index + 1 }}
+                </div>
+                <div class="min-w-0 flex-1">
+                  <label
+                    class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+                    :for="`canal-follow-${linha.id}`"
+                  >
+                    Minutos de espera
+                  </label>
+                  <BaseInput
+                    :id="`canal-follow-${linha.id}`"
+                    v-model="linha.minutos"
+                    type="number"
+                    :name="`canal_follow_${linha.id}`"
+                    inputmode="numeric"
+                    placeholder="Ex: 5"
+                  />
+                </div>
+                <button
+                  type="button"
+                  class="mb-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-error hover:bg-error/10"
+                  :aria-label="`Remover follow-up ${index + 1}`"
+                  @click="removerFollowUp(linha.id)"
+                >
+                  <span class="material-symbols-outlined text-[20px]" aria-hidden="true">delete</span>
+                </button>
               </div>
-              <div class="min-w-0 flex-1">
+
+              <div>
                 <label
                   class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
-                  :for="`canal-follow-${linha.id}`"
+                  :for="`canal-follow-etiqueta-${linha.id}`"
                 >
-                  Minutos de espera
+                  Etiqueta desta etapa
                 </label>
-                <BaseInput
-                  :id="`canal-follow-${linha.id}`"
-                  v-model="linha.minutos"
-                  type="number"
-                  :name="`canal_follow_${linha.id}`"
-                  inputmode="numeric"
-                  placeholder="Ex: 5"
-                />
+                <select
+                  :id="`canal-follow-etiqueta-${linha.id}`"
+                  class="w-full rounded-2xl border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface"
+                  :value="linha.etiquetaKey"
+                  @change="onChangeEtiquetaFollow(linha, $event)"
+                >
+                  <option value="">
+                    Nenhuma
+                  </option>
+                  <option
+                    v-for="label in opcoesLabelsWhatsapp"
+                    :key="`fu-${linha.id}-${chaveWhatsappLabel(label)}`"
+                    :value="chaveWhatsappLabel(label)"
+                  >
+                    {{ label.name }}{{ label.labelid ? ` (#${label.labelid})` : '' }}
+                  </option>
+                </select>
               </div>
-              <button
-                type="button"
-                class="mb-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-error hover:bg-error/10"
-                :aria-label="`Remover follow-up ${index + 1}`"
-                @click="removerFollowUp(linha.id)"
-              >
-                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">delete</span>
-              </button>
+
+              <div class="flex flex-wrap items-center gap-3">
+                <span class="text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant">
+                  Mensagem
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  :aria-checked="linha.mensagem_fixa"
+                  class="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors"
+                  :class="linha.mensagem_fixa ? 'bg-primary' : 'bg-slate-300 dark:bg-slate-600'"
+                  @click="linha.mensagem_fixa = !linha.mensagem_fixa"
+                >
+                  <span
+                    class="inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform"
+                    :class="linha.mensagem_fixa ? 'translate-x-6' : 'translate-x-1'"
+                  />
+                </button>
+                <span class="text-xs text-on-surface dark:text-dark-on-surface">
+                  {{ linha.mensagem_fixa ? 'Fixa' : 'I.A. (contexto)' }}
+                </span>
+              </div>
+
+              <template v-if="linha.mensagem_fixa">
+                <div>
+                  <label
+                    class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+                    :for="`canal-follow-tipo-${linha.id}`"
+                  >
+                    Tipo
+                  </label>
+                  <select
+                    :id="`canal-follow-tipo-${linha.id}`"
+                    v-model="linha.tipo"
+                    class="h-11 w-full rounded-2xl border border-outline-variant/30 bg-surface-container-lowest px-3 text-sm text-on-surface dark:border-dark-outline/30 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface"
+                  >
+                    <option
+                      v-for="opt in CANAL_FOLLOW_UP_TIPOS_MIDIA"
+                      :key="opt.value"
+                      :value="opt.value"
+                    >
+                      {{ opt.label }}
+                    </option>
+                  </select>
+                </div>
+
+                <div v-if="linha.tipo === 'texto'">
+                  <label
+                    class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+                    :for="`canal-follow-texto-${linha.id}`"
+                  >
+                    Texto da mensagem
+                  </label>
+                  <BaseTextarea
+                    :id="`canal-follow-texto-${linha.id}`"
+                    v-model="linha.conteudo"
+                    :name="`canal_follow_texto_${linha.id}`"
+                    rows="3"
+                    placeholder="Mensagem fixa de follow-up…"
+                  />
+                </div>
+
+                <div
+                  v-else
+                  class="space-y-2"
+                >
+                  <label
+                    class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+                    :for="`canal-follow-file-${linha.id}`"
+                  >
+                    Arquivo de mídia
+                  </label>
+                  <input
+                    :id="`canal-follow-file-${linha.id}`"
+                    type="file"
+                    class="block w-full text-sm text-on-surface-variant file:mr-3 file:rounded-xl file:border-0 file:bg-primary/10 file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary"
+                    @change="onFollowArquivoChange(linha, $event)"
+                  >
+                  <p
+                    v-if="linha.arquivo"
+                    class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+                  >
+                    Novo arquivo: {{ linha.arquivo.name }}
+                  </p>
+                  <p
+                    v-else-if="linha.media_url"
+                    class="truncate text-xs text-on-surface-variant dark:text-dark-on-surface-variant"
+                  >
+                    Já salvo: {{ linha.media_url }}
+                  </p>
+                  <div class="flex flex-wrap gap-2">
+                    <a
+                      v-if="linha.media_url && !linha.arquivo"
+                      :href="linha.media_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="text-xs font-medium text-primary hover:underline"
+                    >
+                      Abrir mídia atual
+                    </a>
+                    <button
+                      v-if="linha.arquivo || linha.media_url"
+                      type="button"
+                      class="text-xs font-medium text-error hover:underline"
+                      @click="limparFollowArquivo(linha)"
+                    >
+                      Remover arquivo
+                    </button>
+                  </div>
+                  <div>
+                    <label
+                      class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+                      :for="`canal-follow-caption-${linha.id}`"
+                    >
+                      Legenda (opcional)
+                    </label>
+                    <BaseInput
+                      :id="`canal-follow-caption-${linha.id}`"
+                      v-model="linha.conteudo"
+                      :name="`canal_follow_caption_${linha.id}`"
+                      placeholder="Caption…"
+                    />
+                  </div>
+                </div>
+              </template>
             </div>
 
             <div class="flex justify-end">
@@ -1383,6 +2295,82 @@ async function onCreate() {
               >
                 <span class="material-symbols-outlined text-[20px]" aria-hidden="true">add</span>
               </button>
+            </div>
+          </div>
+
+          <div class="space-y-3 border-t border-outline-variant/15 pt-4 dark:border-dark-outline/20">
+            <div>
+              <h4 class="text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                Palavras de ativação do follow-up
+              </h4>
+              <p class="mt-1 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+                Frases ou palavras que ativam o follow-up. Aceita letras, números e emoji.
+              </p>
+            </div>
+
+            <div
+              v-for="(linha, index) in palavrasAtivacaoLinhas"
+              :key="linha.id"
+              class="flex items-end gap-2"
+            >
+              <div class="min-w-0 flex-1">
+                <label
+                  class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+                  :for="`canal-palavra-ativacao-${linha.id}`"
+                >
+                  Frase {{ index + 1 }}
+                </label>
+                <BaseInput
+                  :id="`canal-palavra-ativacao-${linha.id}`"
+                  v-model="linha.texto"
+                  :name="`canal_palavra_ativacao_${linha.id}`"
+                  placeholder="Ex: quero orçamento"
+                />
+              </div>
+              <button
+                type="button"
+                class="mb-0.5 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-error hover:bg-error/10"
+                :aria-label="`Remover frase ${index + 1}`"
+                @click="removerPalavraAtivacao(linha.id)"
+              >
+                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">delete</span>
+              </button>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="inline-flex h-11 w-11 items-center justify-center rounded-2xl text-primary hover:bg-primary/10"
+                aria-label="Adicionar palavra de ativação"
+                @click="adicionarPalavraAtivacao"
+              >
+                <span class="material-symbols-outlined text-[20px]" aria-hidden="true">add</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-3 border-t border-outline-variant/15 pt-4 dark:border-dark-outline/20">
+            <div>
+              <h4 class="text-sm font-semibold text-on-surface dark:text-dark-on-surface">
+                Regras de follow-up
+              </h4>
+              <p class="mt-1 text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+                Oriente a I.A. sobre quando fazer e quando não fazer o follow-up.
+              </p>
+            </div>
+            <div>
+              <label
+                class="mb-1 block text-xs font-medium text-on-surface-variant dark:text-dark-on-surface-variant"
+                :for="`canal-regras-follow-up-${fieldIdSuffix}`"
+              >
+                Regras
+              </label>
+              <BaseTextarea
+                :id="`canal-regras-follow-up-${fieldIdSuffix}`"
+                v-model="regrasFollowUp"
+                name="regras_follow_up"
+                rows="8"
+              />
             </div>
           </div>
 
@@ -1450,10 +2438,18 @@ async function onCreate() {
       <div class="w-full sm:w-44">
         <BaseButton
           type="button"
-          :disabled="!formularioValido || canaisStore.pending || enviandoImagem"
+          :disabled="!formularioValido || canaisStore.pending || enviandoImagem || enviandoFollowMidia"
           @click="onCreate"
         >
-          {{ enviandoImagem ? 'Enviando imagem…' : isEdit ? 'Salvar' : 'Criar canal' }}
+          {{
+            enviandoFollowMidia
+              ? 'Enviando mídia…'
+              : enviandoImagem
+                ? 'Enviando imagem…'
+                : isEdit
+                  ? 'Salvar'
+                  : 'Criar canal'
+          }}
         </BaseButton>
       </div>
     </template>

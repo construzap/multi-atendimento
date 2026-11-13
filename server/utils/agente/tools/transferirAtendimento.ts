@@ -45,5 +45,9 @@ export const transferirAtendimentoTool: ToolDef = {
     user_id: ctxStr(ctx.user_id),
     loja_aberta: ctx.loja_aberta,
     agenda_pedido: ctx.agenda_pedido,
+    id_lista_transferencia_de_atendimento_whatsapp: ctxStr(
+      ctx.id_lista_transferencia_de_atendimento_whatsapp,
+    ),
+    id_lista_pedido_pronto_whatsapp: ctxStr(ctx.id_lista_pedido_pronto_whatsapp),
   }),
 }

@@ -68,6 +68,9 @@ async function carregarStatus() {
     })
     statusInstancia.value = data
     sincronizarStatusNoPinia(data)
+    if (data.status === 'connected' && data.numero) {
+      void canaisStore.sincronizarConnectPhone(props.canal.id, data.numero)
+    }
     return data
   } catch (err: unknown) {
     statusInstancia.value = null

@@ -85,10 +85,39 @@ export interface Canal {
   formas_pagamento: CanalFormasPagamento
   /** Disparo em massa ativo (`canais.disparo_ativo`). */
   disparo_ativo: boolean
-  /** Passos de follow-up: `{ "1": { minutos_espera: 5 }, ... }`. */
+  /** Passos de follow-up: `{ "1": { minutos_espera: 5, ... }, ... }`. */
   config_follow_up: CanalConfigFollowUp
   /** Colunas do kanban em que o follow-up fica ativo (`canais.follow_ativo_em_colunas`). */
   follow_ativo_em_colunas: CanalFollowAtivoEmColunas
+  /** Regras textuais de quando fazer / não fazer follow-up. */
+  regras_follow_up: CanalRegrasFollowUp
+  /**
+   * `labelid` da etiqueta de atendimento do WhatsApp
+   * (`canais.id_da_lista_de_atendimento_do_whatsapp`).
+   */
+  id_da_lista_de_atendimento_do_whatsapp: string | null
+  /**
+   * `labelid` da etiqueta de finalizado do WhatsApp
+   * (`canais.id_lista_finalizado_do_whatsapp`).
+   */
+  id_lista_finalizado_do_whatsapp: string | null
+  /**
+   * `labelid` da etiqueta de transferência de atendimento do WhatsApp
+   * (`canais.id_lista_transferencia_de_atendimento_whatsapp`).
+   */
+  id_lista_transferencia_de_atendimento_whatsapp: string | null
+  /**
+   * `labelid` da etiqueta de pedido pronto do WhatsApp
+   * (`canais.id_lista_pedido_pronto_whatsapp`).
+   */
+  id_lista_pedido_pronto_whatsapp: string | null
+  /** Número WhatsApp conectado na instância (`canais.connect_phone` = owner). */
+  connect_phone: string | null
+  /**
+   * Palavras/frases que ativam o follow-up
+   * (`canais.palavras_ativacao_follow_up` — array JSON de strings).
+   */
+  palavras_ativacao_follow_up: CanalPalavrasAtivacaoFollowUp
 }
 
 export type CanalFormasPagamentoOnline = {
@@ -139,12 +168,99 @@ export const CANAL_FORMAS_ENTREGA: { key: keyof CanalFormasPagamentoEntrega; lab
   { key: 'vale_refeicao', label: 'Vale-refeição' },
 ]
 
+/**
+ * Tipos de mídia em etapa fixa de follow-up.
+ * Áudio enviado pelo usuário é sempre gravado como `ptt`.
+ */
+export type CanalFollowUpTipoMidia =
+  | 'texto'
+  | 'image'
+  | 'video'
+  | 'document'
+  | 'ptt'
+  | 'sticker'
+
+export const CANAL_FOLLOW_UP_TIPOS_MIDIA: {
+  value: CanalFollowUpTipoMidia
+  label: string
+}[] = [
+  { value: 'texto', label: 'Texto' },
+  { value: 'image', label: 'Imagem' },
+  { value: 'video', label: 'Vídeo (MP4)' },
+  { value: 'document', label: 'Documento' },
+  { value: 'ptt', label: 'Áudio (PTT)' },
+  { value: 'sticker', label: 'Figurinha' },
+]
+
+/** Label do WhatsApp (Uazapi `GET /labels`). */
+export type WhatsappLabelItem = {
+  id: string
+  name: string
+  color: number | null
+  colorHex: string | null
+  labelid: string | null
+  owner: string | null
+  created: string | null
+  updated: string | null
+}
+
+export type ListasDoWhatsappResponse = {
+  labels: WhatsappLabelItem[]
+}
+
+export type WhatsappLabelMutateResponse = {
+  ok: true
+  response: string
+}
+
+/** Cores numéricas da Uazapi (0–19) com hex aproximado para a UI. */
+export const WHATSAPP_LABEL_CORES: { value: number; hex: string; label: string }[] = [
+  { value: 0, hex: '#e9edef', label: '0' },
+  { value: 1, hex: '#00a884', label: '1' },
+  { value: 2, hex: '#fed428', label: '2' },
+  { value: 3, hex: '#dfaef0', label: '3' },
+  { value: 4, hex: '#a7f0ba', label: '4' },
+  { value: 5, hex: '#f7c794', label: '5' },
+  { value: 6, hex: '#7ad3f7', label: '6' },
+  { value: 7, hex: '#f7a8c5', label: '7' },
+  { value: 8, hex: '#c4b5fd', label: '8' },
+  { value: 9, hex: '#86efac', label: '9' },
+  { value: 10, hex: '#fde68a', label: '10' },
+  { value: 11, hex: '#ffc5c7', label: '11' },
+  { value: 12, hex: '#bae6fd', label: '12' },
+  { value: 13, hex: '#fecdd3', label: '13' },
+  { value: 14, hex: '#d9f99d', label: '14' },
+  { value: 15, hex: '#fbcfe8', label: '15' },
+  { value: 16, hex: '#a5f3fc', label: '16' },
+  { value: 17, hex: '#fcd34d', label: '17' },
+  { value: 18, hex: '#9ba6ff', label: '18' },
+  { value: 19, hex: '#fca5a5', label: '19' },
+]
+
 /** Um passo de follow-up (`config_follow_up`). */
 export type CanalFollowUpPasso = {
   minutos_espera: number
+  /**
+   * `false` = I.A. analisa o contexto e gera texto.
+   * `true` = mensagem fixa (texto ou mídia).
+   */
+  mensagem_fixa: boolean
+  /** Obrigatório quando `mensagem_fixa` é true. */
+  tipo?: CanalFollowUpTipoMidia
+  /** Texto da mensagem ou caption (quando aplicável). */
+  conteudo?: string | null
+  /** URL pública da mídia no B2 (quando tipo ≠ texto). */
+  media_url?: string | null
+  /** `labelid` da etiqueta do WhatsApp vinculada a esta etapa. */
+  etiqueta?: string | null
 }
 
 export type CanalConfigFollowUp = Record<string, CanalFollowUpPasso>
+
+/** `canais.regras_follow_up` (text livre). */
+export type CanalRegrasFollowUp = string
+
+export const CANAL_REGRAS_FOLLOW_UP_PADRAO: CanalRegrasFollowUp = ''
 
 /** Par funil + coluna em `canais.follow_ativo_em_colunas`. */
 export type CanalFollowAtivoColuna = {
@@ -153,6 +269,9 @@ export type CanalFollowAtivoColuna = {
 }
 
 export type CanalFollowAtivoEmColunas = CanalFollowAtivoColuna[]
+
+/** `canais.palavras_ativacao_follow_up` — palavras/frases de ativação. */
+export type CanalPalavrasAtivacaoFollowUp = string[]
 
 export type CanalProvedorPagamentos = 'pagar.me' | 'asaas' | 'pix_manual'
 
@@ -215,6 +334,13 @@ export type CanalCreateInput = {
   disparo_ativo?: boolean
   config_follow_up?: CanalConfigFollowUp
   follow_ativo_em_colunas?: CanalFollowAtivoEmColunas
+  regras_follow_up?: CanalRegrasFollowUp
+  id_da_lista_de_atendimento_do_whatsapp?: string | null
+  id_lista_finalizado_do_whatsapp?: string | null
+  id_lista_transferencia_de_atendimento_whatsapp?: string | null
+  id_lista_pedido_pronto_whatsapp?: string | null
+  connect_phone?: string | null
+  palavras_ativacao_follow_up?: CanalPalavrasAtivacaoFollowUp
 }
 
 /** Payload de atualização de canal (POST /api/canais/editarcanal). */
@@ -245,4 +371,11 @@ export type CanalUpdateInput = {
   disparo_ativo?: boolean
   config_follow_up?: CanalConfigFollowUp
   follow_ativo_em_colunas?: CanalFollowAtivoEmColunas
+  regras_follow_up?: CanalRegrasFollowUp
+  id_da_lista_de_atendimento_do_whatsapp?: string | null
+  id_lista_finalizado_do_whatsapp?: string | null
+  id_lista_transferencia_de_atendimento_whatsapp?: string | null
+  id_lista_pedido_pronto_whatsapp?: string | null
+  connect_phone?: string | null
+  palavras_ativacao_follow_up?: CanalPalavrasAtivacaoFollowUp
 }

@@ -197,25 +197,7 @@ export default defineEventHandler(async (event): Promise<ProdutoAtualizarRespons
   }
 
   if (p.codigo !== undefined) {
-    const c = intOrNull(p.codigo)
-    if (c == null || c < 1) {
-      throw createError({ statusCode: 400, statusMessage: 'Código inválido (use um inteiro ≥ 1).' })
-    }
-    const { data: dup, error: dupErr } = await admin
-      .from('produtos_workspace')
-      .select('id')
-      .eq('workspace_id', workspaceId)
-      .eq('codigo', c)
-      .neq('id', produtoId)
-      .maybeSingle()
-
-    if (dupErr) {
-      throw createError({ statusCode: 500, statusMessage: dupErr.message })
-    }
-    if (dup) {
-      throw createError({ statusCode: 400, statusMessage: 'Este código já está em uso por outro produto no workspace.' })
-    }
-    update.codigo = c
+    update.codigo = strOrNull(p.codigo)
   }
 
   if (p.sku !== undefined) update.sku = strOrNull(p.sku)

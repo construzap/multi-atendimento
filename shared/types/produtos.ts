@@ -49,7 +49,8 @@ export type ProdutoSelecionadoRef = {
 export type ProdutoWorkspaceCampos = {
   /** PK da tabela. */
   id: number
-  codigo: number | null
+  /** Código do sistema externo do cliente. Texto, sem sequência interna. */
+  codigo: string | null
   nome: string
   categoria_id: number | null
   /** Nome da categoria (embed ou json `categoria` da view). */
@@ -72,6 +73,12 @@ export type ProdutoWorkspaceCampos = {
   /** Termos de pesquisa (0..N) via `produto_termo_de_pesquisa_vinculo`. */
   termos_pesquisa: ProdutoTermoPesquisaItem[]
   codigo_barras_ean: string | null
+  /** Produto gravado pela planilha sem achar código de barras nem código. */
+  nao_encontrado: boolean
+  /** A linha da planilha achou mais de um produto e espera a escolha. */
+  aguardando_escolha: boolean
+  /** Cadastro fixo em `tabelageral` ligado a este produto do workspace. */
+  tabelageral_id: number | null
   largura: number
   altura: number
   comprimento: number
@@ -106,7 +113,7 @@ export type ProdutoWorkspaceItem = ProdutoWorkspaceCampos & {
 /** Corpo parcial para `PATCH /api/produtos/atualizar` (`patch`). */
 export type ProdutoWorkspacePatch = {
   nome?: string
-  codigo?: number | null
+  codigo?: string | null
   sku?: string | null
   unidade_venda?: string | null
   marca?: string | null
@@ -208,6 +215,8 @@ export type ProdutosExcluirResponse = {
 /** Linha para `POST /api/produtos/criar-em-massa`. */
 export type ProdutoCriarEmMassaLinha = {
   nome: string
+  /** Código do sistema externo. Sem valor, grava `null`. */
+  codigo?: string | null
   sku?: string | null
   unidade_venda?: string | null
   marca?: string | null
@@ -389,7 +398,7 @@ export type ProdutosCategoriaEliminarResponse = {
 
 /**
  * Uma linha a inserir via `POST /api/produtos/importar` (sem `workspace_id` no corpo;
- * o servidor define `workspace_id` e gera `codigo` sequencial por workspace).
+ * o servidor define `workspace_id`. `codigo`, quando mapeado, é o código do sistema externo).
  *
  * Categoria: no máximo uma por produto (`categoria_id` no registro). Use `categoria_id` quando já conhece o id
  * (ex.: modal Novo); use `categoria` (nome, um único valor) quando o valor vem da planilha — o servidor resolve
@@ -397,6 +406,8 @@ export type ProdutosCategoriaEliminarResponse = {
  */
 export type ProdutoImportarLinha = {
   nome: string
+  codigo?: string | null
+  codigo_barras_ean?: string | null
   categoria_id?: number | null
   categoria?: string | null
   sku?: string | null
@@ -420,4 +431,71 @@ export type ProdutoImportarLinha = {
 /** Resposta de um lote `POST /api/produtos/importar`. */
 export type ProdutosImportarLoteResponse = {
   inseridos: number
+}
+
+/** Linha de `POST /api/produtos/planilha/atualizar-por-planilha`. Só entram campos mapeados e preenchidos. */
+export type ProdutoAtualizarPlanilhaLinha = {
+  codigo?: string | null
+  codigo_barras_ean?: string | null
+  nome?: string | null
+  categoria?: string | null
+  termos_pesquisa?: string[] | null
+  sku?: string | null
+  unidade_venda?: string | null
+  marca?: string | null
+  preco?: number | null
+  preco_prazo?: number | null
+  peso_kg?: number | null
+  estoque?: number | null
+  imagem_url?: string | null
+  infos_relevantes?: string | null
+  status?: boolean | null
+}
+
+/** Resposta de um lote `POST /api/produtos/planilha/atualizar-por-planilha`. */
+export type ProdutosAtualizarPlanilhaResponse = {
+  atualizados: number
+  nao_encontrados: number
+  aguardando_escolha: number
+}
+
+/** Resposta de `POST /api/produtos/planilha/atualizar-por-codigo` e `atualizar-por-codigo-barras`. */
+export type ProdutosAtualizarLoteResponse = {
+  atualizados: number
+  criados: number
+}
+
+export type ProdutoEscolhaOrigem = 'tabelageral' | 'workspace'
+
+export type ProdutoEscolhaCandidato = {
+  id: number
+  origem: ProdutoEscolhaOrigem
+  nome: string
+  codigo: string | null
+  codigo_barras: string | null
+  categoria: string | null
+  imagem_url: string | null
+  preco: number | null
+}
+
+export type ProdutoEscolhaPendente = {
+  id: number
+  nome: string
+  codigo: string | null
+  codigo_barras_ean: string | null
+  preco: number | null
+  imagem_url: string | null
+  candidatos: ProdutoEscolhaCandidato[]
+}
+
+/** `GET /api/produtos/planilha/escolha-planilha`. */
+export type ProdutosEscolhaPlanilhaListaResponse = {
+  data: ProdutoEscolhaPendente[]
+}
+
+/** `POST /api/produtos/planilha/escolha-planilha`. */
+export type ProdutosEscolhaPlanilhaResponse = {
+  ok: true
+  /** Ainda há candidatos: o código de barras escolhido está em mais de um produto do workspace. */
+  ainda_pendente: boolean
 }

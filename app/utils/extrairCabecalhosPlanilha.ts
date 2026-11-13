@@ -1,4 +1,4 @@
-import { cellToString } from '~/utils/planilhaTexto'
+import { cellToString, formatarNumeroPlanilha, textoFormatadoConfereNumero, corrigirMojibakeUtf8 } from '~/utils/planilhaTexto'
 
 export { cellToString, corrigirMojibakeUtf8 } from '~/utils/planilhaTexto'
 
@@ -21,6 +21,57 @@ function normalizarPrimeiraLinha(cells: unknown[]): string[] {
   let end = strs.length
   while (end > 0 && strs[end - 1] === '') end--
   return strs.slice(0, Math.max(end, 0))
+}
+
+type CelulaPlanilha = {
+  t?: string
+  v?: unknown
+  w?: string
+}
+
+/**
+ * Texto da célula para o exemplo e para a importação.
+ * Código gravado como texto (`06200`) permanece. Número cujo texto formatado
+ * não bate com o valor cru (moeda `13,69` virando `R$ 136,900.00`) usa o valor cru.
+ */
+export function valorCelulaPlanilha(cell: CelulaPlanilha | undefined): unknown {
+  if (!cell || cell.v == null || cell.v === '') return ''
+  if (cell.t === 's' || cell.t === 'str' || typeof cell.v === 'string') {
+    return corrigirMojibakeUtf8(String(cell.v).trim())
+  }
+  if (typeof cell.v === 'number' && Number.isFinite(cell.v)) {
+    const formatado = typeof cell.w === 'string' ? cell.w.trim() : ''
+    if (formatado && textoFormatadoConfereNumero(cell.v, formatado)) {
+      return corrigirMojibakeUtf8(formatado)
+    }
+    if (formatado && !/^[\sR$€£]*[-+]?\d[\d.,\s]*$/.test(formatado)) {
+      return corrigirMojibakeUtf8(formatado)
+    }
+    return formatarNumeroPlanilha(cell.v)
+  }
+  if (typeof cell.w === 'string' && cell.w.trim()) return corrigirMojibakeUtf8(cell.w.trim())
+  return corrigirMojibakeUtf8(String(cell.v).trim())
+}
+
+function matrizDaFolha(
+  XLSX: { utils: { decode_range: (ref: string) => { s: { r: number; c: number }; e: { r: number; c: number } }; encode_cell: (addr: { r: number; c: number }) => string } },
+  sheet: Record<string, unknown>,
+  modo: 'texto' | 'raw',
+): unknown[][] {
+  const ref = sheet['!ref']
+  if (typeof ref !== 'string' || !ref) return []
+  const range = XLSX.utils.decode_range(ref)
+  const rows: unknown[][] = []
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const row: unknown[] = []
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = sheet[XLSX.utils.encode_cell({ r, c })] as CelulaPlanilha | undefined
+      if (modo === 'raw') row.push(cell?.v ?? '')
+      else row.push(valorCelulaPlanilha(cell))
+    }
+    rows.push(row)
+  }
+  return rows
 }
 
 function alinharExemplos(cabecalhosLen: number, segundaLinha: unknown[] | undefined): string[] {
@@ -54,11 +105,7 @@ export async function extrairMetadadosPlanilhaImportacao(file: File): Promise<Me
   if (!sheet) {
     return { cabecalhos: [], exemplos: [], totalLinhasDados: 0 }
   }
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    defval: '',
-    raw: false,
-  }) as unknown[][]
+  const rows = matrizDaFolha(XLSX, sheet as Record<string, unknown>, 'texto')
 
   const primeira = rows[0]
   if (!primeira || !Array.isArray(primeira)) {
@@ -95,11 +142,11 @@ export async function lerTodasLinhasPlanilha(
   if (!sheetName) return []
   const sheet = wb.Sheets[sheetName]
   if (!sheet) return []
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header: 1,
-    defval: '',
-    raw: options?.raw === true,
-  }) as unknown[][]
+  const rows = matrizDaFolha(
+    XLSX,
+    sheet as Record<string, unknown>,
+    options?.raw === true ? 'raw' : 'texto',
+  )
   if (!rows.length) return []
   const primeira = Array.isArray(rows[0]) ? (rows[0] as unknown[]) : []
   const headerLen = normalizarPrimeiraLinha(primeira).length

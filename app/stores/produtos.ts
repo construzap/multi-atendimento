@@ -80,6 +80,9 @@ function novoRascunhoCriarEmMassa(): ProdutoWorkspaceItem {
     codigo_ncm: null,
     termos_pesquisa: [],
     codigo_barras_ean: null,
+    nao_encontrado: false,
+    aguardando_escolha: false,
+    tabelageral_id: null,
     largura: 0,
     altura: 0,
     comprimento: 0,
@@ -106,6 +109,7 @@ function linhaParaPayload(row: ProdutoWorkspaceItem): ProdutoCriarEmMassaLinha {
   const preco = row.preco
   return {
     nome: String(row.nome ?? '').trim(),
+    codigo: row.codigo?.trim() ? row.codigo.trim() : null,
     sku: row.sku,
     unidade_venda: row.unidade_venda,
     marca: row.marca,

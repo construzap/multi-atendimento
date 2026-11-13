@@ -58,6 +58,7 @@ const largura = ref('')
 const altura = ref('')
 const comprimento = ref('')
 const sku = ref('')
+const codigo = ref('')
 const codigoNcm = ref('')
 const codigoBarras = ref('')
 const infosRelevantes = ref('')
@@ -93,6 +94,7 @@ function popularDoRow(row: ProdutoWorkspaceCampos) {
   altura.value = fmtNumCampo(row.altura, true)
   comprimento.value = fmtNumCampo(row.comprimento, true)
   sku.value = row.sku ?? ''
+  codigo.value = row.codigo ?? ''
   codigoNcm.value = row.codigo_ncm ?? ''
   codigoBarras.value = row.codigo_barras_ean ?? ''
   infosRelevantes.value = row.infos_relevantes ?? ''
@@ -115,6 +117,7 @@ function limpar() {
   altura.value = ''
   comprimento.value = ''
   sku.value = ''
+  codigo.value = ''
   codigoNcm.value = ''
   codigoBarras.value = ''
   infosRelevantes.value = ''
@@ -244,6 +247,7 @@ function montarPatch(): ProdutoWorkspacePatch | null {
     altura: alturaN,
     comprimento: comprimentoN,
     sku: strOuNull(sku.value),
+    codigo: strOuNull(codigo.value),
     codigo_ncm: strOuNull(codigoNcm.value),
     codigo_barras_ean: strOuNull(codigoBarras.value),
     infos_relevantes: strOuNull(infosRelevantes.value),
@@ -272,6 +276,7 @@ function patchParaLinhaCriar(patch: ProdutoWorkspacePatch): ProdutoCriarEmMassaL
     termos_pesquisa_ids: patch.termos_pesquisa_ids ?? [],
     codigo_barras_ean: patch.codigo_barras_ean ?? null,
     sku: patch.sku ?? null,
+    codigo: patch.codigo ?? null,
     largura: patch.largura,
     altura: patch.altura,
     comprimento: patch.comprimento,
@@ -524,6 +529,21 @@ function fechar() {
           type="text"
           inputmode="decimal"
           placeholder="0"
+          autocomplete="off"
+        />
+      </div>
+
+      <div>
+        <label
+          for="produto-edit-codigo"
+          class="mb-1.5 block text-sm font-medium text-on-surface dark:text-dark-on-surface"
+        >
+          Código do sistema
+        </label>
+        <BaseInput
+          id="produto-edit-codigo"
+          v-model="codigo"
+          placeholder="Código externo"
           autocomplete="off"
         />
       </div>

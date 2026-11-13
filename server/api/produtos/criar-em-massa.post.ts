@@ -53,26 +53,6 @@ function boolDefault(v: unknown, def: boolean): boolean {
   return def
 }
 
-async function maiorCodigoNoWorkspace(
-  admin: ReturnType<typeof serverSupabaseServiceRole<any>>,
-  workspaceId: number,
-): Promise<number> {
-  const { data, error } = await admin
-    .from('produtos_workspace')
-    .select('codigo')
-    .eq('workspace_id', workspaceId)
-    .not('codigo', 'is', null)
-    .order('codigo', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message })
-  const raw = data?.codigo
-  if (raw === undefined || raw === null) return 0
-  const n = intOrNull(raw)
-  return n != null && n > 0 ? n : 0
-}
-
 function normalizarLinha(raw: unknown): ProdutoCriarEmMassaLinha | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
@@ -90,6 +70,7 @@ function normalizarLinha(raw: unknown): ProdutoCriarEmMassaLinha | null {
 
   const linha: ProdutoCriarEmMassaLinha = {
     nome,
+    codigo: strOrNull(o.codigo),
     sku: strOrNull(o.sku),
     unidade_venda: strOrNull(o.unidade_venda),
     marca: strOrNull(o.marca),
@@ -134,7 +115,7 @@ function normalizarLinha(raw: unknown): ProdutoCriarEmMassaLinha | null {
  * POST /api/produtos/criar-em-massa
  *
  * Body: `{ workspace_id, linhas }` — até 10 linhas por requisição.
- * Insere em `produtos_workspace` gerando `codigo` sequencial por workspace.
+ * Insere em `produtos_workspace`. `codigo` fica `null` quando a linha não traz o código externo.
  */
 export default defineEventHandler(async (event): Promise<ProdutosCriarEmMassaResponse> => {
   assertMethod(event, 'POST')
@@ -162,7 +143,6 @@ export default defineEventHandler(async (event): Promise<ProdutosCriarEmMassaRes
   await checkWorkspace(event, workspaceId, userId)
 
   const admin = serverSupabaseServiceRole<any>(event)
-  let codigoAtual = await maiorCodigoNoWorkspace(admin, workspaceId)
 
   const normalizadas: ProdutoCriarEmMassaLinha[] = []
   for (const item of linhasRaw) {
@@ -206,10 +186,9 @@ export default defineEventHandler(async (event): Promise<ProdutosCriarEmMassaRes
   }
 
   const insertRows = normalizadas.map((r) => {
-    codigoAtual += 1
     return {
       workspace_id: workspaceId,
-      codigo: codigoAtual,
+      codigo: r.codigo ?? null,
       nome: r.nome,
       sku: r.sku ?? null,
       unidade_venda: r.unidade_venda ?? null,

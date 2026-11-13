@@ -201,6 +201,47 @@ export const useCanaisStore = defineStore('canais', {
       })
     },
 
+    /**
+     * Se o phone (owner) da instância for diferente de `connect_phone` no Pinia,
+     * atualiza só essa coluna no banco e espelha no store.
+     */
+    async sincronizarConnectPhone(canalId: number, phone: string | null | undefined) {
+      const normalized = typeof phone === 'string' ? phone.trim() : ''
+      if (!normalized || !canalId) return false
+
+      const canal =
+        this.items.find((c) => c.id === canalId) ??
+        (this.currentCanal?.id === canalId ? this.currentCanal : null)
+      if (!canal) return false
+
+      const atual = typeof canal.connect_phone === 'string' ? canal.connect_phone.trim() : ''
+      if (atual === normalized) return false
+
+      const workspaceId = this.workspaceIdLoaded
+      if (!workspaceId) return false
+
+      try {
+        const updated = await $fetch<CanalAtualizado>('/api/canais/editarcanal', {
+          method: 'POST',
+          body: {
+            id_canal: canalId,
+            workspace_id: workspaceId,
+            connect_phone: normalized,
+          },
+        })
+        const idx = this.items.findIndex((c) => c.id === updated.id)
+        if (idx !== -1) {
+          this.items[idx] = { ...this.items[idx]!, connect_phone: updated.connect_phone }
+        }
+        if (this.currentCanal?.id === updated.id) {
+          this.currentCanal = { ...this.currentCanal, connect_phone: updated.connect_phone }
+        }
+        return true
+      } catch {
+        return false
+      }
+    },
+
     /** Define o canal em foco com o objeto completo (ex.: clique na lista ou após fetch). */
     setCurrentCanal(canal: Canal | null) {
       this.currentCanal = canal
@@ -316,6 +357,16 @@ export const useCanaisStore = defineStore('canais', {
             disparo_ativo: input.disparo_ativo,
             config_follow_up: input.config_follow_up,
             follow_ativo_em_colunas: input.follow_ativo_em_colunas,
+            regras_follow_up: input.regras_follow_up,
+            id_da_lista_de_atendimento_do_whatsapp:
+              input.id_da_lista_de_atendimento_do_whatsapp ?? null,
+            id_lista_finalizado_do_whatsapp:
+              input.id_lista_finalizado_do_whatsapp ?? null,
+            id_lista_transferencia_de_atendimento_whatsapp:
+              input.id_lista_transferencia_de_atendimento_whatsapp ?? null,
+            id_lista_pedido_pronto_whatsapp:
+              input.id_lista_pedido_pronto_whatsapp ?? null,
+            palavras_ativacao_follow_up: input.palavras_ativacao_follow_up ?? [],
           }
         })
         await Promise.all([
@@ -374,6 +425,27 @@ export const useCanaisStore = defineStore('canais', {
         if (input.config_follow_up !== undefined) body.config_follow_up = input.config_follow_up
         if (input.follow_ativo_em_colunas !== undefined) {
           body.follow_ativo_em_colunas = input.follow_ativo_em_colunas
+        }
+        if (input.regras_follow_up !== undefined) {
+          body.regras_follow_up = input.regras_follow_up
+        }
+        if (input.id_da_lista_de_atendimento_do_whatsapp !== undefined) {
+          body.id_da_lista_de_atendimento_do_whatsapp =
+            input.id_da_lista_de_atendimento_do_whatsapp
+        }
+        if (input.id_lista_finalizado_do_whatsapp !== undefined) {
+          body.id_lista_finalizado_do_whatsapp = input.id_lista_finalizado_do_whatsapp
+        }
+        if (input.id_lista_transferencia_de_atendimento_whatsapp !== undefined) {
+          body.id_lista_transferencia_de_atendimento_whatsapp =
+            input.id_lista_transferencia_de_atendimento_whatsapp
+        }
+        if (input.id_lista_pedido_pronto_whatsapp !== undefined) {
+          body.id_lista_pedido_pronto_whatsapp = input.id_lista_pedido_pronto_whatsapp
+        }
+        if (input.connect_phone !== undefined) body.connect_phone = input.connect_phone
+        if (input.palavras_ativacao_follow_up !== undefined) {
+          body.palavras_ativacao_follow_up = input.palavras_ativacao_follow_up
         }
         if (input.tem_inteligencia_artificial !== undefined) {
           body.tem_inteligencia_artificial = input.tem_inteligencia_artificial

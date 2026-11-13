@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import { toast } from 'vue-sonner'
-import type { ProdutosImportarLoteResponse, ProdutosListaFiltroId } from '#shared/types/produtos'
+import type { ProdutosAtualizarLoteResponse, ProdutosImportarLoteResponse, ProdutosListaFiltroId } from '#shared/types/produtos'
 import MapeamentoDeColunas from '~/components/produtos/MapeamentoDeColunas.vue'
 import ProdutosModalImportarProgresso from '~/components/produtos/ProdutosModalImportarProgresso.vue'
 import { mensagemErroFetch } from '~/stores/canais'
 import { extrairMetadadosPlanilhaImportacao, lerTodasLinhasPlanilha } from '~/utils/extrairCabecalhosPlanilha'
-import { construirLinhasImportacaoProduto, mapeamentoTemNome } from '~/utils/mapearLinhasImportacaoProduto'
+import {
+  chaveMapeamentoAtualizacaoProduto,
+  construirLinhasAtualizacaoProduto,
+  construirLinhasImportacaoProduto,
+  mapeamentoTemCodigoOuBarras,
+  mapeamentoTemNome,
+} from '~/utils/mapearLinhasImportacaoProduto'
+import type { ConversaoPrecoId } from '~/utils/conversaoPrecoPlanilha'
 
 const TAMANHO_LOTE_IMPORTACAO = 50
 
@@ -17,6 +24,7 @@ const ACCEPT_IMPORT =
 
 const emit = defineEmits<{
   importado: []
+  atualizado: [resumo: { aguardandoEscolha: number }]
 }>()
 
 const props = withDefaults(
@@ -38,6 +46,8 @@ const props = withDefaults(
 
 const produtosStore = useProdutosStore()
 
+const modoPlanilha = ref<'importar' | 'atualizar'>('importar')
+const resumoAtualizacao = ref<string | null>(null)
 const importacaoEmAndamento = ref(false)
 const importacaoFase = ref<ImportacaoFaseLocal>('idle')
 const importacaoProcessadas = ref(0)
@@ -59,6 +69,7 @@ function limparEstadoImportacao() {
   importacaoProcessadas.value = 0
   importacaoTotal.value = 0
   importacaoErro.value = null
+  resumoAtualizacao.value = null
 }
 
 function extensaoImportacaoPermitida(nome: string): boolean {
@@ -67,6 +78,12 @@ function extensaoImportacaoPermitida(nome: string): boolean {
 }
 
 function abrirSeletorImportacao() {
+  modoPlanilha.value = 'importar'
+  inputImportarRef.value?.click()
+}
+
+function abrirSeletorAtualizacao() {
+  modoPlanilha.value = 'atualizar'
   inputImportarRef.value?.click()
 }
 
@@ -108,10 +125,18 @@ watch(modalImportarAberto, (aberto) => {
   }
 })
 
+function filtroDaLista(): ProdutosListaFiltroId {
+  return (
+    props.filtroId ??
+    (props.termoId != null && props.termoId > 0 ? props.termoId : 'todos')
+  )
+}
+
 async function executarImportacao(
   workspaceId: number,
   file: File,
   mapeamentoPorIndice: Record<number, string>,
+  conversoesPorIndice: Record<number, ConversaoPrecoId>,
 ) {
   limparEstadoImportacao()
   importacaoEmAndamento.value = true
@@ -122,7 +147,57 @@ async function executarImportacao(
 
   try {
     const todasLinhas = await lerTodasLinhasPlanilha(file)
-    const linhas = construirLinhasImportacaoProduto(todasLinhas, mapeamentoPorIndice)
+    if (modoPlanilha.value === 'atualizar') {
+      const chave = chaveMapeamentoAtualizacaoProduto(mapeamentoPorIndice)
+      if (!chave) {
+        throw new Error('Mapeie só um identificador: Código ou Código de barras.')
+      }
+      const linhas = construirLinhasAtualizacaoProduto(todasLinhas, mapeamentoPorIndice, conversoesPorIndice).filter(
+        (linha) =>
+          chave === 'barras' ? (linha.codigo_barras_ean ?? '').trim().length > 0 : (linha.codigo ?? '').trim().length > 0,
+      )
+      importacaoTotal.value = linhas.length
+      if (linhas.length === 0) {
+        throw new Error(
+          chave === 'barras'
+            ? 'Nenhuma linha com código de barras. Confira a coluna mapeada.'
+            : 'Nenhuma linha com código. Confira a coluna mapeada.',
+        )
+      }
+      importacaoFase.value = 'enviando'
+      const url =
+        chave === 'barras'
+          ? '/api/produtos/planilha/atualizar-por-codigo-barras'
+          : '/api/produtos/planilha/atualizar-por-codigo'
+      let atualizados = 0
+      let criados = 0
+      for (let i = 0; i < linhas.length; i += TAMANHO_LOTE_IMPORTACAO) {
+        const chunk = linhas.slice(i, i + TAMANHO_LOTE_IMPORTACAO)
+        const resp = await $fetch<ProdutosAtualizarLoteResponse>(url, {
+          method: 'POST',
+          body: { workspace_id: workspaceId, linhas: chunk },
+        })
+        atualizados += resp.atualizados
+        criados += resp.criados
+        importacaoProcessadas.value += chunk.length
+      }
+      resumoAtualizacao.value = `${atualizados} atualizado(s), ${criados} criado(s).`
+      produtosStore.page = 1
+      const filtroId = filtroDaLista()
+      produtosStore.invalidarCacheTermo(workspaceId, filtroId)
+      await produtosStore.fetchPagina(workspaceId, {
+        page: 1,
+        q: props.termoBusca ?? '',
+        filtroId,
+        force: true,
+      })
+      useProdutoTermosPesquisaStore().limparCache(workspaceId)
+      importacaoFase.value = 'concluido'
+      emit('atualizado', { aguardandoEscolha: 0 })
+      return
+    }
+
+    const linhas = construirLinhasImportacaoProduto(todasLinhas, mapeamentoPorIndice, conversoesPorIndice)
     importacaoTotal.value = linhas.length
 
     if (linhas.length === 0) {
@@ -146,9 +221,7 @@ async function executarImportacao(
     }
 
     produtosStore.page = 1
-    const filtroId: ProdutosListaFiltroId =
-      props.filtroId ??
-      (props.termoId != null && props.termoId > 0 ? props.termoId : 'todos')
+    const filtroId = filtroDaLista()
     produtosStore.invalidarCacheTermo(workspaceId, filtroId)
     await produtosStore.fetchPagina(workspaceId, {
       page: 1,
@@ -169,6 +242,7 @@ async function executarImportacao(
 
 async function aoConfirmarImportacaoMapeamento(payload: {
   mapeamentoPorIndice: Record<number, string>
+  conversoesPorIndice?: Record<number, ConversaoPrecoId>
   totalLinhasDados: number
 }) {
   const wid = props.workspaceId
@@ -177,7 +251,17 @@ async function aoConfirmarImportacaoMapeamento(payload: {
     return
   }
 
-  if (!mapeamentoTemNome(payload.mapeamentoPorIndice)) {
+  if (modoPlanilha.value === 'atualizar') {
+    const chave = chaveMapeamentoAtualizacaoProduto(payload.mapeamentoPorIndice)
+    if (!chave) {
+      toast.error(
+        mapeamentoTemCodigoOuBarras(payload.mapeamentoPorIndice)
+          ? 'Mapeie só Código ou só Código de barras.'
+          : 'Mapeie «Código» ou «Código de barras».',
+      )
+      return
+    }
+  } else if (!mapeamentoTemNome(payload.mapeamentoPorIndice)) {
     toast.error('Mapeie pelo menos uma coluna para o campo «Nome».')
     return
   }
@@ -193,10 +277,12 @@ async function aoConfirmarImportacaoMapeamento(payload: {
   await nextTick()
   modalProgressoAberto.value = true
 
-  await executarImportacao(wid, file, payload.mapeamentoPorIndice)
+  await executarImportacao(wid, file, payload.mapeamentoPorIndice, payload.conversoesPorIndice ?? {})
 
   if (importacaoFase.value === 'concluido') {
-    toast.success('Produtos importados com sucesso.')
+    toast.success(
+      modoPlanilha.value === 'atualizar' ? 'Planilha aplicada.' : 'Produtos importados com sucesso.',
+    )
   }
 }
 
@@ -206,6 +292,7 @@ function aoFecharModalProgresso() {
 
 defineExpose({
   abrirSeletorImportacao,
+  abrirSeletorAtualizacao,
 })
 </script>
 
@@ -226,6 +313,7 @@ defineExpose({
     :colunas-sua-tabela="colunasSuaTabela"
     :exemplos-colunas="exemplosColunas"
     :total-linhas-dados="totalLinhasDadosPlanilha"
+    :modo="modoPlanilha"
     @confirmar-importacao="aoConfirmarImportacaoMapeamento"
   />
   <ProdutosModalImportarProgresso
@@ -235,6 +323,8 @@ defineExpose({
     :total="importacaoTotal"
     :fase="importacaoFase"
     :mensagem-erro="importacaoErro"
+    :resumo="resumoAtualizacao"
+    :titulo-concluido="modoPlanilha === 'atualizar' ? 'Atualização concluída' : undefined"
     @fechar="aoFecharModalProgresso"
   />
 </template>

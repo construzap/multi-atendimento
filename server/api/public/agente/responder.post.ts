@@ -1,4 +1,5 @@
 import { assertMethod, createError, readBody } from 'h3'
+import { serverSupabaseServiceRole } from '#supabase/server'
 import { requireN8nAgenteApiKey } from '../../../utils/requireN8nAgenteApiKey'
 import { assertAdminWorkspaceAtivo } from '../../../utils/adminPrompt'
 import { buildSystemPrompt, loadPromptPrincipalTexto } from '../../../utils/agente/buildSystemPrompt'
@@ -9,6 +10,7 @@ import {
 } from '../../../utils/agente/memory'
 import { runAgentLoop } from '../../../utils/agente/runAgentLoop'
 import type { AgenteContext, AgenteResponderResponse } from '#shared/types/agente'
+import { normalizarLabelId } from '#shared/utils/validarCanalCamposExtras'
 
 function parsePositiveInt(raw: unknown, label: string): number {
   const n =
@@ -115,6 +117,30 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     canal_id,
   })
 
+  const admin = serverSupabaseServiceRole<any>(event)
+  const { data: canalListasRow } = await admin
+    .from('canais')
+    .select(
+      'id_lista_transferencia_de_atendimento_whatsapp, id_lista_pedido_pronto_whatsapp',
+    )
+    .eq('id', canal_id)
+    .eq('workspace_id', workspace_id)
+    .is('deleted_at', null)
+    .maybeSingle()
+
+  const idListaTransferencia =
+    normalizarLabelId(body.id_lista_transferencia_de_atendimento_whatsapp) ??
+    normalizarLabelId(
+      (canalListasRow as { id_lista_transferencia_de_atendimento_whatsapp?: unknown } | null)
+        ?.id_lista_transferencia_de_atendimento_whatsapp,
+    )
+  const idListaPedidoPronto =
+    normalizarLabelId(body.id_lista_pedido_pronto_whatsapp) ??
+    normalizarLabelId(
+      (canalListasRow as { id_lista_pedido_pronto_whatsapp?: unknown } | null)
+        ?.id_lista_pedido_pronto_whatsapp,
+    )
+
   const config = useRuntimeConfig(event)
   const defaultModel = String(config.openaiAgentModel || 'gpt-4.1-mini-2025-04-14').trim()
   const maxRoundsDefault = Number.parseInt(String(config.agenteMaxToolRounds || '8'), 10)
@@ -173,6 +199,8 @@ export default defineEventHandler(async (event): Promise<AgenteResponderResponse
     mensagem_pix_manual: strOrNull(body.mensagem_pix_manual),
     pixType: strOrNull(body.pixType),
     valor_pedido_minimo: numberOrNull(body.valor_pedido_minimo),
+    id_lista_transferencia_de_atendimento_whatsapp: idListaTransferencia,
+    id_lista_pedido_pronto_whatsapp: idListaPedidoPronto,
     model: modelOverride || canalCredenciais.model_name || defaultModel,
     max_tool_rounds:
       Number.isFinite(maxRoundsBody) && maxRoundsBody > 0

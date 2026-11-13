@@ -18,6 +18,8 @@ function parseProdutosJson(raw: unknown): unknown[] {
   return []
 }
 
+const MAX_PRODUTOS_NO_TEXTO = 20
+
 /** Nomes de `produtos` (json da view), na ordem já agregada (`v.ordem`, `p.id`). */
 export function extrairNomesProdutos(row: Record<string, unknown>): string[] {
   const nomes: string[] = []
@@ -69,7 +71,7 @@ export function buildTermoEmbeddingPayload(
   const wsId =
     Number.isFinite(rowWorkspaceId) && rowWorkspaceId > 0 ? rowWorkspaceId : workspaceId
 
-  const nomesProdutos = extrairNomesProdutos(row)
+  const nomesProdutos = extrairNomesProdutos(row).slice(0, MAX_PRODUTOS_NO_TEXTO)
   const content = buildTermoContent(id, nome, descricao, nomesProdutos)
   const lineCount = content.split('\n').length
 

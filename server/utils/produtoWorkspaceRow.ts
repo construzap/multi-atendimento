@@ -20,7 +20,7 @@ import { normalizarTextoCategoriaUnica } from '#shared/utils/normalizarTextoCate
 
 export const SELECT_PRODUTO_WORKSPACE_EMBED =
 
-  'id, codigo, nome, categoria_id, sku, unidade_venda, marca, preco, preco_custo, preco_promocional, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, codigo_ncm, codigo_barras_ean, largura, altura, comprimento, status, envia_foto, produto_categorias(nome)'
+  'id, codigo, nome, categoria_id, sku, unidade_venda, marca, preco, preco_custo, preco_promocional, preco_prazo, peso_kg, estoque, infos_relevantes, imagem_url, codigo_ncm, codigo_barras_ean, largura, altura, comprimento, status, envia_foto, nao_encontrado, aguardando_escolha, tabelageral_id, produto_categorias(nome)'
 
 
 
@@ -28,7 +28,7 @@ export const SELECT_PRODUTO_WORKSPACE_EMBED =
 
 export const SELECT_VIEW_PRODUTOS_COM_VARIACOES =
 
-  'id, workspace_id, nome, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, imagem_url, infos_relevantes, status, envia_foto, created_at, updated_at, codigo, categoria_id, descricao, codigo_ncm, termos_pesquisa, termos_pesquisa_busca, preco_custo, preco_promocional, codigo_barras_ean, largura, altura, comprimento, parent_id, tem_variacoes, atributos, categoria, imagens, variacoes'
+  'id, workspace_id, nome, sku, unidade_venda, marca, preco, preco_prazo, peso_kg, estoque, imagem_url, infos_relevantes, status, envia_foto, created_at, updated_at, codigo, categoria_id, descricao, codigo_ncm, termos_pesquisa, termos_pesquisa_busca, preco_custo, preco_promocional, codigo_barras_ean, largura, altura, comprimento, parent_id, tem_variacoes, atributos, categoria, imagens, variacoes, nao_encontrado, aguardando_escolha, tabelageral_id'
 
 
 
@@ -143,6 +143,18 @@ function parseIntOrNull(raw: unknown): number | null {
 
 
 
+function parseCodigoTexto(raw: unknown): string | null {
+
+  if (raw === null || raw === undefined) return null
+
+  const s = String(raw).trim()
+
+  return s.length ? s : null
+
+}
+
+
+
 function parseNum(raw: unknown, fallback = 0): number {
 
   if (typeof raw === 'number' && Number.isFinite(raw)) return raw
@@ -217,7 +229,7 @@ function mapCamposProduto(r: Record<string, unknown>): ProdutoWorkspaceCampos {
 
   const id = typeof r.id === 'number' ? r.id : Number(r.id)
 
-  const codigo = parseIntOrNull(r.codigo)
+  const codigo = parseCodigoTexto(r.codigo)
 
   const categoria_id = parseIntOrNull(r.categoria_id)
 
@@ -259,7 +271,7 @@ function mapCamposProduto(r: Record<string, unknown>): ProdutoWorkspaceCampos {
 
     id: Number.isFinite(id) ? id : 0,
 
-    codigo: codigo != null && codigo >= 1 ? codigo : null,
+    codigo,
 
     nome: String(r.nome ?? ''),
 
@@ -298,6 +310,15 @@ function mapCamposProduto(r: Record<string, unknown>): ProdutoWorkspaceCampos {
     termos_pesquisa: parseTermosPesquisa(r.termos_pesquisa),
 
     codigo_barras_ean: r.codigo_barras_ean == null ? null : String(r.codigo_barras_ean),
+
+    nao_encontrado: r.nao_encontrado === true,
+
+    aguardando_escolha: r.aguardando_escolha === true,
+
+    tabelageral_id: (() => {
+      const n = parseIntOrNull(r.tabelageral_id)
+      return n != null && n >= 1 ? n : null
+    })(),
 
     largura: parseNum(r.largura, 0),
 

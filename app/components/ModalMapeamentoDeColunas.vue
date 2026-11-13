@@ -5,6 +5,14 @@ import BaseDropdown from '~/components/ui/BaseDropdown.vue'
 import BaseModal from '~/components/BaseModal.vue'
 import MapeamentoDescricaoComTooltip from '~/components/MapeamentoDescricaoComTooltip.vue'
 import {
+  CONVERSOES_PRECO,
+  converterPrecoPlanilha,
+  ehConversaoPrecoId,
+  formatarPrecoExemplo,
+  type ConversaoPrecoId,
+} from '~/utils/conversaoPrecoPlanilha'
+import {
+  mapeamentoTemCampo,
   mapeamentoTemCamposObrigatorios,
   type CampoMapeamentoColuna,
 } from '~/utils/mapeamentoColunasImportacao'
@@ -23,6 +31,14 @@ const props = withDefaults(
     camposUnicos?: string[]
     /** Pelo menos uma coluna deve mapear para cada id listado. */
     camposObrigatorios?: string[]
+    /** Basta mapear um destes ids. */
+    exigirAlgumDe?: string[]
+    /** Em cada grupo, só um campo pode ficar mapeado. Os outros aparecem bloqueados. */
+    gruposExclusivos?: string[][]
+    /** Texto do botão de confirmar. */
+    rotuloAcao?: string
+    /** Campos de preço: ao mapear, aparece a conversão e o exemplo da esquerda muda. */
+    camposPreco?: string[]
     /** Rótulo da coluna de destino no cabeçalho da grelha. */
     labelColunaDestino?: string
     /** Campos personalizados (abaixo dos campos do sistema, na mesma lista do dropdown). */
@@ -42,6 +58,10 @@ const props = withDefaults(
     totalLinhasDados: 0,
     camposUnicos: () => [],
     camposObrigatorios: () => [],
+    exigirAlgumDe: () => [],
+    gruposExclusivos: () => [],
+    rotuloAcao: 'Importar',
+    camposPreco: () => [],
     labelColunaDestino: 'Tabela do sistema',
     camposPersonalizados: () => [],
     camposFunil: () => [],
@@ -54,12 +74,14 @@ const emit = defineEmits<{
   confirmarImportacao: [
     payload: {
       mapeamentoPorIndice: Record<number, string>
+      conversoesPorIndice: Record<number, ConversaoPrecoId>
       totalLinhasDados: number
     },
   ]
   'confirmar-importacao': [
     payload: {
       mapeamentoPorIndice: Record<number, string>
+      conversoesPorIndice: Record<number, ConversaoPrecoId>
       totalLinhasDados: number
     },
   ]
@@ -69,11 +91,13 @@ const emit = defineEmits<{
 }>()
 
 const mapeamentoPorIndice = ref<Record<number, string>>({})
+const conversaoPorIndice = ref<Record<number, ConversaoPrecoId>>({})
 
 watch(
   () => props.colunasSuaTabela.join('\x1f'),
   () => {
     mapeamentoPorIndice.value = {}
+    conversaoPorIndice.value = {}
   },
 )
 
@@ -123,15 +147,36 @@ function tituloColunaArquivo(indice: number): string {
   return linhasMapeamento.value.find((l) => l.indice === indice)?.titulo ?? `Coluna ${indice + 1}`
 }
 
+function motivoBloqueio(campoId: string, indice: number): string | null {
+  if (mapeamentoPorIndice.value[indice] === campoId) return null
+  for (const grupo of props.gruposExclusivos) {
+    if (!grupo.includes(campoId)) continue
+    const outroId = grupo.find((outro) => outro !== campoId && campoEstaMapeado(outro))
+    if (!outroId) continue
+    const label = labelCampoMapeado(outroId) ?? outroId
+    return `Desmarque «${label}» para usar este`
+  }
+  return null
+}
+
 function setMapeamento(indice: number, campoId: string, close: () => void) {
+  if (campoId && motivoBloqueio(campoId, indice)) return
   const next = { ...mapeamentoPorIndice.value }
   if (!campoId) {
     delete next[indice]
   } else {
     for (const k of Object.keys(next)) {
       const i = Number(k)
-      if (Number.isFinite(i) && i !== indice && next[i] === campoId) {
-        delete next[i]
+      if (!Number.isFinite(i)) continue
+      if (i !== indice && next[i] === campoId) delete next[i]
+    }
+    for (const grupo of props.gruposExclusivos) {
+      if (!grupo.includes(campoId)) continue
+      for (const k of Object.keys(next)) {
+        const i = Number(k)
+        if (!Number.isFinite(i)) continue
+        const atual = next[i]
+        if (atual && grupo.includes(atual) && atual !== campoId) delete next[i]
       }
     }
     next[indice] = campoId
@@ -140,18 +185,69 @@ function setMapeamento(indice: number, campoId: string, close: () => void) {
   close()
 }
 
+function campoEhPreco(indice: number): boolean {
+  const id = mapeamentoPorIndice.value[indice]
+  return !!id && props.camposPreco.includes(id)
+}
+
+function conversaoDaColuna(indice: number): ConversaoPrecoId {
+  return conversaoPorIndice.value[indice] ?? 'padrao'
+}
+
+function labelConversao(indice: number): string {
+  const id = conversaoDaColuna(indice)
+  return CONVERSOES_PRECO.find((c) => c.id === id)?.label ?? 'Como está na planilha'
+}
+
+function textoPrecoConvertido(indice: number, exemplo: string): string {
+  const n = converterPrecoPlanilha(exemplo, conversaoDaColuna(indice))
+  if (n == null) return '—'
+  return formatarPrecoExemplo(n)
+}
+
+function previewOpcao(exemplo: string, id: ConversaoPrecoId): string {
+  const n = converterPrecoPlanilha(exemplo, id)
+  if (n == null) return '—'
+  return formatarPrecoExemplo(n)
+}
+
+function setConversao(indice: number, id: string, close: () => void) {
+  if (!ehConversaoPrecoId(id)) return
+  conversaoPorIndice.value = { ...conversaoPorIndice.value, [indice]: id }
+  close()
+}
+
+function conversoesParaEnviar(): Record<number, ConversaoPrecoId> {
+  const out: Record<number, ConversaoPrecoId> = {}
+  for (const [idxStr, fieldId] of Object.entries(mapeamentoPorIndice.value)) {
+    if (!props.camposPreco.includes(fieldId)) continue
+    const idx = Number(idxStr)
+    if (!Number.isFinite(idx)) continue
+    out[idx] = conversaoDaColuna(idx)
+  }
+  return out
+}
+
 function fechar() {
   open.value = false
 }
 
-const podeImportar = computed(() =>
-  mapeamentoTemCamposObrigatorios(mapeamentoPorIndice.value, props.camposObrigatorios),
-)
+const podeImportar = computed(() => {
+  if (!mapeamentoTemCamposObrigatorios(mapeamentoPorIndice.value, props.camposObrigatorios)) return false
+  for (const grupo of props.gruposExclusivos) {
+    const marcados = grupo.filter((id) => campoEstaMapeado(id)).length
+    if (marcados > 1) return false
+  }
+  const algum = props.exigirAlgumDe ?? []
+  if (!algum.length) return true
+  return algum.some((id) => mapeamentoTemCampo(mapeamentoPorIndice.value, id))
+})
 
 function aoClicarImportar() {
   if (!podeImportar.value) return
   emit('confirmarImportacao', {
     mapeamentoPorIndice: { ...mapeamentoPorIndice.value },
+    conversoesPorIndice: conversoesParaEnviar(),
     totalLinhasDados: props.totalLinhasDados,
   })
 }
@@ -221,6 +317,12 @@ function formatarTamanho(bytes: number): string {
             <p class="break-words font-bold text-on-surface dark:text-dark-on-surface">
               {{ linha.titulo }}
             </p>
+            <p
+              v-if="campoEhPreco(linha.indice)"
+              class="mt-1 text-sm font-semibold text-emerald-800 dark:text-emerald-200"
+            >
+              Fica: {{ textoPrecoConvertido(linha.indice, linha.exemplo) }}
+            </p>
             <p class="mt-1 text-sm text-on-surface-variant dark:text-dark-on-surface-variant">
               Ex: {{ textoExemplo(linha.exemplo) }}
             </p>
@@ -263,12 +365,15 @@ function formatarTamanho(bytes: number): string {
                   type="button"
                   role="menuitem"
                   class="flex w-full flex-col gap-0.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-colors"
+                  :disabled="motivoBloqueio(campo.id, linha.indice) != null"
                   :class="
-                    mapeamentoPorIndice[linha.indice] === campo.id
-                      ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100'
-                      : campoEstaMapeado(campo.id)
-                        ? 'bg-emerald-50/60 text-on-surface dark:bg-emerald-950/20 dark:text-dark-on-surface'
-                        : 'text-on-surface hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high'
+                    motivoBloqueio(campo.id, linha.indice)
+                      ? 'cursor-not-allowed opacity-50'
+                      : mapeamentoPorIndice[linha.indice] === campo.id
+                        ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100'
+                        : campoEstaMapeado(campo.id)
+                          ? 'bg-emerald-50/60 text-on-surface dark:bg-emerald-950/20 dark:text-dark-on-surface'
+                          : 'text-on-surface hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high'
                   "
                   @click="setMapeamento(linha.indice, campo.id, close)"
                 >
@@ -292,7 +397,13 @@ function formatarTamanho(bytes: number): string {
                     </span>
                   </span>
                   <span
-                    v-if="
+                    v-if="motivoBloqueio(campo.id, linha.indice)"
+                    class="pl-4 text-[11px] leading-snug text-on-surface-variant dark:text-dark-on-surface-variant"
+                  >
+                    {{ motivoBloqueio(campo.id, linha.indice) }}
+                  </span>
+                  <span
+                    v-else-if="
                       campoEstaMapeado(campo.id) &&
                       mapeamentoPorIndice[linha.indice] !== campo.id &&
                       indiceOndeCampoEstaMapeado(campo.id) != null
@@ -464,6 +575,49 @@ function formatarTamanho(bytes: number): string {
                 </template>
               </template>
             </BaseDropdown>
+            <div v-if="campoEhPreco(linha.indice)" class="mt-2">
+              <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant dark:text-dark-on-surface-variant">
+                Mudar conversão
+              </p>
+              <BaseDropdown
+                teleport
+                block
+                title="Conversão do preço"
+                align="right"
+                panel-class="w-80 min-w-[16rem] max-w-[min(22rem,calc(100vw-3rem))]"
+              >
+                <template #trigger>
+                  <span
+                    class="inline-flex w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-outline/40 bg-white px-3 py-2 text-left text-sm font-medium text-on-surface dark:border-dark-outline/40 dark:bg-dark-surface-container-lowest dark:text-dark-on-surface"
+                  >
+                    <span class="min-w-0 truncate">{{ labelConversao(linha.indice) }}</span>
+                    <span class="material-symbols-outlined shrink-0 text-[20px] opacity-70" aria-hidden="true">
+                      expand_more
+                    </span>
+                  </span>
+                </template>
+                <template #default="{ close }">
+                  <button
+                    v-for="opcao in CONVERSOES_PRECO"
+                    :key="opcao.id"
+                    type="button"
+                    role="menuitem"
+                    class="flex w-full flex-col gap-0.5 rounded-xl px-3 py-2.5 text-left text-sm transition-colors"
+                    :class="
+                      conversaoDaColuna(linha.indice) === opcao.id
+                        ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100'
+                        : 'text-on-surface hover:bg-surface-container-high dark:text-dark-on-surface dark:hover:bg-dark-surface-container-high'
+                    "
+                    @click="setConversao(linha.indice, opcao.id, close)"
+                  >
+                    <span class="font-medium">{{ opcao.label }}</span>
+                    <span class="text-xs text-on-surface-variant dark:text-dark-on-surface-variant">
+                      Fica {{ previewOpcao(linha.exemplo, opcao.id) }}
+                    </span>
+                  </button>
+                </template>
+              </BaseDropdown>
+            </div>
           </div>
         </div>
       </div>
@@ -479,8 +633,8 @@ function formatarTamanho(bytes: number): string {
       <BaseButton type="button" variant="primary" :block="false" :disabled="!podeImportar" @click="aoClicarImportar">
         <span class="inline-flex items-center gap-2">
           <span class="material-symbols-outlined text-[20px]" aria-hidden="true">upload</span>
-          <template v-if="totalLinhasDados > 0">Importar {{ totalLinhasDados }} registros</template>
-          <template v-else>Importar</template>
+          <template v-if="totalLinhasDados > 0">{{ rotuloAcao }} {{ totalLinhasDados }} registros</template>
+          <template v-else>{{ rotuloAcao }}</template>
         </span>
       </BaseButton>
     </template>

@@ -21,9 +21,13 @@ const props = withDefaults(
     /** Fase curta para o subtítulo */
     fase: 'idle' | 'lendo' | 'enviando' | 'concluido' | 'erro'
     mensagemErro?: string | null
+    resumo?: string | null
+    tituloConcluido?: string
   }>(),
   {
     mensagemErro: null,
+    resumo: null,
+    tituloConcluido: undefined,
   },
 )
 
@@ -40,7 +44,7 @@ const percentual = computed(() => {
 
 const tituloModal = computed(() => {
   if (props.fase === 'erro') return 'Erro na importação'
-  if (props.fase === 'concluido') return 'Importação concluída'
+  if (props.fase === 'concluido') return props.tituloConcluido || 'Importação concluída'
   return 'A importar produtos'
 })
 
@@ -90,7 +94,7 @@ function fechar() {
         class="flex items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-400/25 dark:bg-emerald-950/30 dark:text-emerald-100"
       >
         <span class="material-symbols-outlined text-[22px]" aria-hidden="true">check_circle</span>
-        <span>Foram importados {{ total }} produto(s).</span>
+        <span>{{ resumo || `Foram importados ${total} produto(s).` }}</span>
       </div>
 
       <div

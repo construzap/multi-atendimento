@@ -62,6 +62,10 @@ export type AgenteResponderBody = {
   pixType?: string | null
   /** Valor mínimo do pedido do canal (`canais.valor_pedido_minimo`). */
   valor_pedido_minimo?: number | string | null
+  /** `labelid` da etiqueta de transferência (`canais.id_lista_transferencia_de_atendimento_whatsapp`). */
+  id_lista_transferencia_de_atendimento_whatsapp?: string | null
+  /** `labelid` da etiqueta de pedido pronto (`canais.id_lista_pedido_pronto_whatsapp`). */
+  id_lista_pedido_pronto_whatsapp?: string | null
   model?: string | null
   max_tool_rounds?: number | null
 }
@@ -154,6 +158,10 @@ export type AgenteContext = {
   pixType: string | null
   /** Valor mínimo do pedido; null se não enviado. */
   valor_pedido_minimo: number | null
+  /** `labelid` da etiqueta de transferência; null se não houver. */
+  id_lista_transferencia_de_atendimento_whatsapp: string | null
+  /** `labelid` da etiqueta de pedido pronto; null se não houver. */
+  id_lista_pedido_pronto_whatsapp: string | null
   model: string
   max_tool_rounds: number
   context_window: number

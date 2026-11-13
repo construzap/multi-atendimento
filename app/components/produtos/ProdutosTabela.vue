@@ -1350,14 +1350,10 @@ function blurPeso(row: ProdutoWorkspaceCampos, ev: Event) {
 }
 
 function blurCodigo(row: ProdutoWorkspaceCampos, ev: Event) {
-  const raw = (ev.target as HTMLInputElement).value.trim()
-  const n = Number.parseInt(raw, 10)
-  if (!Number.isFinite(n) || n < 1) {
-    toast.error('Informe um código inteiro ≥ 1.')
-    return
-  }
-  if (n === row.codigo) return
-  void gravarPatch(row, { codigo: n })
+  const v = (ev.target as HTMLInputElement).value.trim()
+  const atual = (row.codigo ?? '').trim()
+  if (v === atual) return
+  void gravarPatch(row, { codigo: v.length ? v : null })
 }
 
 function blurSku(row: ProdutoWorkspaceCampos, ev: Event) {

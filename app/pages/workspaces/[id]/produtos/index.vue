@@ -11,6 +11,7 @@ import ProdutosBarraAcoes from '~/components/produtos/ProdutosBarraAcoes.vue'
 import ProdutosBuscaInput from '~/components/produtos/ProdutosBuscaInput.vue'
 import AlertaOportunidadesDeVendas from '~/components/produtos/oportunidades-de-vendas/AlertaOportunidadesDeVendas.vue'
 import FerramentaImportarProduto from '~/components/produtos/FerramentaImportarProduto.vue'
+import ProdutosModalEscolhaPlanilha from '~/components/produtos/ProdutosModalEscolhaPlanilha.vue'
 import ProdutosListaTermosPesquisa from '~/components/produtos/ProdutosListaTermosPesquisa.vue'
 import ProdutosModalEditarProduto from '~/components/produtos/ProdutosModalEditarProduto.vue'
 import ProdutosTabela from '~/components/produtos/ProdutosTabela.vue'
@@ -85,11 +86,28 @@ const bootstrapError = ref<string | null>(null)
 const modalNovoProdutoAberto = ref(false)
 
 /** Seletor de ficheiro + modal de mapeamento (`FerramentaImportarProduto`). */
-const ferramentaImportarProdutoRef = ref<{ abrirSeletorImportacao: () => void } | null>(null)
+const ferramentaImportarProdutoRef = ref<{
+  abrirSeletorImportacao: () => void
+  abrirSeletorAtualizacao: () => void
+} | null>(null)
 const produtosTabelaRef = ref<{ resetarEstadoPosImportacao: () => void } | null>(null)
+const modalEscolhaAberto = ref(false)
 
 function aoClicarImportar() {
   ferramentaImportarProdutoRef.value?.abrirSeletorImportacao()
+}
+
+function aoClicarAtualizar() {
+  ferramentaImportarProdutoRef.value?.abrirSeletorAtualizacao()
+}
+
+function aoClicarPendencias() {
+  modalEscolhaAberto.value = true
+}
+
+function aposAtualizacaoPlanilha(resumo: { aguardandoEscolha: number }) {
+  aposImportacao()
+  if (resumo.aguardandoEscolha > 0) modalEscolhaAberto.value = true
 }
 
 function aoClicarNovo() {
@@ -363,6 +381,8 @@ function aposImportacao() {
         class="!justify-start sm:!justify-end"
         ocultar-novo
         @importar="aoClicarImportar"
+        @atualizar="aoClicarAtualizar"
+        @pendencias="aoClicarPendencias"
       />
     </header>
 
@@ -380,6 +400,12 @@ function aposImportacao() {
       :termo-id="termoAtivoId"
       :filtro-id="filtroAtivo"
       @importado="aposImportacao"
+      @atualizado="aposAtualizacaoPlanilha"
+    />
+    <ProdutosModalEscolhaPlanilha
+      v-model:open="modalEscolhaAberto"
+      :workspace-id="workspaceId"
+      @escolhido="aposImportacao"
     />
     <ProdutosModalEditarProduto
       v-model:open="modalNovoProdutoAberto"

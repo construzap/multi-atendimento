@@ -154,6 +154,7 @@ async function verificarSeConectou(ciclo: number) {
 
     canaisStore.instanciaStatus = data
     canaisStore.instanciaStatusCanalIdLoaded = id
+    void canaisStore.sincronizarConnectPhone(id, data.numero)
     await fechar()
   } catch {
     /* modal segue aberto até conectar ou o QR expirar */
@@ -178,12 +179,26 @@ async function buscarQrCode() {
   qrcode.value = null
 
   try {
-    const res = await $fetch<{ qrcode: string | null; status: string | null }>('/api/canais/conectar', {
+    const res = await $fetch<{
+      qrcode: string | null
+      status: string | null
+      phone: string | null
+    }>('/api/canais/conectar', {
       method: 'POST',
       body: { id_canal: id, workspace_id: workspacesStore.currentWorkspaceId }
     })
     qrcode.value = res.qrcode ?? null
+    if (res.phone) {
+      void canaisStore.sincronizarConnectPhone(id, res.phone)
+    }
     if (qrcode.value && props.open) iniciarAcompanhamento()
+    // Já conectado sem QR: sincroniza phone via status e fecha.
+    if (!qrcode.value && res.status === 'connected') {
+      const status = await canaisStore.ensureInstanciaStatusLoaded(id, { force: true }).catch(() => null)
+      if (status?.numero) void canaisStore.sincronizarConnectPhone(id, status.numero)
+      else if (res.phone) void canaisStore.sincronizarConnectPhone(id, res.phone)
+      await fechar()
+    }
   } catch (err: unknown) {
     const maybe = err as {
       data?: Record<string, unknown>

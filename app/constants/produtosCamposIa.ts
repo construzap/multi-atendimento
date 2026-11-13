@@ -1,6 +1,8 @@
 /** IDs dos campos da tabela IA (alinhados a `produtos_workspace`). */
 export type CampoIaProdutoId =
   | 'nome'
+  | 'codigo'
+  | 'codigo_barras_ean'
   | 'categoria'
   | 'termos_pesquisa'
   | 'sku'
@@ -16,6 +18,8 @@ export type CampoIaProdutoId =
 
 export const CAMPOS_TABELA_IA_PRODUTO: { id: CampoIaProdutoId; label: string }[] = [
   { id: 'nome', label: 'Nome' },
+  { id: 'codigo', label: 'Código' },
+  { id: 'codigo_barras_ean', label: 'Código de barras' },
   { id: 'categoria', label: 'Categoria' },
   { id: 'termos_pesquisa', label: 'Termos pesquisa' },
   { id: 'sku', label: 'SKU' },

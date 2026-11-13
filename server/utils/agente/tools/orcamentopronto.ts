@@ -231,5 +231,9 @@ export const orcamentoprontoTool: ToolDef = {
     mensagem_pix_manual: ctxStr(ctx.mensagem_pix_manual),
     pixType: ctxStr(ctx.pixType),
     valor_pedido_minimo: ctx.valor_pedido_minimo,
+    id_lista_transferencia_de_atendimento_whatsapp: ctxStr(
+      ctx.id_lista_transferencia_de_atendimento_whatsapp,
+    ),
+    id_lista_pedido_pronto_whatsapp: ctxStr(ctx.id_lista_pedido_pronto_whatsapp),
   }),
 }

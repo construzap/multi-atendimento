@@ -20,6 +20,8 @@ withDefaults(
 const emit = defineEmits<{
   exportar: []
   importar: []
+  atualizar: []
+  pendencias: []
   novo: []
 }>()
 
@@ -62,6 +64,20 @@ function abrirCriarImagens() {
       <span class="inline-flex items-center gap-2">
         <span class="material-symbols-outlined text-[20px]" aria-hidden="true">file_upload</span>
         Importar
+      </span>
+    </BaseButton>
+
+    <BaseButton variant="secondary" :block="false" size="md" type="button" @click="emit('atualizar')">
+      <span class="inline-flex items-center gap-2">
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">sync</span>
+        Atualizar por planilha
+      </span>
+    </BaseButton>
+
+    <BaseButton variant="secondary" :block="false" size="md" type="button" @click="emit('pendencias')">
+      <span class="inline-flex items-center gap-2">
+        <span class="material-symbols-outlined text-[20px]" aria-hidden="true">rule</span>
+        Escolher produtos
       </span>
     </BaseButton>
 

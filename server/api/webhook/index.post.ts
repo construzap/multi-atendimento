@@ -1,7 +1,10 @@
 import { serverSupabaseServiceRole } from '#supabase/server'
-import type { UazapiWebhookPayload } from '#shared/types/webhook'
+import type { MensagemNormalizada, UazapiWebhookPayload } from '#shared/types/webhook'
 import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
+import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
+import { normalizarLabelId } from '#shared/utils/validarCanalCamposExtras'
 import { mimeToExt, uploadToB2 } from '../../utils/b2Storage'
+import { atualizarEtiquetasConversaWhatsapp } from '../../utils/canalWhatsappLabels'
 import { downloadUazapiMedia } from '../../utils/downloadUazapiMedia'
 import { mensagemFromNormalizada } from '../../utils/mensagemFromNormalizada'
 import { persistWebhookMensagem } from '../../utils/persistWebhookMensagem'
@@ -12,6 +15,62 @@ import {
   sanitizarPayloadUazapi,
 } from '../../utils/webhookExecucaoLog'
 import { isMediaMessage, normalizarMensagem, resolveUazapiMediaType } from '../../utils/webhookNormalizer'
+
+/** Número do contato para `POST /chat/labels` (1:1). */
+function numberParaEtiquetasWhatsapp(normalizada: MensagemNormalizada): string | null {
+  if (normalizada.is_group) return null
+  const phone = typeof normalizada.phone === 'string' ? normalizada.phone.trim() : ''
+  if (phone) {
+    if (phone.includes('@')) return phone
+    const digits = phone.replace(/\D/g, '')
+    if (!digits) return null
+    return normalizeWhatsappBr(digits) || digits
+  }
+  const lid = typeof normalizada.lid === 'string' ? normalizada.lid.trim() : ''
+  if (!lid) return null
+  if (lid.includes('@')) return lid
+  const lidDigits = lid.replace(/\D/g, '')
+  return lidDigits ? `${lidDigits}@lid` : null
+}
+
+/**
+ * Cliente → só a etiqueta de atendimento (`id_da_lista_de_atendimento_do_whatsapp`).
+ * Vendedor (não IA) → limpa etiquetas (`labelids: []`).
+ * I.A. / grupo → não chama.
+ */
+async function tentarAtualizarEtiquetasNoWebhook(input: {
+  servidor: string | null
+  token: string | null
+  listaAtendimentoId: string | null
+  normalizada: MensagemNormalizada
+}): Promise<void> {
+  const { normalizada } = input
+  if (normalizada.from_me && normalizada.from_ia) return
+
+  const servidor = input.servidor?.trim() || ''
+  const token = input.token?.trim() || ''
+  if (!servidor || !token) return
+
+  const number = numberParaEtiquetasWhatsapp(normalizada)
+  if (!number) return
+
+  let labelids: string[]
+  if (!normalizada.from_me) {
+    const lista = input.listaAtendimentoId?.trim() || ''
+    if (!lista) return
+    labelids = [lista]
+  } else {
+    // Vendedor: remove etiquetas de follow-up / atendimento.
+    labelids = []
+  }
+
+  await atualizarEtiquetasConversaWhatsapp({
+    servidor,
+    token,
+    number,
+    labelids,
+  })
+}
 
 /**
  * POST /api/webhook — chamada externa (sem sessão de usuário).
@@ -99,7 +158,9 @@ export default defineEventHandler(async (event) => {
   const tCanal = Date.now()
   const { data: canal, error: canalError } = await admin
     .from('canais')
-    .select('id, workspace_id, botao_para_iniciar_ia')
+    .select(
+      'id, workspace_id, botao_para_iniciar_ia, config_follow_up, palavras_ativacao_follow_up, servidor, token, id_da_lista_de_atendimento_do_whatsapp',
+    )
     .eq('token', body.token)
     .is('deleted_at', null)
     .maybeSingle()
@@ -238,9 +299,38 @@ export default defineEventHandler(async (event) => {
       ? (canal as { botao_para_iniciar_ia?: unknown }).botao_para_iniciar_ia === true
       : false
 
+  const configFollowUp =
+    canal && typeof canal === 'object' && 'config_follow_up' in canal
+      ? (canal as { config_follow_up?: unknown }).config_follow_up
+      : null
+
+  const palavrasAtivacaoFollowUp =
+    canal && typeof canal === 'object' && 'palavras_ativacao_follow_up' in canal
+      ? (canal as { palavras_ativacao_follow_up?: unknown }).palavras_ativacao_follow_up
+      : null
+
+  const canalServidor =
+    canal && typeof canal === 'object' && typeof (canal as { servidor?: unknown }).servidor === 'string'
+      ? String((canal as { servidor: string }).servidor).trim()
+      : null
+  const canalToken =
+    canal && typeof canal === 'object' && typeof (canal as { token?: unknown }).token === 'string'
+      ? String((canal as { token: string }).token).trim()
+      : typeof body.token === 'string'
+        ? body.token.trim()
+        : null
+  const listaAtendimentoId = normalizarLabelId(
+    canal && typeof canal === 'object'
+      ? (canal as { id_da_lista_de_atendimento_do_whatsapp?: unknown })
+          .id_da_lista_de_atendimento_do_whatsapp
+      : null,
+  )
+
   const tPersist = Date.now()
   const saved = await persistWebhookMensagem(admin, normalizada, {
     botao_para_iniciar_ia: botaoParaIniciarIa,
+    config_follow_up: configFollowUp,
+    palavras_ativacao_follow_up: palavrasAtivacaoFollowUp,
   })
 
   if (!saved.ok) {
@@ -266,6 +356,21 @@ export default defineEventHandler(async (event) => {
     { conversa_key: saved.conversa_key },
     Date.now() - tPersist,
   )
+
+  const tLabels = Date.now()
+  try {
+    await tentarAtualizarEtiquetasNoWebhook({
+      servidor: canalServidor,
+      token: canalToken,
+      listaAtendimentoId,
+      normalizada,
+    })
+    log.registrarEtapa('etiquetas_whatsapp', true, undefined, Date.now() - tLabels)
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err)
+    log.registrarEtapa('etiquetas_whatsapp', false, { erro: msg }, Date.now() - tLabels)
+    console.warn('[webhook] etiquetas WhatsApp falhou (mensagem já salva):', msg)
+  }
 
   // 1:1: não enviar mensagem.name no Pusher — clientes antigos sobrescreviam conversas.name
   // com o nome do WhatsApp. O nome editável vai só em `conversa_name` (lido do banco).

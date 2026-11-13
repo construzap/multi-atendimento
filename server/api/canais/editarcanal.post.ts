@@ -13,13 +13,22 @@ import {
   normalizarConfigFollowUp,
   normalizarFollowAtivoEmColunas,
   normalizarFormasPagamento,
+  normalizarPalavrasAtivacaoFollowUp,
+  normalizarRegrasFollowUp,
+  normalizarLabelId,
   parseConfigFollowUp,
   parseFlagCanal,
   parseFollowAtivoEmColunas,
   parseFormasPagamento,
+  parseIdListaAtendimentoWhatsapp,
+  parseIdListaFinalizadoWhatsapp,
+  parseIdListaPedidoProntoWhatsapp,
+  parseIdListaTransferenciaAtendimentoWhatsapp,
   parseImagemSaudacao,
   parseLojaSlug,
   parseMensagemSaudacao,
+  parsePalavrasAtivacaoFollowUp,
+  parseRegrasFollowUp,
 } from '#shared/utils/validarCanalCamposExtras'
 import { createError, readBody } from 'h3'
 import { checkChannel } from '../../utils/checkChannel'
@@ -54,10 +63,17 @@ type EditarCanalBody = {
   disparo_ativo?: boolean
   config_follow_up?: unknown
   follow_ativo_em_colunas?: unknown
+  regras_follow_up?: unknown
+  id_da_lista_de_atendimento_do_whatsapp?: unknown
+  id_lista_finalizado_do_whatsapp?: unknown
+  id_lista_transferencia_de_atendimento_whatsapp?: unknown
+  id_lista_pedido_pronto_whatsapp?: unknown
+  connect_phone?: unknown
+  palavras_ativacao_follow_up?: unknown
 }
 
 const CANAL_SELECT =
-  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up, follow_ativo_em_colunas'
+  'id, nome, descricao, provedor, created_at, endereco, latitude, longitude, tempo_aviso_minutos, valor_pedido_minimo, horarios, tem_inteligencia_artificial, url, model_name, api_key_encrypted, loja_aberta, agenda_pedido, assinatura_ia_na_mensagem, botao_para_iniciar_ia, mensagem_saudacao, imagem_saudacao, loja_slug, formas_pagamento, disparo_ativo, config_follow_up, follow_ativo_em_colunas, regras_follow_up, id_da_lista_de_atendimento_do_whatsapp, id_lista_finalizado_do_whatsapp, id_lista_transferencia_de_atendimento_whatsapp, id_lista_pedido_pronto_whatsapp, connect_phone, palavras_ativacao_follow_up'
 
 function mensagemErroCanal(error: { message?: string; code?: string }): string {
   const msg = error.message ?? 'Falha ao salvar o canal.'
@@ -111,6 +127,13 @@ function mapCanalPublico(row: CanalRow): Canal {
       | 'disparo_ativo'
       | 'config_follow_up'
       | 'follow_ativo_em_colunas'
+      | 'regras_follow_up'
+      | 'id_da_lista_de_atendimento_do_whatsapp'
+      | 'id_lista_finalizado_do_whatsapp'
+      | 'id_lista_transferencia_de_atendimento_whatsapp'
+      | 'id_lista_pedido_pronto_whatsapp'
+      | 'connect_phone'
+      | 'palavras_ativacao_follow_up'
     >),
     horarios,
     tem_inteligencia_artificial: Boolean(row.tem_inteligencia_artificial),
@@ -138,6 +161,26 @@ function mapCanalPublico(row: CanalRow): Canal {
     disparo_ativo: row.disparo_ativo === true,
     config_follow_up: normalizarConfigFollowUp(row.config_follow_up),
     follow_ativo_em_colunas: normalizarFollowAtivoEmColunas(row.follow_ativo_em_colunas),
+    regras_follow_up: normalizarRegrasFollowUp(row.regras_follow_up),
+    id_da_lista_de_atendimento_do_whatsapp: normalizarLabelId(
+      row.id_da_lista_de_atendimento_do_whatsapp,
+    ),
+    id_lista_finalizado_do_whatsapp: normalizarLabelId(
+      row.id_lista_finalizado_do_whatsapp,
+    ),
+    id_lista_transferencia_de_atendimento_whatsapp: normalizarLabelId(
+      row.id_lista_transferencia_de_atendimento_whatsapp,
+    ),
+    id_lista_pedido_pronto_whatsapp: normalizarLabelId(
+      row.id_lista_pedido_pronto_whatsapp,
+    ),
+    connect_phone:
+      typeof row.connect_phone === 'string' && row.connect_phone.trim()
+        ? row.connect_phone.trim()
+        : null,
+    palavras_ativacao_follow_up: normalizarPalavrasAtivacaoFollowUp(
+      row.palavras_ativacao_follow_up,
+    ),
   }
 }
 
@@ -349,6 +392,75 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, statusMessage: parsed })
     }
     patch.follow_ativo_em_colunas = parsed
+  }
+
+  if (hasOwn(body, 'regras_follow_up')) {
+    const parsed = parseRegrasFollowUp(body.regras_follow_up)
+    if (typeof parsed === 'object' && 'erro' in parsed) {
+      throw createError({ statusCode: 400, statusMessage: parsed.erro })
+    }
+    patch.regras_follow_up = parsed
+  }
+
+  if (hasOwn(body, 'id_da_lista_de_atendimento_do_whatsapp')) {
+    const parsed = parseIdListaAtendimentoWhatsapp(
+      body.id_da_lista_de_atendimento_do_whatsapp,
+    )
+    if (parsed && typeof parsed === 'object' && 'erro' in parsed) {
+      throw createError({ statusCode: 400, statusMessage: parsed.erro })
+    }
+    patch.id_da_lista_de_atendimento_do_whatsapp = parsed
+  }
+
+  if (hasOwn(body, 'id_lista_finalizado_do_whatsapp')) {
+    const parsed = parseIdListaFinalizadoWhatsapp(body.id_lista_finalizado_do_whatsapp)
+    if (parsed && typeof parsed === 'object' && 'erro' in parsed) {
+      throw createError({ statusCode: 400, statusMessage: parsed.erro })
+    }
+    patch.id_lista_finalizado_do_whatsapp = parsed
+  }
+
+  if (hasOwn(body, 'id_lista_transferencia_de_atendimento_whatsapp')) {
+    const parsed = parseIdListaTransferenciaAtendimentoWhatsapp(
+      body.id_lista_transferencia_de_atendimento_whatsapp,
+    )
+    if (parsed && typeof parsed === 'object' && 'erro' in parsed) {
+      throw createError({ statusCode: 400, statusMessage: parsed.erro })
+    }
+    patch.id_lista_transferencia_de_atendimento_whatsapp = parsed
+  }
+
+  if (hasOwn(body, 'id_lista_pedido_pronto_whatsapp')) {
+    const parsed = parseIdListaPedidoProntoWhatsapp(body.id_lista_pedido_pronto_whatsapp)
+    if (parsed && typeof parsed === 'object' && 'erro' in parsed) {
+      throw createError({ statusCode: 400, statusMessage: parsed.erro })
+    }
+    patch.id_lista_pedido_pronto_whatsapp = parsed
+  }
+
+  if (hasOwn(body, 'connect_phone')) {
+    if (body.connect_phone === null || body.connect_phone === undefined || body.connect_phone === '') {
+      patch.connect_phone = null
+    } else if (typeof body.connect_phone === 'string') {
+      const phone = body.connect_phone.trim()
+      if (!phone) {
+        patch.connect_phone = null
+      } else if (phone.length > 30) {
+        throw createError({ statusCode: 400, statusMessage: 'connect_phone inválido.' })
+      } else {
+        patch.connect_phone = phone
+      }
+    } else {
+      throw createError({ statusCode: 400, statusMessage: 'connect_phone inválido.' })
+    }
+  }
+
+  if (hasOwn(body, 'palavras_ativacao_follow_up')) {
+    const parsed = parsePalavrasAtivacaoFollowUp(body.palavras_ativacao_follow_up)
+    if (typeof parsed === 'string') {
+      throw createError({ statusCode: 400, statusMessage: parsed })
+    }
+    patch.palavras_ativacao_follow_up = parsed
   }
 
   if (hasOwn(body, 'horarios')) {
