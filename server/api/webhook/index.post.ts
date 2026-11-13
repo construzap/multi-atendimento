@@ -35,7 +35,9 @@ function numberParaEtiquetasWhatsapp(normalizada: MensagemNormalizada): string |
 
 /**
  * Cliente → só a etiqueta de atendimento (`id_da_lista_de_atendimento_do_whatsapp`).
- * Vendedor (não IA) → limpa etiquetas (`labelids: []`).
+ * Vendedor (não IA):
+ * - follow-up agendado + etiqueta etapa 1 → `labelids: [etiqueta]`
+ * - senão → limpa (`labelids: []`)
  * I.A. / grupo → não chama.
  */
 async function tentarAtualizarEtiquetasNoWebhook(input: {
@@ -43,6 +45,8 @@ async function tentarAtualizarEtiquetasNoWebhook(input: {
   token: string | null
   listaAtendimentoId: string | null
   normalizada: MensagemNormalizada
+  follow_up_agendado?: boolean
+  follow_up_etiqueta_etapa_1?: string | null
 }): Promise<void> {
   const { normalizada } = input
   if (normalizada.from_me && normalizada.from_ia) return
@@ -59,8 +63,11 @@ async function tentarAtualizarEtiquetasNoWebhook(input: {
     const lista = input.listaAtendimentoId?.trim() || ''
     if (!lista) return
     labelids = [lista]
+  } else if (input.follow_up_agendado) {
+    const etiqueta = input.follow_up_etiqueta_etapa_1?.trim() || ''
+    labelids = etiqueta ? [etiqueta] : []
   } else {
-    // Vendedor: remove etiquetas de follow-up / atendimento.
+    // Vendedor sem ativação de follow-up: limpa etiquetas.
     labelids = []
   }
 
@@ -364,6 +371,8 @@ export default defineEventHandler(async (event) => {
       token: canalToken,
       listaAtendimentoId,
       normalizada,
+      follow_up_agendado: saved.follow_up_agendado === true,
+      follow_up_etiqueta_etapa_1: saved.follow_up_etiqueta_etapa_1 ?? null,
     })
     log.registrarEtapa('etiquetas_whatsapp', true, undefined, Date.now() - tLabels)
   } catch (err: unknown) {

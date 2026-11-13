@@ -5,6 +5,7 @@ import type { MensagemNormalizada } from '#shared/types/webhook'
 import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
 import { aplicarFollowupNoWebhook } from '../api/followup/aplicarFollowupNoWebhook'
 import {
+  extrairLabelId,
   mensagemAtivaFollowUpPorPalavras,
   normalizarConfigFollowUp,
   textoMensagemParaAtivacaoFollowUp,
@@ -65,7 +66,16 @@ function viewRowToConversaRow(row: ViewConversaLookupRow): ConversaRow {
 }
 
 export type PersistWebhookMensagemResult =
-  | { ok: true; conversa_key: string; message_persisted?: boolean; conversa_name?: string | null }
+  | {
+      ok: true
+      conversa_key: string
+      message_persisted?: boolean
+      conversa_name?: string | null
+      /** Vendedor humano agendou `data_proximo_disparo` nesta mensagem. */
+      follow_up_agendado?: boolean
+      /** `config_follow_up["1"].etiqueta` quando `follow_up_agendado`. */
+      follow_up_etiqueta_etapa_1?: string | null
+    }
   | { ok: false; step: 'conversa' | 'mensagem'; message: string }
 
 function digitsIguais(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -150,28 +160,40 @@ function minutosEsperaEtapa1(config: CanalConfigFollowUp): number | null {
   return Math.trunc(n)
 }
 
+type FollowUpConversaResolver = {
+  campos: Record<string, unknown>
+  /** Vendedor humano agendou follow-up (etapa 1) nesta mensagem. */
+  agendado: boolean
+  /** `labelid` de `config_follow_up["1"].etiqueta` quando agendou. */
+  etiqueta_etapa_1: string | null
+}
+
 /**
- * Patch de follow-up em `conversas`:
+ * Resolve patch de follow-up em `conversas` + meta para etiquetas WhatsApp:
  * - from_me + from_ia → não mexe
  * - from_me humano + etapa 1 → data_proximo_disparo + contagem_follow_up = 1
  *   (se houver palavras_ativacao_follow_up, só se a mensagem contiver alguma)
  * - from_me false → data_proximo_disparo = null
  */
-function patchFollowUp(
+function resolverFollowUpConversa(
   normalizada: MensagemNormalizada,
   options: PersistWebhookMensagemOptions,
-): Record<string, unknown> {
+): FollowUpConversaResolver {
   if (normalizada.from_me && normalizada.from_ia) {
-    return {}
+    return { campos: {}, agendado: false, etiqueta_etapa_1: null }
   }
 
   if (!normalizada.from_me) {
-    return { data_proximo_disparo: null }
+    return {
+      campos: { data_proximo_disparo: null },
+      agendado: false,
+      etiqueta_etapa_1: null,
+    }
   }
 
   // from_me humano: só agenda se o webhook passou config_follow_up com etapa 1.
   if (options.config_follow_up === undefined) {
-    return {}
+    return { campos: {}, agendado: false, etiqueta_etapa_1: null }
   }
 
   const texto = textoMensagemParaAtivacaoFollowUp({
@@ -179,22 +201,50 @@ function patchFollowUp(
     caption: normalizada.caption,
   })
   if (!mensagemAtivaFollowUpPorPalavras(texto, options.palavras_ativacao_follow_up)) {
-    return {}
+    return { campos: {}, agendado: false, etiqueta_etapa_1: null }
   }
 
   const config = normalizarConfigFollowUp(options.config_follow_up)
   const minutos = minutosEsperaEtapa1(config)
   if (minutos == null) {
-    return {}
+    return { campos: {}, agendado: false, etiqueta_etapa_1: null }
   }
 
   const candidate = DateTime.now().setZone(FOLLOW_UP_TIMEZONE).plus({ minutes: minutos })
   const ajustada = ajustarDataProximoDisparoParaJanela(candidate)
   const iso = ajustada.toUTC().toISO()
-  if (!iso) return {}
+  if (!iso) {
+    return { campos: {}, agendado: false, etiqueta_etapa_1: null }
+  }
+
   return {
-    data_proximo_disparo: iso,
-    contagem_follow_up: 1,
+    campos: {
+      data_proximo_disparo: iso,
+      contagem_follow_up: 1,
+    },
+    agendado: true,
+    etiqueta_etapa_1: extrairLabelId(config['1']?.etiqueta),
+  }
+}
+
+function patchFollowUp(
+  normalizada: MensagemNormalizada,
+  options: PersistWebhookMensagemOptions,
+): Record<string, unknown> {
+  return resolverFollowUpConversa(normalizada, options).campos
+}
+
+function metaFollowUpNoResultado(
+  normalizada: MensagemNormalizada,
+  options: PersistWebhookMensagemOptions,
+): Pick<
+  Extract<PersistWebhookMensagemResult, { ok: true }>,
+  'follow_up_agendado' | 'follow_up_etiqueta_etapa_1'
+> {
+  const r = resolverFollowUpConversa(normalizada, options)
+  return {
+    follow_up_agendado: r.agendado,
+    follow_up_etiqueta_etapa_1: r.agendado ? r.etiqueta_etapa_1 : null,
   }
 }
 
@@ -647,7 +697,12 @@ async function persistIndividual(
         options,
         mensagem_uuid: mensagemUuid,
       })
-      return { ok: true, conversa_key: keyExistente, message_persisted: false }
+      return {
+        ok: true,
+        conversa_key: keyExistente,
+        message_persisted: false,
+        ...metaFollowUpNoResultado(normalizada, options),
+      }
     }
     // Mensagem órfã (sem key_conversa) — reparar abaixo.
   }
@@ -753,6 +808,7 @@ async function persistIndividual(
     conversa_key,
     message_persisted: true,
     conversa_name,
+    ...metaFollowUpNoResultado(normalizada, options),
   }
 }
 
@@ -798,7 +854,12 @@ async function persistGrupo(
         options,
         mensagem_uuid: mensagemUuid,
       })
-      return { ok: true, conversa_key: keyExistente, message_persisted: false }
+      return {
+        ok: true,
+        conversa_key: keyExistente,
+        message_persisted: false,
+        ...metaFollowUpNoResultado(normalizada, options),
+      }
     }
   }
 
@@ -916,5 +977,6 @@ async function persistGrupo(
     conversa_key,
     message_persisted: true,
     conversa_name,
+    ...metaFollowUpNoResultado(normalizada, options),
   }
 }
