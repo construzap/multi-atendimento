@@ -87,5 +87,9 @@ export const estoqueTool: ToolDef = {
     endereco_loja: ctxStr(ctx.endereco_loja),
     produtos_contexto: ctx.produtos_contexto,
     user_id: ctxStr(ctx.user_id),
+    id_lista_transferencia_de_atendimento_whatsapp: ctxStr(
+      ctx.id_lista_transferencia_de_atendimento_whatsapp,
+    ),
+    id_lista_pedido_pronto_whatsapp: ctxStr(ctx.id_lista_pedido_pronto_whatsapp),
   }),
 }
