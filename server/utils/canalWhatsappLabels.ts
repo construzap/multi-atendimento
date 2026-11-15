@@ -140,27 +140,46 @@ export async function postLabelUazapi(
   }
 }
 
-/** Aplica etiquetas em um chat: `POST {servidor}/chat/labels`. */
+/** Aplica/remove etiquetas em um chat: `POST {servidor}/chat/labels`. */
 export function urlChatLabelsUazapi(servidor: string): string {
   return `${String(servidor).replace(/\/+$/, '')}/chat/labels`
 }
 
-export type AtualizarEtiquetasConversaWhatsappInput = {
-  servidor: string
-  token: string
-  /** Telefone/JID do contato (`number` da Uazapi). */
-  number: string
-  /** Lista de `labelid` a aplicar (vazia = remove etiquetas). */
-  labelids: string[]
+/** Normaliza lista de labelids (strings não vazias, sem duplicata, ordem estável). */
+export function normalizarListaLabelIds(raw: unknown): string[] {
+  const list: unknown[] = Array.isArray(raw)
+    ? raw
+    : raw == null || raw === ''
+      ? []
+      : [raw]
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of list) {
+    const id = String(item ?? '').trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+  }
+  return out
 }
 
-/**
- * Define as etiquetas do chat no WhatsApp via Uazapi.
- * `labelids: []` limpa; com IDs, substitui pelo conjunto informado.
- */
-export async function atualizarEtiquetasConversaWhatsapp(
-  input: AtualizarEtiquetasConversaWhatsappInput,
-): Promise<{ response: string }> {
+/** Lê `conversas.etiquetas_whatsapp` (jsonb array). */
+export function parseEtiquetasWhatsappCampo(raw: unknown): string[] {
+  if (typeof raw === 'string') {
+    try {
+      return normalizarListaLabelIds(JSON.parse(raw) as unknown)
+    } catch {
+      return []
+    }
+  }
+  return normalizarListaLabelIds(raw)
+}
+
+function assertCredenciaisChatLabels(input: {
+  servidor: unknown
+  token: unknown
+  number: unknown
+}): { servidor: string; token: string; number: string } {
   const servidor = String(input.servidor ?? '').trim()
   const token = String(input.token ?? '').trim()
   const number = String(input.number ?? '').trim()
@@ -173,14 +192,18 @@ export async function atualizarEtiquetasConversaWhatsapp(
   if (!number) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Informe o number (telefone) do contato.',
+      statusMessage: 'Informe o number (telefone do contato).',
     })
   }
+  return { servidor, token, number }
+}
 
-  const labelids = (input.labelids ?? [])
-    .map((id) => String(id ?? '').trim())
-    .filter(Boolean)
-
+async function postChatLabelsUazapi(
+  servidor: string,
+  token: string,
+  body: Record<string, unknown>,
+  fallbackErro: string,
+): Promise<{ response: string }> {
   try {
     const res = await $fetch<{ response?: string }>(urlChatLabelsUazapi(servidor), {
       method: 'POST',
@@ -189,10 +212,7 @@ export async function atualizarEtiquetasConversaWhatsapp(
         'Content-Type': 'application/json',
         token,
       },
-      body: {
-        number,
-        labelids,
-      },
+      body,
     })
     return {
       response: typeof res?.response === 'string' && res.response.trim() ? res.response.trim() : 'ok',
@@ -200,10 +220,119 @@ export async function atualizarEtiquetasConversaWhatsapp(
   } catch (err: unknown) {
     throw createError({
       statusCode: 502,
-      statusMessage: mensagemErroUazapiLabels(
-        err,
-        'Falha ao atualizar etiquetas da conversa no WhatsApp.',
-      ),
+      statusMessage: mensagemErroUazapiLabels(err, fallbackErro),
     })
+  }
+}
+
+export type RemoverEtiquetaConversaWhatsappInput = {
+  servidor: string
+  token: string
+  number: string
+  remove_labelid: string
+}
+
+/** Remove uma label do chat (`remove_labelid`). */
+export async function removerEtiquetaConversaWhatsapp(
+  input: RemoverEtiquetaConversaWhatsappInput,
+): Promise<{ response: string }> {
+  const { servidor, token, number } = assertCredenciaisChatLabels(input)
+  const remove_labelid = String(input.remove_labelid ?? '').trim()
+  if (!remove_labelid) {
+    throw createError({ statusCode: 400, statusMessage: 'Informe remove_labelid.' })
+  }
+  return postChatLabelsUazapi(
+    servidor,
+    token,
+    { number, remove_labelid },
+    'Falha ao remover etiqueta da conversa no WhatsApp.',
+  )
+}
+
+export type AdicionarEtiquetaConversaWhatsappInput = {
+  servidor: string
+  token: string
+  number: string
+  add_labelid: string
+}
+
+/** Adiciona uma label ao chat (`add_labelid`). */
+export async function adicionarEtiquetaConversaWhatsapp(
+  input: AdicionarEtiquetaConversaWhatsappInput,
+): Promise<{ response: string }> {
+  const { servidor, token, number } = assertCredenciaisChatLabels(input)
+  const add_labelid = String(input.add_labelid ?? '').trim()
+  if (!add_labelid) {
+    throw createError({ statusCode: 400, statusMessage: 'Informe add_labelid.' })
+  }
+  return postChatLabelsUazapi(
+    servidor,
+    token,
+    { number, add_labelid },
+    'Falha ao adicionar etiqueta da conversa no WhatsApp.',
+  )
+}
+
+export type SincronizarEtiquetasConversaWhatsappInput = {
+  servidor: string
+  token: string
+  number: string
+  /** Espelho local atual (`conversas.etiquetas_whatsapp`). */
+  atuais: string[]
+  /** Conjunto desejado após a sync (vazio = só remove). */
+  desejadas: string[]
+}
+
+export type SincronizarEtiquetasConversaWhatsappResult = {
+  /** Conjunto final espelhado (igual a `desejadas` normalizadas). */
+  finais: string[]
+  /**
+   * true se houve sync efetiva e o espelho em `conversas` deve ser gravado.
+   * false quando atuais e desejadas já estavam vazios (nada a fazer).
+   */
+  precisaPersistir: boolean
+  response: string
+}
+
+/**
+ * Remove cada label conhecida (`remove_labelid`) e depois adiciona as desejadas (`add_labelid`).
+ * Não usa `labelids` (substituir conjunto).
+ */
+export async function sincronizarEtiquetasConversaWhatsapp(
+  input: SincronizarEtiquetasConversaWhatsappInput,
+): Promise<SincronizarEtiquetasConversaWhatsappResult> {
+  const { servidor, token, number } = assertCredenciaisChatLabels(input)
+  const atuais = normalizarListaLabelIds(input.atuais)
+  const desejadas = normalizarListaLabelIds(input.desejadas)
+
+  if (atuais.length === 0 && desejadas.length === 0) {
+    return { finais: [], precisaPersistir: false, response: 'ok' }
+  }
+
+  let lastResponse = 'ok'
+  for (const remove_labelid of atuais) {
+    const res = await removerEtiquetaConversaWhatsapp({
+      servidor,
+      token,
+      number,
+      remove_labelid,
+    })
+    lastResponse = res.response
+  }
+
+  for (const add_labelid of desejadas) {
+    const res = await adicionarEtiquetaConversaWhatsapp({
+      servidor,
+      token,
+      number,
+      add_labelid,
+    })
+    lastResponse = res.response
+  }
+
+  return {
+    finais: desejadas,
+    precisaPersistir: true,
+    response: lastResponse,
   }
 }

@@ -39,6 +39,11 @@ export interface Conversa {
   /** I.A. ligada (`conversas.ia_ligada`). */
   ia_ligada: boolean | null
   /**
+   * Labelids WhatsApp aplicadas pelo app neste chat (`conversas.etiquetas_whatsapp`).
+   * Espelho local para remove/add na Uazapi.
+   */
+  etiquetas_whatsapp?: string[] | null
+  /**
    * Campos personalizados da conversa (definição + valor).
    * `undefined` = ainda não carregados; array (mesmo vazio) = já buscados na API.
    */

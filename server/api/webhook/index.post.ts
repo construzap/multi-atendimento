@@ -4,7 +4,10 @@ import type { PusherNovaMensagemPayload } from '#shared/types/mensagem'
 import { normalizeWhatsappBr } from '#shared/utils/normalizeWhatsappBr'
 import { normalizarLabelId } from '#shared/utils/validarCanalCamposExtras'
 import { mimeToExt, uploadToB2 } from '../../utils/b2Storage'
-import { atualizarEtiquetasConversaWhatsapp } from '../../utils/canalWhatsappLabels'
+import {
+  parseEtiquetasWhatsappCampo,
+  sincronizarEtiquetasConversaWhatsapp,
+} from '../../utils/canalWhatsappLabels'
 import { downloadUazapiMedia } from '../../utils/downloadUazapiMedia'
 import { mensagemFromNormalizada } from '../../utils/mensagemFromNormalizada'
 import { persistWebhookMensagem } from '../../utils/persistWebhookMensagem'
@@ -33,14 +36,22 @@ function numberParaEtiquetasWhatsapp(normalizada: MensagemNormalizada): string |
   return lidDigits ? `${lidDigits}@lid` : null
 }
 
+type SupabaseAdminWebhook = ReturnType<
+  typeof import('#supabase/server').serverSupabaseServiceRole<any>
+>
+
 /**
  * Cliente → só a etiqueta de atendimento (`id_da_lista_de_atendimento_do_whatsapp`).
  * Vendedor (não IA):
- * - follow-up agendado + etiqueta etapa 1 → `labelids: [etiqueta]`
- * - senão → limpa (`labelids: []`)
+ * - follow-up agendado + etiqueta etapa 1 → adiciona essa etiqueta
+ * - senão → só remove as conhecidas
+ * Fluxo: remove cada id em `conversas.etiquetas_whatsapp`, depois `add_labelid` se houver alvo;
+ * em seguida atualiza o espelho na conversa.
  * I.A. / grupo → não chama.
  */
 async function tentarAtualizarEtiquetasNoWebhook(input: {
+  admin: SupabaseAdminWebhook
+  conversa_key: string
   servidor: string | null
   token: string | null
   listaAtendimentoId: string | null
@@ -55,28 +66,60 @@ async function tentarAtualizarEtiquetasNoWebhook(input: {
   const token = input.token?.trim() || ''
   if (!servidor || !token) return
 
+  const conversa_key = input.conversa_key?.trim() || ''
+  if (!conversa_key) return
+
   const number = numberParaEtiquetasWhatsapp(normalizada)
   if (!number) return
 
-  let labelids: string[]
+  let desejadas: string[]
   if (!normalizada.from_me) {
     const lista = input.listaAtendimentoId?.trim() || ''
     if (!lista) return
-    labelids = [lista]
+    desejadas = [lista]
   } else if (input.follow_up_agendado) {
     const etiqueta = input.follow_up_etiqueta_etapa_1?.trim() || ''
-    labelids = etiqueta ? [etiqueta] : []
+    desejadas = etiqueta ? [etiqueta] : []
   } else {
-    // Vendedor sem ativação de follow-up: limpa etiquetas.
-    labelids = []
+    // Vendedor sem ativação de follow-up: limpa etiquetas conhecidas.
+    desejadas = []
   }
 
-  await atualizarEtiquetasConversaWhatsapp({
+  const { data: convRow, error: convErr } = await input.admin
+    .from('conversas')
+    .select('etiquetas_whatsapp')
+    .eq('key', conversa_key)
+    .maybeSingle()
+
+  if (convErr) {
+    console.warn('[webhook] ler etiquetas_whatsapp:', convErr.message)
+    return
+  }
+
+  const atuais = parseEtiquetasWhatsappCampo(
+    convRow && typeof convRow === 'object'
+      ? (convRow as { etiquetas_whatsapp?: unknown }).etiquetas_whatsapp
+      : null,
+  )
+
+  const sync = await sincronizarEtiquetasConversaWhatsapp({
     servidor,
     token,
     number,
-    labelids,
+    atuais,
+    desejadas,
   })
+
+  if (!sync.precisaPersistir) return
+
+  const { error: updErr } = await input.admin
+    .from('conversas')
+    .update({ etiquetas_whatsapp: sync.finais })
+    .eq('key', conversa_key)
+
+  if (updErr) {
+    console.warn('[webhook] gravar etiquetas_whatsapp:', updErr.message)
+  }
 }
 
 /**
@@ -367,6 +410,8 @@ export default defineEventHandler(async (event) => {
   const tLabels = Date.now()
   try {
     await tentarAtualizarEtiquetasNoWebhook({
+      admin,
+      conversa_key: saved.conversa_key,
       servidor: canalServidor,
       token: canalToken,
       listaAtendimentoId,
